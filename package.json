@@ -1,0 +1,31 @@
+{
+  "name": "photobooth-qr",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A Photobooth application that uploads photos to Google Drive and generates QR codes for easy sharing.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@google-cloud/local-auth": "^3.0.1",
+    "@tauri-apps/api": "^2",
+    "framer-motion": "^12.23.27",
+    "googleapis": "^169.0.0",
+    "qrcode": "^1.5.4",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^4.6.0",
+    "typescript": "~5.8.3",
+    "vite": "^7.0.4"
+  }
+}

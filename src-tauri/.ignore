@@ -1,0 +1,6 @@
+# Ignore token cache files from triggering rebuilds
+tokencache_v2.json
+tokencache*.json
+
+# Ignore other runtime files
+*.log
