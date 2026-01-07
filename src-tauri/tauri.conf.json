@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "photobooth-qr",
-  "version": "0.1.0",
-  "identifier": "photobooth",
+  "productName": "Photobooth_IPH",
+  "version": "1.0.10",
+  "identifier": "photobooth-iph",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "photobooth-qr",
+        "title": "Photobooth_IPH",
         "width": 853,
         "height": 600,
         "dragDropEnabled": false

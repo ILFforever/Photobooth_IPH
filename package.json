@@ -1,5 +1,5 @@
 {
-  "name": "photobooth-qr",
+  "name": "photobooth-iph",
   "private": true,
   "version": "0.1.0",
   "description": "A Photobooth application that uploads photos to Google Drive and generates QR codes for easy sharing.",
