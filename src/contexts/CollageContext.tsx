@@ -2,9 +2,24 @@ import { createContext, useContext, useState, ReactNode } from 'react';
 import { PlacedImage } from '../types/collage';
 import { Frame } from '../types/frame';
 
+export interface CanvasSize {
+  width: number;
+  height: number;
+  name: string;
+}
+
+export const CANVAS_SIZES: CanvasSize[] = [
+  { width: 1200, height: 1800, name: '4x6' },
+  { width: 1800, height: 1200, name: '6x4' },
+  { width: 1500, height: 1500, name: '5x5' },
+  { width: 2400, height: 3600, name: '4x6 HD' },
+];
+
 interface CollageContextType {
   currentFrame: Frame | null;
   setCurrentFrame: (frame: Frame | null) => void;
+  canvasSize: CanvasSize;
+  setCanvasSize: (size: CanvasSize) => void;
   background: string | null;
   setBackground: (bg: string | null) => void;
   placedImages: Map<string, PlacedImage>;
@@ -20,6 +35,7 @@ const CollageContext = createContext<CollageContextType | undefined>(undefined);
 
 export function CollageProvider({ children }: { children: ReactNode }) {
   const [currentFrame, setCurrentFrame] = useState<Frame | null>(null);
+  const [canvasSize, setCanvasSize] = useState<CanvasSize>(CANVAS_SIZES[0]);
   const [background, setBackground] = useState<string | null>(null);
   const [placedImages, setPlacedImages] = useState<Map<string, PlacedImage>>(new Map());
   const [selectedZone, setSelectedZone] = useState<string | null>(null);
@@ -56,6 +72,8 @@ export function CollageProvider({ children }: { children: ReactNode }) {
       value={{
         currentFrame,
         setCurrentFrame,
+        canvasSize,
+        setCanvasSize,
         background,
         setBackground,
         placedImages,

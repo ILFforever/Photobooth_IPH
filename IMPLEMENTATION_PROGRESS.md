@@ -1,7 +1,7 @@
 # Photobooth IPH - Collage Maker Implementation Progress
 
-**Last Updated:** 2026-01-09
-**Current Phase:** Phase 3 Complete - Frame System Backend
+**Last Updated:** 2026-01-10
+**Current Phase:** Phase 6 - Background System (Ready to start)
 
 ---
 
@@ -12,6 +12,357 @@ Transform the Photobooth IPH app from a QR code generator into a full-featured i
 ---
 
 ## ✅ Completed Phases
+
+### Phase 4: Canvas System & UI Integration ✓
+
+**Objective:** Create collage canvas components with drag-and-drop support and integrate into the main UI.
+
+**Completed Tasks:**
+
+**React DnD Integration:**
+- ✅ Installed `react-dnd` and `react-dnd-html5-backend` (70 packages)
+- ✅ Added DndProvider wrapper in `main.tsx` to enable drag-and-drop globally
+- ✅ Configured HTML5Backend for native browser drag-and-drop
+
+**Frontend Components Created:**
+- ✅ **CollageCanvas Component** (168 lines)
+  - Main 1200×1800px canvas with automatic viewport scaling
+  - ImageZone sub-component with drop target functionality
+  - Visual feedback for drag operations (hover states, selection)
+  - Background layer with customizable colors
+  - Frame info overlay showing template name and dimensions
+  - Placeholder state when no frame selected
+
+- ✅ **FrameSelector Component** (113 lines)
+  - Loads frames from Rust backend via `load_frames` command
+  - Displays frame list with metadata (zones, dimensions, defaults)
+  - Frame preview cards with zone count visualization
+  - Auto-selection of first frame on load
+  - Selection indicator and hover effects
+  - Loading state with animated spinner
+
+**Type System Updates:**
+- ✅ Updated `src/types/frame.ts` to match Rust backend exactly
+  - Added description, width, height, is_default, created_at fields
+  - Full TypeScript/Rust type compatibility
+- ✅ Updated `src/types/collage.ts` PlacedImage interface
+  - Added thumbnail field for drag-and-drop preview support
+
+**UI Integration:**
+- ✅ Added mode toggle in sidebar (Collage Maker 🎨 / QR Generator 📱)
+- ✅ Integrated FrameSelector into sidebar for Collage mode
+- ✅ Integrated CollageCanvas into main content area for Collage mode
+- ✅ Preserved all existing QR generator functionality in QR mode
+- ✅ Smooth mode switching with AnimatePresence transitions
+
+**Styling:**
+- ✅ `CollageCanvas.css` - Canvas, zones, and placeholder styling
+- ✅ `FrameSelector.css` - Frame list and preview card styling
+- ✅ Responsive design with hover effects and smooth transitions
+
+**Files Created:**
+- `src/components/Canvas/CollageCanvas.tsx` (168 lines)
+- `src/components/Canvas/CollageCanvas.css` (65 lines)
+- `src/components/Canvas/FrameSelector.tsx` (113 lines)
+- `src/components/Canvas/FrameSelector.css` (135 lines)
+
+**Files Modified:**
+- `src/main.tsx` - Added DndProvider (lines 3-4, 14, 26)
+- `src/App.tsx` - Added mode toggle and canvas integration (lines 14-15, 109, 1089-1125, 1269-1271)
+- `src/types/frame.ts` - Updated to match Rust backend (lines 12-22)
+- `src/types/collage.ts` - Added thumbnail field (line 12)
+
+**Build Stats:**
+- Bundle: 405KB JavaScript (125KB gzipped) - only +13KB increase
+- CSS: 27KB (5KB gzipped) - includes all canvas styling
+- Build time: 1.65s
+- TypeScript: ✅ Zero errors
+- Total: 481 lines of new code
+
+**Status:** ✅ Complete - Canvas fully integrated, 3 default frames loading, mode toggle working
+
+**What's Visible in the UI:**
+```
+┌─────────────────────────────────────────────────────────┐
+│ Header: Account Menu | History | About                  │
+├────────────┬────────────────────────────────────────────┤
+│ Sidebar    │ Main Canvas Area                           │
+│            │                                            │
+│ [🎨 Collage│  ┌──────────────────────────┐             │
+│  Maker]    │  │                          │             │
+│ [📱 QR     │  │    1200×1800px Canvas    │             │
+│  Generator]│  │                          │             │
+│            │  │  [Zone 1: Drag here]     │             │
+│ ┌────────┐ │  │                          │             │
+│ │Single  │✓│  │  [Zone 2: Drag here]     │             │
+│ │Photo   │ │  │                          │             │
+│ │1 zone  │ │  │  Frame: Single Photo     │             │
+│ └────────┘ │  │  1200 × 1800px           │             │
+│ ┌────────┐ │  └──────────────────────────┘             │
+│ │Side by │ │                                            │
+│ │Side    │ │                                            │
+│ │2 zones │ │                                            │
+│ └────────┘ │                                            │
+│ ┌────────┐ │                                            │
+│ │Photo   │ │                                            │
+│ │Grid    │ │                                            │
+│ │4 zones │ │                                            │
+│ └────────┘ │                                            │
+└────────────┴────────────────────────────────────────────┘
+```
+
+**User Actions Available:**
+1. Click "🎨 Collage Maker" or "📱 QR Generator" to switch modes
+2. Click any frame in the sidebar to change canvas layout
+3. See zones update in real-time on canvas
+4. Canvas automatically scales to fit viewport
+
+---
+
+### Phase 5: Image Manipulation ✓
+
+**Objective:** Add transform controls for placed images with real-time preview updates.
+
+**Completed Tasks:**
+
+**Frontend Components:**
+- ✅ **ImageManipulator Component** (235 lines)
+  - Interactive preview with click-and-drag panning
+  - Scale slider (0.5x to 3x zoom)
+  - Rotation slider (-180° to 180°)
+  - Pan/offset controls with visual feedback
+  - Flip horizontal/vertical toggle buttons
+  - Reset transform button
+  - Remove image button
+  - Real-time transform value display
+
+- ✅ **CollageSidebar Component** (28 lines)
+  - Integrates FrameSelector and ImageManipulator
+  - Two-section layout with proper scrolling
+  - Frames section (collapsible, max 320px)
+  - Image controls section (fills remaining space)
+
+**Transform System:**
+- ✅ All transforms applied via CSS transform property
+- ✅ Transforms stack correctly: scale → translate → rotate → flip
+- ✅ Context API integration for state management
+- ✅ Real-time preview in both manipulator and canvas
+- ✅ Transform persists across zone selection changes
+
+**UI/UX Features:**
+- Interactive image preview with pan gesture
+- Visual feedback during panning (border highlight, cursor change)
+- Slider controls with min/max labels
+- Active state indicators for flip buttons
+- Gradient header with zone identification
+- Empty state when no image selected
+- Smooth animations on all interactions
+
+**Files Created:**
+- `src/components/Canvas/ImageManipulator.tsx` (235 lines)
+- `src/components/Canvas/ImageManipulator.css` (274 lines)
+- `src/components/Sidebar/CollageSidebar.tsx` (28 lines)
+- `src/components/Sidebar/CollageSidebar.css` (46 lines)
+
+**Files Modified:**
+- `src/components/Sidebar/Sidebar.tsx` - Replaced FrameSelector with CollageSidebar
+- `src/components/Canvas/CollageCanvas.tsx` - Added flipHorizontal/flipVertical to transform string
+
+**Build Stats:**
+- Bundle: 411.20KB JavaScript (126.17KB gzipped) - only +4.6KB increase
+- CSS: 32.23KB (5.86KB gzipped) - includes all manipulator styling
+- Build time: 1.89s
+- TypeScript: ✅ Zero errors
+- Total: 583 lines of new code
+
+**Status:** ✅ Complete - All transform controls working, real-time updates functional
+
+**Transform Controls:**
+```
+┌─────────────────────────────────┐
+│ Image Controls        Zone 1    │
+├─────────────────────────────────┤
+│ [Interactive Preview]           │
+│ Click & drag to pan             │
+├─────────────────────────────────┤
+│ 🔍 Scale              1.50x     │
+│ ◀────●─────────▶               │
+│                                 │
+│ 🔄 Rotation           45°       │
+│ ◀────────●─────▶               │
+│                                 │
+│ ✋ Position                     │
+│ X: 20px  Y: -15px               │
+│                                 │
+│ 🔀 Flip                         │
+│ [↔️ Horizontal] [↕️ Vertical]  │
+│                                 │
+│ [🔄 Reset]  [🗑️ Remove]        │
+└─────────────────────────────────┘
+```
+
+---
+
+### UI Finalization & Layout Optimization ✓
+
+**Objective:** Finalize the collage maker as the primary interface with optimized layout.
+
+**Completed Tasks:**
+
+**Drag-and-Drop Integration:**
+- ✅ Updated WorkingFolderGallery to use react-dnd instead of HTML5 drag
+  - Created DraggableImage component with useDrag hook
+  - Fixed TypeScript ref issues using useRef pattern
+  - Added visual feedback (opacity 0.5 when dragging)
+  - Proper type safety with 'IMAGE' drag type
+- ✅ Integrated with CollageCanvas drop targets
+  - Images can now be dragged from gallery to canvas zones
+  - Full compatibility with react-dnd system
+
+**FloatingFrameSelector Component:**
+- ✅ Created floating pill button at bottom center of canvas (116 lines)
+  - Beautiful gradient design with shadow effects
+  - Shows current frame name
+  - Click to open/close frame selection panel
+- ✅ Frame options panel slides up with animation
+  - Lists all available frames with metadata
+  - Shows zone count and dimensions
+  - Selected indicator (✓)
+  - Auto-loads frames on first open
+  - Gradient header with close button
+
+**Layout Reorganization:**
+- ✅ Moved Working Folder Gallery into sidebar under mode toggle
+  - Removed separate left panel
+  - Canvas now takes full width
+  - Split sidebar: 50% working folder, 50% image controls
+- ✅ Removed mode toggle - Collage Maker is now the only mode
+  - Simplified Sidebar component (no props needed)
+  - App.tsx always shows CollageWorkspace
+  - Cleaner, focused single-purpose UI
+  - QR functionality preserved in backend for future use
+
+**Files Created:**
+- `src/components/Canvas/FloatingFrameSelector.tsx` (116 lines)
+- `src/components/Canvas/FloatingFrameSelector.css` (226 lines)
+
+**Files Modified:**
+- `src/components/Canvas/CollageCanvas.tsx` - Added FloatingFrameSelector, flip transforms
+- `src/components/Canvas/CollageWorkspace.tsx` - Removed left gallery panel, full-width canvas
+- `src/components/Canvas/CollageWorkspace.css` - Simplified layout
+- `src/components/Sidebar/Sidebar.tsx` - Removed all props, always shows CollageSidebar
+- `src/components/Sidebar/CollageSidebar.tsx` - Added WorkingFolderGallery, split layout
+- `src/components/Sidebar/CollageSidebar.css` - 50/50 split sections
+- `src/components/WorkingFolder/WorkingFolderGallery.tsx` - react-dnd integration
+- `src/components/WorkingFolder/WorkingFolderGallery.css` - Added .dragging styles
+- `src/App.tsx` - Removed viewMode state, always shows collage mode
+
+**Final UI Structure:**
+```
+┌──────────────────────────────────────────────────────────┐
+│ Header: Account | History | About                        │
+├────────────┬─────────────────────────────────────────────┤
+│ Sidebar    │          Canvas Area (Full Width)           │
+│            │                                              │
+│ Working    │              ┌─────────────────┐            │
+│ Folder     │              │                 │            │
+│ [Select]   │              │   1200×1800     │            │
+│ ┌────────┐ │              │                 │            │
+│ │ Images │ │              │    [Zone 1]     │            │
+│ └────────┘ │              │    [Zone 2]     │            │
+│────────────│              └─────────────────┘            │
+│ Image      │                                              │
+│ Controls   │            ┌────────────────────┐           │
+│ 🔍 Scale   │            │ 🖼️ Single Photo ▲│           │
+│ 🔄 Rotate  │            └────────────────────┘           │
+│ ✋ Position│              (Floating Pill)                 │
+│ 🔀 Flip    │                                              │
+└────────────┴──────────────────────────────────────────────┘
+```
+
+**Status:** ✅ Complete - Collage maker is now the primary and only interface
+
+---
+
+### Phase 4.5: Drag-to-Frame Fixes & Auto-Scaling ✓
+
+**Objective:** Fix image loading when dragged to frames and implement proper auto-scaling.
+
+**Completed Tasks:**
+
+**Image Loading Fix:**
+- ✅ Fixed image paths not loading in collage frames
+  - Issue: `asset://` prefixed paths needed `convertFileSrc()` conversion
+  - Added `convertFileSrc` import and usage in CollageCanvas
+  - Images now load correctly when dropped into frames
+
+**Full Image Loading:**
+- ✅ Changed from loading thumbnails to loading full resolution images
+  - Updated to use `sourceFile` instead of `thumbnail` for display
+  - Ensures highest quality output for collage export
+
+**Auto-Scaling Implementation:**
+- ✅ Implemented automatic image scaling to fill frame dimensions
+  - Calculates scale based on image aspect ratio vs zone aspect ratio
+  - Uses actual pixel dimensions for correct aspect ratio calculation
+  - Formula: `scale = larger_AR / smaller_AR`
+  - Images auto-scale to fill frames without manual adjustment
+
+**Drag-to-Pan Functionality:**
+- ✅ Added click-and-drag panning within frames
+  - Users can drag images around after placement
+  - Global mouse event listeners for smooth dragging
+  - `overflow: hidden` on zones hides parts outside frame
+  - Cursor changes (grab/grabbing) for better UX
+
+**ObjectFit Optimization:**
+- ✅ Changed from `objectFit: 'cover'` to `objectFit: 'contain'`
+  - Prevents unwanted cropping of images
+  - Full image is always visible and movable
+  - User has complete control over composition
+
+**Backend Bug Fix:**
+- ✅ Fixed thumbnail dimensions being used instead of full image dimensions
+  - Issue: Cached thumbnails returned 120x80 dimensions instead of 7728x5152
+  - Fixed `generate_thumbnail_cached` to read dimensions from original image path
+  - Now correctly returns full image dimensions for proper scale calculation
+
+**Debug Logging:**
+- ✅ Added comprehensive debug logging for drop operations
+  - Logs image dimensions, aspect ratios
+  - Logs zone dimensions in both % and pixels
+  - Logs calculated scale for verification
+
+**Files Modified:**
+- `src/components/Canvas/CollageCanvas.tsx` - Added convertFileSrc, auto-scale calculation, drag-to-pan, debug logging
+- `src/components/WorkingFolder/WorkingFolderGallery.tsx` - Added dimensions to drag item
+- `src-tauri/src/lib.rs` - Fixed dimension calculation in `generate_thumbnail_cached`
+
+**Technical Details:**
+```typescript
+// Auto-scale calculation (fixed version)
+const zoneWidthPx = (zone.width / 100) * canvasSize.width;   // e.g., 35% of 1200 = 420px
+const zoneHeightPx = (zone.height / 100) * canvasSize.height; // e.g., 35% of 1800 = 630px
+const zoneAspectRatio = zoneWidthPx / zoneHeightPx;           // 420 / 630 = 0.667
+
+const imgAspectRatio = item.dimensions.width / item.dimensions.height; // 7728 / 5152 = 1.5
+
+const scale = imgAspectRatio > zoneAspectRatio
+  ? imgAspectRatio / zoneAspectRatio   // 1.5 / 0.667 = 2.25
+  : zoneAspectRatio / imgAspectRatio;
+```
+
+**Example:**
+- Image: 7728 x 5152 (AR = 1.5)
+- Zone: 35% x 35% of 1200x1800 canvas = 420 x 630px (AR = 0.667)
+- Calculated scale: 1.5 / 0.667 = 2.25x
+- Result: Image fills frame perfectly, user can drag to adjust composition
+
+**Status:** ✅ Complete - Images load, auto-scale correctly, and can be repositioned
+
+---
+
+---
 
 ### Phase 3: Frame System Backend ✓
 
@@ -216,8 +567,11 @@ WorkingFolderInfo {
 - ✅ `AddPhotosModal.tsx` - Photo source selection dialog (68 lines)
 - ✅ `CachedAccountModal.tsx` - Cached account confirmation dialog (88 lines)
 - ✅ `DeleteFolderModal.tsx` - Folder deletion confirmation (86 lines)
-- 🔄 `ImageGallery.tsx` - Photo gallery with drag-drop (to be created)
-- 🔄 `Sidebar.tsx` - Left sidebar with controls (to be created)
+- ✅ `ImageGallery.tsx` - QR mode photo gallery with drag-drop (171 lines)
+- ✅ `QRResultView.tsx` - QR code result display (97 lines)
+- ✅ `EmptyState.tsx` - Empty state for QR mode (43 lines)
+- ✅ `Sidebar.tsx` - Left sidebar with mode toggle (118 lines)
+- ✅ `QRSidebar.tsx` - QR mode sidebar controls (198 lines)
 
 **Recent Bug Fixes (2026-01-09 - Session 1):**
 - ✅ Fixed HistoryModal blank screen issue
@@ -241,22 +595,43 @@ WorkingFolderInfo {
   - Replaced inline JSX with component calls
   - Maintained all functionality and state management
 
+**Recent Work (2026-01-10 - Session 3):**
+- ✅ Extracted Gallery and Sidebar components from App.tsx
+  - ImageGallery component with full drag-drop support and image management
+  - QRResultView component for displaying generated QR codes
+  - EmptyState component for when no QR code exists
+  - Sidebar component with mode toggle (Collage/QR)
+  - QRSidebar component with all QR mode controls and upload progress
+- ✅ Fixed TypeScript type consistency
+  - Updated all components to import GoogleAccount and DriveFolder from AuthContext
+  - Ensured is_shared_drive? optional field is handled correctly
+- ✅ Removed duplicate code (formatFileSize function moved to ImageGallery)
+- ✅ Build successful with zero TypeScript errors
+
 **Files Created:**
 - `src/components/Modals/FolderPickerModal.tsx` (221 lines)
 - `src/components/Modals/AddPhotosModal.tsx` (68 lines)
 - `src/components/Modals/CachedAccountModal.tsx` (88 lines)
 - `src/components/Modals/DeleteFolderModal.tsx` (86 lines)
+- `src/components/Gallery/ImageGallery.tsx` (171 lines)
+- `src/components/Gallery/QRResultView.tsx` (97 lines)
+- `src/components/Gallery/EmptyState.tsx` (43 lines)
+- `src/components/Sidebar/Sidebar.tsx` (118 lines)
+- `src/components/Sidebar/QRSidebar.tsx` (198 lines)
 
 **Files Modified:**
-- `src/App.tsx` - Added imports (lines 11-14), replaced 4 modal implementations (lines 1468-1530)
-- `src/components/Modals/HistoryModal.tsx` - Lines 1-36 (Interface, data loading)
+- `src/App.tsx` - Replaced sidebar and gallery sections with new components
+- `src/components/Sidebar/Sidebar.tsx` - Imports types from AuthContext
+- `src/components/Sidebar/QRSidebar.tsx` - Imports types from AuthContext
+- `src/components/Gallery/EmptyState.tsx` - Imports types from AuthContext
 
 **Benefits:**
 - Better code organization with modular components
-- Improved maintainability - each modal is independently testable
+- Improved maintainability - each component is independently testable
 - Easier testing - isolated component logic
-- Reusable components - modals can be used elsewhere if needed
-- **Reduced App.tsx from 2326 → 1555 lines (progress: ~33% reduction, 771 lines removed)**
+- Reusable components - can be used elsewhere if needed
+- Type safety - shared types from AuthContext prevent inconsistencies
+- **Reduced App.tsx from 2326 → 1242 lines (progress: ~47% reduction, 1084 lines removed)**
 
 ---
 
@@ -384,19 +759,48 @@ User → WorkingFolder (select) → Images (thumbnails)
 
 ## 📊 Progress Metrics
 
-**Overall Progress:** 16% (2/12 phases complete)
+**Overall Progress:** 50% (6/12 phases complete)
 
-**Lines of Code:**
+**Lines of Code Added:**
 - Contexts: ~500 lines (TypeScript)
-- Types: ~200 lines (TypeScript)
-- Backend: ~130 lines (Rust) for working folder
-- Components: ~350 lines (TypeScript + CSS) for WorkingFolderGallery
+- Types: ~250 lines (TypeScript - updated frame & collage types)
+- Backend Rust: ~350 lines (working folder + frame system)
+- Canvas Components: ~481 lines (CollageCanvas + FrameSelector + CSS)
+- Image Manipulation: ~583 lines (ImageManipulator + CollageSidebar + CSS)
+- Modal Components: ~463 lines (4 modal components: FolderPicker, AddPhotos, CachedAccount, DeleteFolder)
+- Gallery Components: ~311 lines (ImageGallery, QRResultView, EmptyState)
+- Sidebar Components: ~316 lines (Sidebar, QRSidebar)
+- Other Components: ~350 lines (Header, HistoryModal, AboutModal, ConfirmDialog, WorkingFolderGallery)
+- Refactoring: Reduced App.tsx by ~1,084 lines (47% reduction, 2326→1242 lines)
 
-**Estimated Completion:**
-- Phase 3-4: 2-3 days
-- Phase 5-8: 3-4 days
-- Phase 9-11: 2-3 days
-- **Total:** ~7-10 days of development
+**Bundle Size:**
+- JavaScript: 411.20KB (126.17KB gzipped)
+- CSS: 32.23KB (5.86KB gzipped)
+- Total: 443.43KB (132.03KB gzipped)
+- Build time: 1.89s
+
+**Current Status:**
+- ✅ Phase 1: State Management ✓
+- ✅ Phase 2: Working Folder Backend ✓
+- ✅ Phase 3: Frame System Backend ✓
+- ✅ Phase 4: Canvas System & UI Integration ✓
+- ✅ Phase 4.5: Drag-to-Frame Fixes & Auto-Scaling ✓
+- ✅ Phase 5: Image Manipulation ✓
+- ⬜ Phases 6-12: Pending
+
+**What You Can See Now:**
+- Collage Maker as the primary interface
+- Frame selector with 3 default templates
+- Live collage canvas with zone visualization
+- Frame selection and switching
+- Responsive canvas scaling
+- Image manipulation controls (scale, rotate, pan, flip)
+- Interactive preview with drag-to-pan
+- Reset and remove image buttons
+- **NEW:** Drag images from working folder to canvas frames
+- **NEW:** Images auto-scale to fill frames perfectly
+- **NEW:** Drag images within frames to reposition
+- **NEW:** Full resolution image loading
 
 ---
 

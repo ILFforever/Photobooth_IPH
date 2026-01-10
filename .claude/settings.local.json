@@ -1,10 +1,22 @@
 {
+  "env": {
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "glm-4.5-air",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "glm-4.7",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "glm-4.7"
+  },
   "permissions": {
     "allow": [
       "Bash(cargo build:*)",
       "Bash(cat:*)",
       "Bash(cargo tree:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm run tauri dev:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(cargo add:*)",
+      "Bash(cargo clean:*)"
     ]
   }
 }

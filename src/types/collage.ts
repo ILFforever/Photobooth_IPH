@@ -9,6 +9,7 @@ export interface ImageTransform {
 
 export interface PlacedImage {
   sourceFile: string;
+  thumbnail?: string;
   zoneId: string;
   transform: ImageTransform;
 }

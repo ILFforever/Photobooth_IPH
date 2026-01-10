@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence } from "framer-motion";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
-import { listen } from '@tauri-apps/api/event';
 import { useAuth } from "./contexts/AuthContext";
+import { listen } from '@tauri-apps/api/event';
 import { useQR } from "./contexts/QRContext";
 import Header from "./components/Header/Header";
 import HistoryModal from "./components/Modals/HistoryModal";
@@ -11,6 +11,8 @@ import FolderPickerModal from "./components/Modals/FolderPickerModal";
 import AddPhotosModal from "./components/Modals/AddPhotosModal";
 import CachedAccountModal from "./components/Modals/CachedAccountModal";
 import DeleteFolderModal from "./components/Modals/DeleteFolderModal";
+import CollageWorkspace from "./components/Canvas/CollageWorkspace";
+import Sidebar from "./components/Sidebar/Sidebar";
 import "./App.css";
 
 interface Result {
@@ -102,6 +104,9 @@ function App() {
   // App menu state
   const [showAppMenu, setShowAppMenu] = useState(false);
   const [showAboutModal, setShowAboutModal] = useState(false);
+
+  // Always in collage mode now
+  // const [viewMode, setViewMode] = useState<'qr' | 'collage'>('collage');
 
   // Debug version log
   useEffect(() => {
@@ -619,15 +624,6 @@ function App() {
     setFolderToDelete(null);
   };
 
-  // Helper function to format file size
-  const formatFileSize = (bytes?: number): string => {
-    if (!bytes) return '';
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-  };
-
   // Helper function to create thumbnail from data URL
   const createThumbnailFromDataUrl = async (dataUrl: string, maxWidth = 800, maxHeight = 800): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -1080,382 +1076,12 @@ function App() {
 
       {/* Main Content */}
       <div className="app-content">
-        <div className="sidebar">
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="sidebar-section"
-          >
-            <h2 className="sidebar-title">Generate QR Code</h2>
-            <p className="sidebar-description">
-              Select a Drive root folder and upload your photobooth images to generate a shareable QR code and link.
-            </p>
-
-            <div className="input-group">
-              <label>Drive Root Folder</label>
-              <div className="folder-selector">
-                <input
-                  type="text"
-                  value={rootFolder ? rootFolder.name : ""}
-                  readOnly
-                  placeholder={account ? "Click to select/create root folder..." : "Sign in first..."}
-                />
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={handleSelectDriveFolder}
-                  disabled={!account || selectingFolder}
-                  className="btn-secondary"
-                >
-                  {selectingFolder ? "..." : rootFolder ? "Change" : "Select"}
-                </motion.button>
-              </div>
-              {rootFolder && (
-                <p style={{ fontSize: '0.75rem', color: '#888', marginTop: '0.25rem' }}>
-                  Photos will be organized in encoded folders inside "{rootFolder.name}"
-                </p>
-              )}
-            </div>
-
-            <div className="input-group">
-              <label>Add Photos (Local)</label>
-              <div className="folder-selector">
-                <input
-                  type="text"
-                  value={selectedImages.length + failedImages.length > 0 ? `${selectedImages.length + failedImages.length} images selected` : ""}
-                  readOnly
-                  placeholder="Select local file or folder to upload..."
-                />
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={handleAddPhotos}
-                  disabled={loading}
-                  className="btn-secondary"
-                >
-                  Browse
-                </motion.button>
-              </div>
-            </div>
-
-            <motion.button
-              whileHover={{ scale: 1.01 }}
-              whileTap={{ scale: 0.99 }}
-              onClick={loading ? handleCancelUpload : handleGenerate}
-              disabled={!loading && (!rootFolder || !photos_path)}
-              className={loading ? "btn-uploading" : "btn-primary"}
-            >
-              {loading ? (
-                <>
-                  <motion.div
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                    className="spinner"
-                  >
-                    ⟳
-                  </motion.div>
-                  <span className="upload-text">Uploading...</span>
-                  <span className="cancel-text">Cancel Upload</span>
-                </>
-              ) : (
-                "Upload & Generate QR Code"
-              )}
-            </motion.button>
-
-            {/* Upload Progress Display */}
-            <AnimatePresence>
-              {loading && uploadProgress && (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className="upload-progress-container"
-                >
-                  <div className="upload-progress-header">
-                    <span className="upload-progress-step">
-                      {uploadProgress.step === 'starting' && '🚀 Starting...'}
-                      {uploadProgress.step === 'creating_folder' && '📁 Creating Folder...'}
-                      {uploadProgress.step === 'scanning' && '🔍 Scanning Files...'}
-                      {uploadProgress.step === 'uploading' && '📤 Uploading Files...'}
-                      {uploadProgress.step === 'permissions' && '🔓 Setting Permissions...'}
-                      {uploadProgress.step === 'qr_code' && '📱 Generating QR Code...'}
-                      {uploadProgress.step === 'complete' && '✅ Complete!'}
-                    </span>
-                    {uploadProgress.total > 0 && (
-                      <span className="upload-progress-count">
-                        {uploadProgress.current}/{uploadProgress.total}
-                      </span>
-                    )}
-                  </div>
-                  <div className="upload-progress-message">{uploadProgress.message}</div>
-                  {uploadProgress.total > 0 && uploadProgress.step === 'uploading' && (
-                    <div className="upload-progress-bar-container">
-                      <motion.div
-                        className="upload-progress-bar"
-                        initial={{ width: 0 }}
-                        animate={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
-                        transition={{ duration: 0.3 }}
-                      />
-                    </div>
-                  )}
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            <AnimatePresence>
-              {error && (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className="error-message"
-                >
-                  <span className="error-icon">⚠️</span>
-                  {error}
-                </motion.div>
-          )}
-            </AnimatePresence>
-          </motion.div>
-        </div>
+        <Sidebar />
 
         <div className="main-panel">
-          {/* Main Content Area */}
+          {/* Main Content Area - Always Collage Mode */}
           <div className="tab-content">
-            <AnimatePresence mode="wait">
-              {!result ? (
-                <motion.div
-                  key="gallery"
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className="gallery-view"
-                >
-                  {selectedImages.length > 0 || failedImages.length > 0 ? (
-                    <div
-                      className={`gallery-with-images ${isDragging ? 'dragging' : ''}`}
-                      onDragOver={handleDragOver}
-                      onDragLeave={handleDragLeave}
-                      onDrop={handleDrop}
-                    >
-                      <div className="image-grid">
-                        {selectedImages.map((imagePath, index) => {
-                          const isLoaded = loadedImages[imagePath];
-                          return (
-                            <motion.div
-                              key={imagePath}
-                              initial={{ opacity: 0, scale: 0.8 }}
-                              animate={{ opacity: 1, scale: 1 }}
-                              exit={{ opacity: 0, scale: 0.8 }}
-                              className="image-card"
-                            >
-                              {!isLoaded && <div className="shimmer-overlay" />}
-                              <img
-                                src={imagePath}
-                                alt={`Selected ${index + 1}`}
-                                onLoad={() => {
-                                  handleImageLoaded(imagePath);
-                                }}
-                                onError={(e) => console.error(`Image ${index} failed to load:`, imagePath, e)}
-                              />
-                              <button
-                                className="remove-image-btn"
-                                onClick={() => handleRemoveImage(imagePath)}
-                                title="Remove image"
-                              >
-                                ×
-                              </button>
-                            </motion.div>
-                          );
-                        })}
-
-                        {/* Show placeholder cards for failed images */}
-                        {failedImages.map((failedImg) => (
-                          <motion.div
-                            key={`failed-${failedImg.filename}`}
-                            initial={{ opacity: 0, scale: 0.8 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.8 }}
-                            className="image-card failed-card"
-                            data-is-raw={failedImg.isRaw ? "true" : "false"}
-                          >
-                            <div className="failed-image-content">
-                              <div className="failed-icon">{failedImg.isRaw ? '📄' : '⚠️'}</div>
-                              <div className="failed-filename">{failedImg.filename}</div>
-                              <div className="failed-type">{failedImg.type}</div>
-                              {failedImg.size && <div className="failed-size">{formatFileSize(failedImg.size)}</div>}
-                              {!failedImg.isRaw && <div className="failed-message">Preview failed</div>}
-                            </div>
-                            <button
-                              className="remove-image-btn"
-                              onClick={() => handleRemoveFailedImage(failedImg.filename)}
-                              title="Remove failed image"
-                            >
-                              ×
-                            </button>
-                          </motion.div>
-                        ))}
-
-                        {/* Show loading cards for images being processed */}
-                        {processingImages.map((filename) => (
-                          <motion.div
-                            key={`processing-${filename}`}
-                            initial={{ opacity: 0, scale: 0.8 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.8 }}
-                            className="image-card loading-card"
-                          />
-                        ))}
-
-                        {/* Drop zone placeholder */}
-                        <motion.div
-                          initial={{ opacity: 0, scale: 0.8 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          className="drop-placeholder"
-                        >
-                          <div className="drop-placeholder-content">
-                            <span className="drop-placeholder-icon">🖱️</span>
-                            <span className="drop-placeholder-text">Drop more photos here</span>
-                          </div>
-                        </motion.div>
-                      </div>
-                      <div className="gallery-footer">
-                        <motion.button
-                          whileHover={{ scale: 1.02 }}
-                          whileTap={{ scale: 0.98 }}
-                          onClick={handleClearGallery}
-                          disabled={loading}
-                          className="btn-clear-gallery"
-                        >
-                          🗑️ Clear All ({selectedImages.length + failedImages.length})
-                        </motion.button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div
-                      className={`drop-zone ${isDragging ? 'dragging' : ''}`}
-                      onDragOver={handleDragOver}
-                      onDragLeave={handleDragLeave}
-                      onDrop={handleDrop}
-                    >
-                      <div className="drop-zone-content">
-                        <div className="drop-zone-icon">📷</div>
-                        <h3>No Images Selected</h3>
-                        <p>Photos added from the sidebar or dropped here will appear in this gallery.</p>
-                        
-                        <p className="drop-zone-hint">or drag and drop photos here</p>
-                      </div>
-                    </div>
-                  )}
-                </motion.div>
-              ) : (
-                <motion.div
-                  key="qr"
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className="qr-view"
-                >
-                  <AnimatePresence mode="wait">
-                    {result ? (
-                      <motion.div
-                        key="result"
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.95 }}
-                        className="result-view"
-                      >
-                        <div className="result-header">
-                          <h2>QR Code Generated</h2>
-                          <div className="result-badge">
-                            <span className="badge-icon">✓</span>
-                            <span>Ready to Share</span>
-                          </div>
-                        </div>
-
-                        <div className="result-body">
-                          <div className="qr-section">
-                            <div className="qr-container">
-                              <img
-                                src={`data:image/png;base64,${result.qr_data}`}
-                                alt="QR Code"
-                                className="qr-code"
-                              />
-                            </div>
-                            <p className="qr-label">Scan to view photos</p>
-                          </div>
-
-                          <div className="info-section">
-                            <div className="info-item">
-                              <label>Folder Name</label>
-                              <div className="info-value">{result.folder_name}</div>
-                            </div>
-
-                            <div className="info-item">
-                              <label>Share Link</label>
-                              <div className="link-container">
-                                <input
-                                  type="text"
-                                  value={result.link}
-                                  readOnly
-                                  className="link-input"
-                                />
-                                <motion.button
-                                  whileHover={{ scale: 1.02 }}
-                                  whileTap={{ scale: 0.98 }}
-                                  onClick={handleCopyLink}
-                                  className="btn-copy"
-                                >
-                                  📋 Copy
-                                </motion.button>
-                              </div>
-                            </div>
-
-                            <motion.a
-                              href={result.link}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="btn-open"
-                              whileHover={{ scale: 1.01 }}
-                              whileTap={{ scale: 0.99 }}
-                            >
-                              Open in Browser →
-                            </motion.a>
-
-                            <motion.button
-                              whileHover={{ scale: 1.01 }}
-                              whileTap={{ scale: 0.99 }}
-                              onClick={handleNew}
-                              className="btn-new"
-                            >
-                              🔄 New Batch
-                            </motion.button>
-                          </div>
-                        </div>
-                      </motion.div>
-                    ) : (
-                      <motion.div
-                        key="empty"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="empty-state"
-                      >
-                        <div className="empty-state-icon">📸</div>
-                        <h3>No QR Code Yet</h3>
-                        <p>
-                          {!account
-                            ? "Sign in with Google to get started"
-                            : !rootFolder
-                            ? "Select a Drive root folder first"
-                            : "Select a local photos folder and upload to generate a QR code"
-                          }
-                        </p>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </motion.div>
-              )}
-            </AnimatePresence>
+            <CollageWorkspace />
           </div>
         </div>
       </div>

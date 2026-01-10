@@ -1,0 +1,60 @@
+.collage-sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.sidebar-subsection {
+  display: flex;
+  flex-direction: column;
+  min-height: 0; /* Important for flexbox scrolling */
+  flex: 1;
+}
+
+.sidebar-subsection:first-child {
+  flex: 2;
+  border-bottom: 1px solid var(--border-color);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.sidebar-subsection:last-child {
+  flex: 1;
+  min-height: 0;
+}
+
+.subsection-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.subsection-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.subsection-icon {
+  font-size: 1.25rem;
+}
+
+.subsection-content {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Frame selector within subsection */
+.sidebar-subsection:first-child .subsection-content {
+  min-height: 0;
+  overflow-y: auto;
+  flex: 1;
+}

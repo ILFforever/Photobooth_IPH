@@ -1,0 +1,25 @@
+.collage-workspace {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  overflow: visible;
+  padding: 1rem;
+  background: var(--bg-primary);
+}
+
+.workspace-canvas {
+  flex: 1;
+  height: 100%;
+  width: 100%;
+  overflow: visible;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .collage-workspace {
+    padding: 0.5rem;
+  }
+}

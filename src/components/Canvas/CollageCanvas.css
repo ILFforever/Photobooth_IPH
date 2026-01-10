@@ -1,0 +1,87 @@
+.collage-canvas-container {
+  position: relative;
+  padding: 2rem;
+  padding-bottom: 6rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100%;
+  overflow: visible;
+}
+
+.collage-canvas {
+  position: relative;
+  user-select: none;
+}
+
+.canvas-background {
+  z-index: 0;
+}
+
+.image-zone {
+  z-index: 1;
+  transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.image-zone:hover {
+  border-color: rgba(59, 130, 246, 0.6);
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+}
+
+.canvas-info {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: white;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.canvas-frame-name {
+  font-weight: 600;
+  color: var(--accent-blue);
+}
+
+.canvas-dimensions {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.canvas-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 600px;
+  padding: 2rem;
+}
+
+.placeholder-content {
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.placeholder-icon {
+  font-size: 64px;
+  display: block;
+  margin-bottom: 1rem;
+  opacity: 0.5;
+}
+
+.placeholder-content h3 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+
+.placeholder-content p {
+  font-size: 14px;
+  color: var(--text-secondary);
+}

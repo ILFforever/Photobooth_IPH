@@ -882,6 +882,14 @@ struct WorkingImage {
     thumbnail: String,
     size: u64,
     extension: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    dimensions: Option<ImageDimensions>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct ImageDimensions {
+    width: u32,
+    height: u32,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -917,6 +925,8 @@ async fn scan_folder_for_images(folder_path: &str, app: &tauri::AppHandle) -> Re
     let entries = fs::read_dir(&path)
         .map_err(|e| format!("Failed to read directory: {}", e))?;
 
+    // Collect all valid image files first
+    let mut image_files = Vec::new();
     for entry in entries {
         let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
         let file_path = entry.path();
@@ -948,26 +958,148 @@ async fn scan_folder_for_images(folder_path: &str, app: &tauri::AppHandle) -> Re
 
         let file_path_str = file_path.to_string_lossy().to_string();
 
-        // Generate thumbnail for JPG/PNG (skip RAW for now)
-        let thumbnail = if matches!(extension.as_str(), "jpg" | "jpeg" | "png") {
-            match generate_thumbnail(&file_path_str, app).await {
-                Ok(thumb) => thumb,
-                Err(_) => String::new(),
+        image_files.push((file_path_str, filename, size, extension));
+    }
+
+    // Generate thumbnails in parallel for JPG/PNG files
+    let mut thumbnail_tasks = Vec::new();
+    let app_clone = app.clone();
+
+    for (file_path, _filename, _size, extension) in image_files.iter() {
+        if matches!(extension.as_str(), "jpg" | "jpeg" | "png") {
+            let file_path_clone = file_path.clone();
+            let app_clone = app_clone.clone();
+
+            thumbnail_tasks.push(tokio::task::spawn_blocking(move || {
+                tokio::runtime::Handle::current().block_on(async {
+                    generate_thumbnail_cached(&file_path_clone, &app_clone).await
+                })
+            }));
+        }
+    }
+
+    // Wait for all thumbnails to generate
+    let mut thumbnail_results = Vec::new();
+    for task in thumbnail_tasks {
+        match task.await {
+            Ok(Ok(result)) => thumbnail_results.push(Some(result)),
+            _ => thumbnail_results.push(None),
+        }
+    }
+
+    // Build the final images list
+    let mut thumb_index = 0;
+    for (file_path, filename, size, extension) in image_files {
+        let (thumbnail, dimensions) = if matches!(extension.as_str(), "jpg" | "jpeg" | "png") {
+            if thumb_index < thumbnail_results.len() {
+                let result = thumbnail_results[thumb_index].clone();
+                thumb_index += 1;
+                result.map(|r| (r.thumbnail, r.dimensions)).unwrap_or((String::new(), None))
+            } else {
+                (String::new(), None)
             }
         } else {
-            String::new() // RAW files don't get thumbnails for now
+            (String::new(), None)
         };
 
         images.push(WorkingImage {
-            path: file_path_str,
+            path: file_path,
             filename,
             thumbnail,
             size,
             extension,
+            dimensions,
         });
     }
 
     Ok(images)
+}
+
+#[derive(Clone)]
+struct ThumbnailResult {
+    thumbnail: String,
+    dimensions: Option<ImageDimensions>,
+}
+
+async fn generate_thumbnail_cached(image_path: &str, app: &tauri::AppHandle) -> Result<ThumbnailResult, String> {
+    use image::imageops::FilterType;
+    use image::ImageFormat;
+
+    // Get thumbnail path
+    let app_data_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+
+    let thumbnails_dir = app_data_dir.join("thumbnails");
+    fs::create_dir_all(&thumbnails_dir)
+        .map_err(|e| format!("Failed to create thumbnails dir: {}", e))?;
+
+    let path_buf = PathBuf::from(image_path);
+    let filename = path_buf
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or("Invalid filename")?;
+
+    let thumbnail_path = thumbnails_dir.join(format!("thumb_{}", filename));
+
+    // Check if thumbnail already exists and is newer than source
+    if thumbnail_path.exists() {
+        if let Ok(source_mtime) = fs::metadata(&path_buf).and_then(|m| m.modified()) {
+            if let Ok(thumb_mtime) = fs::metadata(&thumbnail_path).and_then(|m| m.modified()) {
+                if thumb_mtime > source_mtime {
+                    // Thumbnail exists and is newer, use it
+                    let asset_url = format!("asset://{}", thumbnail_path.to_string_lossy());
+                    // Get dimensions from the ORIGINAL image, not the thumbnail
+                    let dimensions = image::open(image_path)
+                        .ok()
+                        .map(|img| ImageDimensions {
+                            width: img.width(),
+                            height: img.height(),
+                        });
+                    return Ok(ThumbnailResult { thumbnail: asset_url, dimensions });
+                }
+            }
+        }
+    }
+
+    // Try to extract embedded thumbnail first (much faster!)
+    if let Ok(embedded_thumb) = extract_embedded_thumbnail(image_path) {
+        let dimensions = ImageDimensions {
+            width: embedded_thumb.width(),
+            height: embedded_thumb.height(),
+        };
+        // Save embedded thumbnail
+        embedded_thumb.save_with_format(&thumbnail_path, ImageFormat::Jpeg)
+            .map_err(|e| format!("Failed to save embedded thumbnail: {}", e))?;
+
+        let asset_url = format!("asset://{}", thumbnail_path.to_string_lossy());
+        return Ok(ThumbnailResult { thumbnail: asset_url, dimensions: Some(dimensions) });
+    }
+
+    // Fall back to full image processing
+    let img = image::open(image_path)
+        .map_err(|e| format!("Failed to open image: {}", e))?;
+
+    let dimensions = ImageDimensions {
+        width: img.width(),
+        height: img.height(),
+    };
+
+    // Resize to thumbnail size (120x120 max, maintaining aspect ratio)
+    let thumbnail = img.resize(120, 120, FilterType::Lanczos3);
+
+    thumbnail.save_with_format(&thumbnail_path, ImageFormat::Jpeg)
+        .map_err(|e| format!("Failed to save thumbnail: {}", e))?;
+
+    // Return as asset URL with dimensions
+    let asset_url = format!("asset://{}", thumbnail_path.to_string_lossy());
+    Ok(ThumbnailResult { thumbnail: asset_url, dimensions: Some(dimensions) })
+}
+
+/// Extract embedded thumbnail from image (JPEG/EXIF)
+fn extract_embedded_thumbnail(_image_path: &str) -> Result<image::DynamicImage, String> {
+    // For now, skip embedded thumbnail extraction
+    // The parallel processing and caching will still provide good performance
+    Err("Embedded thumbnail extraction disabled".to_string())
 }
 
 async fn generate_thumbnail(image_path: &str, app: &tauri::AppHandle) -> Result<String, String> {
@@ -1221,6 +1353,276 @@ async fn delete_frame(app: tauri::AppHandle, frame_id: String) -> Result<(), Str
 
 // ==================== END FRAME SYSTEM ====================
 
+// ==================== BACKGROUND SYSTEM ====================
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct Background {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub background_type: String, // "color", "gradient", "image"
+    pub value: String, // hex color, gradient CSS, or asset path
+    pub thumbnail: Option<String>,
+    #[serde(default)]
+    pub is_default: bool,
+    #[serde(default)]
+    pub created_at: String,
+}
+
+/// Get backgrounds directory in app data
+fn get_backgrounds_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    let app_data_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+    let backgrounds_dir = app_data_dir.join("backgrounds");
+    fs::create_dir_all(&backgrounds_dir)
+        .map_err(|e| format!("Failed to create backgrounds dir: {}", e))?;
+    Ok(backgrounds_dir)
+}
+
+/// Initialize default backgrounds
+fn initialize_default_backgrounds(app: &tauri::AppHandle) -> Result<(), String> {
+    let backgrounds_dir = get_backgrounds_dir(&app)?;
+
+    // Check if already initialized
+    if backgrounds_dir.exists() && backgrounds_dir.read_dir().map_or(false, |mut entries| entries.next().is_some()) {
+        return Ok(());
+    }
+
+    let default_backgrounds = vec![
+        Background {
+            id: "bg-white".to_string(),
+            name: "Pure White".to_string(),
+            description: "Clean white background".to_string(),
+            background_type: "color".to_string(),
+            value: "#ffffff".to_string(),
+            thumbnail: None,
+            is_default: true,
+            created_at: chrono::Utc::now().to_rfc3339(),
+        },
+        Background {
+            id: "bg-black".to_string(),
+            name: "Pure Black".to_string(),
+            description: "Solid black background".to_string(),
+            background_type: "color".to_string(),
+            value: "#000000".to_string(),
+            thumbnail: None,
+            is_default: true,
+            created_at: chrono::Utc::now().to_rfc3339(),
+        },
+        Background {
+            id: "bg-gray-light".to_string(),
+            name: "Light Gray".to_string(),
+            description: "Subtle light gray background".to_string(),
+            background_type: "color".to_string(),
+            value: "#f5f5f5".to_string(),
+            thumbnail: None,
+            is_default: true,
+            created_at: chrono::Utc::now().to_rfc3339(),
+        },
+        Background {
+            id: "bg-gray-dark".to_string(),
+            name: "Dark Gray".to_string(),
+            description: "Dark gray background".to_string(),
+            background_type: "color".to_string(),
+            value: "#2a2a2a".to_string(),
+            thumbnail: None,
+            is_default: true,
+            created_at: chrono::Utc::now().to_rfc3339(),
+        },
+        Background {
+            id: "bg-sunset".to_string(),
+            name: "Sunset Gradient".to_string(),
+            description: "Warm sunset gradient".to_string(),
+            background_type: "gradient".to_string(),
+            value: "linear-gradient(135deg, #ff6b6b 0%, #feca57 100%)".to_string(),
+            thumbnail: None,
+            is_default: true,
+            created_at: chrono::Utc::now().to_rfc3339(),
+        },
+        Background {
+            id: "bg-ocean".to_string(),
+            name: "Ocean Gradient".to_string(),
+            description: "Cool ocean gradient".to_string(),
+            background_type: "gradient".to_string(),
+            value: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)".to_string(),
+            thumbnail: None,
+            is_default: true,
+            created_at: chrono::Utc::now().to_rfc3339(),
+        },
+        Background {
+            id: "bg-forest".to_string(),
+            name: "Forest Gradient".to_string(),
+            description: "Natural forest gradient".to_string(),
+            background_type: "gradient".to_string(),
+            value: "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)".to_string(),
+            thumbnail: None,
+            is_default: true,
+            created_at: chrono::Utc::now().to_rfc3339(),
+        },
+    ];
+
+    // Save default backgrounds
+    for bg in default_backgrounds {
+        let bg_path = backgrounds_dir.join(format!("{}.json", bg.id));
+        let json = serde_json::to_string_pretty(&bg)
+            .map_err(|e| format!("Failed to serialize background: {}", e))?;
+        fs::write(bg_path, json)
+            .map_err(|e| format!("Failed to write background file: {}", e))?;
+    }
+
+    Ok(())
+}
+
+/// Save a background to disk
+#[tauri::command]
+async fn save_background(app: tauri::AppHandle, background: Background) -> Result<Background, String> {
+    let backgrounds_dir = get_backgrounds_dir(&app)?;
+
+    // Create background with timestamp if not provided
+    let bg_to_save = Background {
+        created_at: if background.created_at.is_empty() {
+            chrono::Utc::now().to_rfc3339()
+        } else {
+            background.created_at
+        },
+        ..background
+    };
+
+    let bg_path = backgrounds_dir.join(format!("{}.json", bg_to_save.id));
+    let json = serde_json::to_string_pretty(&bg_to_save)
+        .map_err(|e| format!("Failed to serialize background: {}", e))?;
+
+    fs::write(bg_path, json)
+        .map_err(|e| format!("Failed to write background file: {}", e))?;
+
+    Ok(bg_to_save)
+}
+
+/// Load all backgrounds from disk
+#[tauri::command]
+async fn load_backgrounds(app: tauri::AppHandle) -> Result<Vec<Background>, String> {
+    // Initialize default backgrounds if needed
+    initialize_default_backgrounds(&app)?;
+
+    let backgrounds_dir = get_backgrounds_dir(&app)?;
+    let mut backgrounds = Vec::new();
+
+    let entries = fs::read_dir(backgrounds_dir)
+        .map_err(|e| format!("Failed to read backgrounds directory: {}", e))?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
+        let path = entry.path();
+
+        if path.extension().and_then(|s| s.to_str()) != Some("json") {
+            continue;
+        }
+
+        let json = fs::read_to_string(&path)
+            .map_err(|e| format!("Failed to read background file: {}", e))?;
+
+        let background: Background = serde_json::from_str(&json)
+            .map_err(|e| format!("Failed to parse background file: {}", e))?;
+
+        backgrounds.push(background);
+    }
+
+    // Sort: defaults first, then by date
+    backgrounds.sort_by(|a, b| {
+        match (a.is_default, b.is_default) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => b.created_at.cmp(&a.created_at),
+        }
+    });
+
+    Ok(backgrounds)
+}
+
+/// Delete a background from disk
+#[tauri::command]
+async fn delete_background(app: tauri::AppHandle, background_id: String) -> Result<(), String> {
+    let backgrounds_dir = get_backgrounds_dir(&app)?;
+    let bg_path = backgrounds_dir.join(format!("{}.json", background_id));
+
+    if !bg_path.exists() {
+        return Err(format!("Background not found: {}", background_id));
+    }
+
+    // Prevent deleting default backgrounds
+    let json = fs::read_to_string(&bg_path)
+        .map_err(|e| format!("Failed to read background file: {}", e))?;
+    let background: Background = serde_json::from_str(&json)
+        .map_err(|e| format!("Failed to parse background file: {}", e))?;
+
+    if background.is_default {
+        return Err("Cannot delete default backgrounds".to_string());
+    }
+
+    fs::remove_file(bg_path)
+        .map_err(|e| format!("Failed to delete background: {}", e))?;
+
+    Ok(())
+}
+
+/// Import a background from a file
+#[tauri::command]
+async fn import_background(app: tauri::AppHandle, file_path: String, name: String) -> Result<Background, String> {
+    use image::ImageFormat;
+
+    let path_buf = std::path::PathBuf::from(&file_path);
+    let extension = path_buf.extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    // Generate unique ID
+    let id = format!("bg-{}", uuid::Uuid::new_v4());
+
+    // Copy image to backgrounds directory
+    let backgrounds_dir = get_backgrounds_dir(&app)?;
+    let dest_filename = format!("{}.{}", id, extension);
+    let dest_path = backgrounds_dir.join(&dest_filename);
+
+    fs::copy(&path_buf, &dest_path)
+        .map_err(|e| format!("Failed to copy background image: {}", e))?;
+
+    // Generate thumbnail
+    let thumbnail_path = backgrounds_dir.join(format!("thumb_{}", dest_filename));
+    if let Ok(img) = image::open(&dest_path) {
+        let thumbnail = img.resize(200, 200, image::imageops::FilterType::Lanczos3);
+        thumbnail.save_with_format(&thumbnail_path, ImageFormat::Jpeg)
+            .ok();
+    }
+
+    let asset_url = format!("asset://{}", dest_path.to_string_lossy());
+    let thumbnail_url = format!("asset://{}", thumbnail_path.to_string_lossy());
+
+    let background = Background {
+        id: id.clone(),
+        name: name.clone(),
+        description: format!("Imported from {}", path_buf.file_name().and_then(|n| n.to_str()).unwrap_or("unknown")),
+        background_type: "image".to_string(),
+        value: asset_url,
+        thumbnail: Some(thumbnail_url),
+        is_default: false,
+        created_at: chrono::Utc::now().to_rfc3339(),
+    };
+
+    // Save metadata
+    let bg_meta_path = backgrounds_dir.join(format!("{}.json", id));
+    let json = serde_json::to_string_pretty(&background)
+        .map_err(|e| format!("Failed to serialize background: {}", e))?;
+    fs::write(bg_meta_path, json)
+        .map_err(|e| format!("Failed to write background metadata: {}", e))?;
+
+    Ok(background)
+}
+
+// ==================== END BACKGROUND SYSTEM ====================
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1240,7 +1642,8 @@ pub fn run() {
             get_images_with_metadata, save_dropped_image, clear_temp_images,
             remove_temp_image, get_history, clear_history,
             select_working_folder,
-            save_frame, load_frames, delete_frame
+            save_frame, load_frames, delete_frame,
+            save_background, load_backgrounds, delete_background, import_background
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

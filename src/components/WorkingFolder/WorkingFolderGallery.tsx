@@ -1,8 +1,82 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
+import { useDrag } from 'react-dnd';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { useWorkingFolder } from '../../contexts/WorkingFolderContext';
 import { WorkingImage } from '../../types/assets';
 import './WorkingFolderGallery.css';
+
+interface DraggableImageProps {
+  img: WorkingImage;
+  isSelected: boolean;
+  onSelect: () => void;
+}
+
+function DraggableImage({ img, isSelected, onSelect }: DraggableImageProps) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [imageLoaded, setImageLoaded] = useState(false);
+
+  const [{ isDragging }, drag] = useDrag({
+    type: 'IMAGE',
+    item: { path: img.path, thumbnail: img.thumbnail || img.path, dimensions: img.dimensions },
+    collect: (monitor) => ({
+      isDragging: monitor.isDragging(),
+    }),
+  });
+
+  drag(ref);
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const formatDimensions = (width: number, height: number) => {
+    if (width >= 1920 || height >= 1920) {
+      return `${(width / 1000).toFixed(1)}K × ${(height / 1000).toFixed(1)}K`;
+    }
+    return `${width} × ${height}`;
+  };
+
+  return (
+    <div
+      ref={ref}
+      className={`image-item ${isSelected ? 'selected' : ''} ${isDragging ? 'dragging' : ''} ${imageLoaded ? 'loaded' : 'loading'}`}
+      onClick={onSelect}
+      style={{ opacity: isDragging ? 0.5 : 1, cursor: 'grab' }}
+    >
+      {img.thumbnail ? (
+        <img
+          src={convertFileSrc(img.thumbnail.replace('asset://', ''))}
+          alt={img.filename}
+          className="thumbnail"
+          loading="lazy"
+          onLoad={() => setImageLoaded(true)}
+        />
+      ) : (
+        <div className="no-thumbnail">
+          <span className="file-ext">{img.extension.toUpperCase()}</span>
+        </div>
+      )}
+
+      {/* Quick Info Bar */}
+      <div className="image-info">
+        <div className="filename" title={img.filename}>
+          {img.filename}
+        </div>
+        <div className="meta-row">
+          <span className="filesize">{formatFileSize(img.size)}</span>
+          {img.dimensions && (
+            <>
+              <span className="separator">•</span>
+              <span className="dimensions">{formatDimensions(img.dimensions.width, img.dimensions.height)}</span>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function WorkingFolderGallery() {
   const { folderPath, setFolderPath, images, setImages, loading, setLoading, selectedImage, setSelectedImage } = useWorkingFolder();
@@ -25,12 +99,6 @@ export function WorkingFolderGallery() {
   const filteredImages = images.filter(img =>
     img.filename.toLowerCase().includes(searchTerm.toLowerCase())
   );
-
-  const formatFileSize = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
 
   return (
     <div className="working-folder-gallery">
@@ -71,34 +139,12 @@ export function WorkingFolderGallery() {
         ) : filteredImages.length > 0 ? (
           <div className="images-grid">
             {filteredImages.map((img) => (
-              <div
+              <DraggableImage
                 key={img.path}
-                className={`image-item ${selectedImage === img.path ? 'selected' : ''}`}
-                onClick={() => setSelectedImage(img.path)}
-                draggable
-                onDragStart={(e) => {
-                  e.dataTransfer.setData('imagePath', img.path);
-                  e.dataTransfer.effectAllowed = 'copy';
-                }}
-              >
-                {img.thumbnail ? (
-                  <img
-                    src={convertFileSrc(img.thumbnail.replace('asset://', ''))}
-                    alt={img.filename}
-                    className="thumbnail"
-                  />
-                ) : (
-                  <div className="no-thumbnail">
-                    <span className="file-ext">{img.extension.toUpperCase()}</span>
-                  </div>
-                )}
-                <div className="image-info">
-                  <div className="filename" title={img.filename}>
-                    {img.filename}
-                  </div>
-                  <div className="filesize">{formatFileSize(img.size)}</div>
-                </div>
-              </div>
+                img={img}
+                isSelected={selectedImage === img.path}
+                onSelect={() => setSelectedImage(img.path)}
+              />
             ))}
           </div>
         ) : folderPath ? (

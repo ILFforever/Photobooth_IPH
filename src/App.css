@@ -363,12 +363,36 @@ body {
 
 /* Sidebar */
 .sidebar {
+  position: relative;
   width: 360px;
   background: var(--sidebar-bg);
   border-right: 1px solid var(--border-color);
   padding: 24px;
+  padding-right: 20px; /* Extra space for resize handle */
   overflow-y: auto;
   flex-shrink: 0;
+}
+
+/* Sidebar Resize Handle */
+.sidebar-resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 6px;
+  height: 100%;
+  background: transparent;
+  cursor: col-resize;
+  transition: background 0.2s ease;
+  z-index: 10;
+}
+
+.sidebar-resize-handle:hover,
+.sidebar-resize-handle.active {
+  background: var(--accent-blue);
+}
+
+.sidebar-resize-handle.active {
+  width: 8px;
 }
 
 .sidebar-section {

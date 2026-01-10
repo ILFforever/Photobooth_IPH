@@ -4,6 +4,10 @@ export interface WorkingImage {
   thumbnail: string; // base64 or asset URL
   size: number;
   extension: string;
+  dimensions?: {
+    width: number;
+    height: number;
+  };
 }
 
 export interface WorkingFolderInfo {
