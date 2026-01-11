@@ -514,18 +514,40 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
   const canvasRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [localZoom, setLocalZoom] = useState(canvasZoom);
+  const [zoomCenter, setZoomCenter] = useState({ x: 0, y: 0 });
+  const prevZoomRef = useRef(canvasZoom);
 
   // Sync local zoom with context
   useEffect(() => {
     setLocalZoom(canvasZoom);
   }, [canvasZoom]);
 
-  // Handle Ctrl+Scroll to zoom
+  // Handle Ctrl+Scroll to zoom from mouse position
   const handleWheel = useCallback((e: WheelEvent) => {
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
+
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      // Get mouse position relative to the canvas
+      const rect = canvas.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      // Calculate position relative to canvas center (normalized -1 to 1)
+      const centerX = rect.width / 2;
+      const centerY = rect.height / 2;
+      const relativeX = (mouseX - centerX) / centerX;
+      const relativeY = (mouseY - centerY) / centerY;
+
       const delta = e.deltaY > 0 ? -0.1 : 0.1;
+      const oldZoom = localZoom;
       const newZoom = Math.max(0.5, Math.min(3, localZoom + delta));
+
+      // Store zoom center for the scroll adjustment
+      setZoomCenter({ x: relativeX, y: relativeY });
+
       setLocalZoom(newZoom);
       setCanvasZoom(newZoom);
     }
@@ -607,11 +629,17 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
   const scaledWidth = width * finalScale;
   const scaledHeight = height * finalScale;
 
+  // Calculate extra spacing around canvas based on zoom level
+  // This creates invisible space around the canvas so you can scroll when zoomed
+  const zoomGrowth = Math.max(0, localZoom - 0.5);
+  const spacing = zoomGrowth * scaledHeight * 0.5; // More conservative spacing
+
   const containerStyle = {
     width: '100%',
     display: 'flex' as const,
-    justifyContent: 'center' as const,
-    alignItems: 'flex-start' as const,
+    flexDirection: 'column' as const,
+    justifyContent: 'flex-start' as const,
+    alignItems: 'center' as const,
     padding: '24px',
     flex: '1' as const,
     boxSizing: 'border-box' as const,
@@ -635,34 +663,54 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
     position: 'relative' as const,
   };
 
-  // Auto-scroll to center when zoom changes
+  // Auto-scroll to zoom center when zooming
+  // This ensures the point under the mouse stays stable during zoom
   useEffect(() => {
-    if (containerRef.current && localZoom > 1) {
-      setTimeout(() => {
-        const container = containerRef.current;
-        const scrollableParent = container?.closest('.tab-content') as HTMLElement;
+    // Only run if zoom actually changed
+    if (prevZoomRef.current !== localZoom) {
+      prevZoomRef.current = localZoom;
 
-        if (scrollableParent && container) {
-          const containerRect = container.getBoundingClientRect();
-          const parentRect = scrollableParent.getBoundingClientRect();
+      const canvas = canvasRef.current;
+      if (canvas) {
+        setTimeout(() => {
+          const scrollableParent = canvas?.closest('.tab-content') as HTMLElement;
 
-          // Calculate the center of the canvas
-          const canvasCenterY = containerRect.top - parentRect.top + (scaledHeight / 2);
+          if (scrollableParent) {
+            // Get canvas position relative to viewport
+            const canvasRect = canvas.getBoundingClientRect();
+            const viewportRect = scrollableParent.getBoundingClientRect();
 
-          // Get the parent's center
-          const parentCenterY = parentRect.height / 2;
+            // Get current scroll position
+            const currentScrollTop = scrollableParent.scrollTop;
+            const currentScrollLeft = scrollableParent.scrollLeft;
 
-          // Calculate scroll position to center the canvas
-          const targetScrollTop = Math.max(0, canvasCenterY - parentCenterY);
+            // Calculate where the canvas middle is currently
+            const canvasMiddleY = canvasRect.top - viewportRect.top + currentScrollTop + (canvasRect.height / 2);
+            const viewportMiddleY = viewportRect.height / 2;
 
-          scrollableParent.scrollTo({
-            top: targetScrollTop,
-            behavior: 'instant'
-          });
-        }
-      }, 0);
+            // Calculate the target point based on zoom center (normalized -1 to 1)
+            const targetOffsetY = zoomCenter.y * (canvasRect.height / 2);
+            const targetPointY = canvasMiddleY + targetOffsetY;
+
+            // Calculate new scroll position to center the target point
+            const newScrollTop = targetPointY - viewportMiddleY;
+
+            console.log('=== Zoom-to-Point ===');
+            console.log('zoomCenter:', zoomCenter);
+            console.log('canvasMiddleY:', canvasMiddleY, 'targetOffsetY:', targetOffsetY);
+            console.log('currentScrollTop:', currentScrollTop, 'newScrollTop:', newScrollTop);
+            console.log('====================');
+
+            scrollableParent.scrollTo({
+              left: currentScrollLeft,
+              top: newScrollTop,
+              behavior: 'instant'
+            });
+          }
+        }, 0);
+      }
     }
-  }, [localZoom, scaledHeight]);
+  }, [localZoom, zoomCenter]);
 
   return (
     <motion.div
@@ -681,6 +729,8 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
         </div>
       ) : (
         <div ref={containerRef} style={containerStyle}>
+          {/* Invisible spacers to allow scrolling in all directions when zoomed */}
+          {spacing > 0 && <div style={{ height: `${spacing}px`, flexShrink: 0 }} />}
           <div ref={canvasRef} style={canvasStyle} className="collage-canvas">
             <div style={innerCanvasStyle}>
               {/* Background Layer - rendered as transformable image */}
