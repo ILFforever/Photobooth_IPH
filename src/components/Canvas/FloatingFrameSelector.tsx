@@ -1,20 +1,130 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { useDrop } from "react-dnd";
 import { useCollage, CANVAS_SIZES } from "../../contexts/CollageContext";
 import { Frame } from "../../types/frame";
 import { Background } from "../../types/background";
 import "./FloatingFrameSelector.css";
 
-type PanelType = 'frame' | 'canvas' | 'background' | null;
+type PanelType = "frame" | "canvas" | "background" | null;
+
+// Droppable Background Pill Component
+function BackgroundPillButton({
+  currentBackgroundName,
+  isActive,
+  openPanel,
+  onClick,
+  onDrop
+}: {
+  currentBackgroundName: string;
+  isActive: boolean;
+  openPanel: PanelType;
+  onClick: () => void;
+  onDrop: (item: { path: string; thumbnail: string; dimensions?: { width: number; height: number } }) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [{ isOver, canDrop }, drop] = useDrop({
+    accept: 'IMAGE',
+    drop: (item: { path: string; thumbnail: string; dimensions?: { width: number; height: number } }) => {
+      console.log('=== DROPPED ON BACKGROUND PILL ===');
+      console.log('Item:', item);
+      onDrop(item);
+    },
+    collect: (monitor) => ({
+      isOver: monitor.isOver(),
+      canDrop: monitor.canDrop(),
+    }),
+  });
+
+  drop(ref);
+
+  return (
+    <div
+      ref={ref}
+      className={`background-pill-wrapper ${isOver && canDrop ? 'drag-over' : ''}`}
+      style={{ position: 'relative', display: 'inline-block' }}
+    >
+      <motion.button
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+        onClick={onClick}
+        className={`frame-pill-button ${isActive ? "active" : ""}`}
+        style={{
+          border: isOver && canDrop ? '2px dashed var(--accent-blue)' : undefined,
+          background: isOver && canDrop ? 'rgba(59, 130, 246, 0.1)' : undefined,
+        }}
+      >
+        <span className="pill-icon">🎨</span>
+        <span className="pill-text">
+          {currentBackgroundName || "Background"}
+        </span>
+        <span className="pill-indicator">
+          {openPanel === "background" ? "▼" : "▲"}
+        </span>
+      </motion.button>
+      {isOver && canDrop && (
+        <div style={{
+          position: 'absolute',
+          top: '-25px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: 'var(--accent-blue)',
+          color: 'white',
+          padding: '2px 8px',
+          borderRadius: '4px',
+          fontSize: '12px',
+          whiteSpace: 'nowrap',
+          zIndex: 100,
+        }}>
+          Set as background
+        </div>
+      )}
+    </div>
+  );
+}
 
 const FloatingFrameSelector = () => {
-  console.log('🔴 FloatingFrameSelector RENDERING');
-  const { currentFrame, setCurrentFrame, canvasSize, setCanvasSize, background, setBackground } = useCollage();
+  const {
+    currentFrame,
+    setCurrentFrame,
+    canvasSize,
+    setCanvasSize,
+    background,
+    setBackground,
+    backgrounds,
+    setBackgrounds,
+  } = useCollage();
   const [openPanel, setOpenPanel] = useState<PanelType>(null);
   const [frames, setFrames] = useState<Frame[]>([]);
-  const [backgrounds, setBackgrounds] = useState<Background[]>([]);
   const [loading, setLoading] = useState(false);
+  const [importingBg, setImportingBg] = useState(false);
+  const [importingBackgrounds, setImportingBackgrounds] = useState<Set<string>>(new Set());
+  const [direction, setDirection] = useState(0);
+  const [pillBarStyle, setPillBarStyle] = useState({});
+  const [deleteMode, setDeleteMode] = useState<'frame' | 'background' | null>(null);
+
+  // Update pill bar position on mount and window resize
+  useEffect(() => {
+    const updatePillBarPosition = () => {
+      const mainPanel = document.querySelector(".main-panel") as HTMLElement;
+      if (!mainPanel) return;
+
+      const mainPanelRect = mainPanel.getBoundingClientRect();
+      const mainPanelCenter = mainPanelRect.left + mainPanelRect.width / 2;
+
+      setPillBarStyle({
+        position: "fixed" as const,
+        left: `${mainPanelCenter}px`,
+        transform: "translateX(-50%)",
+        bottom: "1rem",
+      });
+    };
+
+    updatePillBarPosition();
+    window.addEventListener("resize", updatePillBarPosition);
+    return () => window.removeEventListener("resize", updatePillBarPosition);
+  }, []);
 
   // Auto-load frames and backgrounds on mount
   useEffect(() => {
@@ -25,14 +135,11 @@ const FloatingFrameSelector = () => {
           invoke<Frame[]>("load_frames"),
           invoke<Background[]>("load_backgrounds"),
         ]);
-        console.log('Loaded frames:', loadedFrames);
-        console.log('Loaded backgrounds:', loadedBackgrounds);
         setFrames(loadedFrames);
         setBackgrounds(loadedBackgrounds);
 
         // Auto-select first frame if none selected
         if (!currentFrame && loadedFrames.length > 0) {
-          console.log('Auto-selecting first frame:', loadedFrames[0]);
           setCurrentFrame(loadedFrames[0]);
         }
       } catch (error) {
@@ -43,72 +150,268 @@ const FloatingFrameSelector = () => {
     };
 
     loadData();
-  }, []); // Run once on mount
+  }, []);
+
+  const panelOrder: PanelType[] = ["frame", "background", "canvas"];
 
   const handleToggleFrame = () => {
-    setOpenPanel(openPanel === 'frame' ? null : 'frame');
+    if (openPanel) {
+      setDirection(
+        panelOrder.indexOf("frame") > panelOrder.indexOf(openPanel) ? 1 : -1
+      );
+    }
+    setOpenPanel(openPanel === "frame" ? null : "frame");
   };
 
   const handleToggleCanvas = () => {
-    setOpenPanel(openPanel === 'canvas' ? null : 'canvas');
+    if (openPanel) {
+      setDirection(
+        panelOrder.indexOf("canvas") > panelOrder.indexOf(openPanel) ? 1 : -1
+      );
+    }
+    setOpenPanel(openPanel === "canvas" ? null : "canvas");
   };
 
   const handleToggleBackground = () => {
-    setOpenPanel(openPanel === 'background' ? null : 'background');
+    if (openPanel) {
+      setDirection(
+        panelOrder.indexOf("background") > panelOrder.indexOf(openPanel)
+          ? 1
+          : -1
+      );
+    }
+    setOpenPanel(openPanel === "background" ? null : "background");
   };
-
 
   const getCurrentBackground = () => {
     if (!background) return null;
-    return backgrounds.find(bg => bg.value === background) || null;
+    return backgrounds.find((bg) => bg.value === background) || null;
   };
 
   const handleSelectFrame = (frame: Frame) => {
     setCurrentFrame(frame);
   };
 
-  const handleSelectCanvasSize = (size: typeof CANVAS_SIZES[0]) => {
+  const handleDeleteFrame = async (frameId: string) => {
+    try {
+      await invoke('delete_frame', { frameId });
+      // Reload frames
+      const loadedFrames = await invoke<Frame[]>('load_frames');
+      setFrames(loadedFrames);
+      // Clear current frame if it was deleted
+      if (currentFrame?.id === frameId) {
+        setCurrentFrame(null);
+      }
+    } catch (error) {
+      console.error('Failed to delete frame:', error);
+    }
+  };
+
+  const handleDeleteBackground = async (bg: Background) => {
+    // Don't allow deleting default solid color backgrounds (non-image type)
+    if (bg.background_type !== "image") {
+      return;
+    }
+
+    try {
+      await invoke('delete_background', { backgroundId: bg.id });
+      // Reload backgrounds
+      const updatedBackgrounds = await invoke<Background[]>('load_backgrounds');
+      setBackgrounds(updatedBackgrounds);
+      // Clear current background if it was deleted
+      if (background === bg.value) {
+        setBackground(null);
+      }
+    } catch (error) {
+      console.error('Failed to delete background:', error);
+    }
+  };
+
+  const handleSelectCanvasSize = (size: (typeof CANVAS_SIZES)[0]) => {
     setCanvasSize(size);
   };
 
   const handleSelectBackground = (bg: Background) => {
-    setBackground(bg.value);
+    // Convert asset:// URLs to usable URLs
+    console.log('=== handleSelectBackground ===');
+    console.log('Selected background:', bg);
+    console.log('Background value type:', typeof bg.value);
+    console.log('Background value:', bg.value);
+
+    let finalValue = bg.value;
+
+    if (bg.value.startsWith('asset://')) {
+      console.log('Converting asset:// URL');
+      const convertedSrc = convertFileSrc(bg.value.replace('asset://', ''));
+      console.log('Converted src:', convertedSrc);
+      finalValue = convertedSrc;
+    }
+
+    console.log('Setting background to:', finalValue);
+    setBackground(finalValue);
+    console.log('Background set successfully');
+    console.log('=========================');
+  };
+
+  const handleImportBackground = async () => {
+    try {
+      setImportingBg(true);
+      console.log("Requesting background image selection...");
+      const selected = await invoke<string>("select_file");
+
+      if (selected) {
+        console.log("Selected background file:", selected);
+        const fileName = selected.split(/[\\/]/).pop() || "Custom Background";
+
+        // Import the background using backend command
+        const newBg = await invoke<Background>("import_background", {
+          filePath: selected,
+          name: fileName,
+        });
+
+        // Reload backgrounds list
+        const updatedBackgrounds = await invoke<Background[]>(
+          "load_backgrounds"
+        );
+        setBackgrounds(updatedBackgrounds);
+
+        // Set the new background
+        setBackground(newBg.value);
+      }
+    } catch (error) {
+      console.error("Failed to import background:", error);
+    } finally {
+      setImportingBg(false);
+    }
+  };
+
+  const handleDropImageOnBackground = async (item: { path: string; thumbnail: string; dimensions?: { width: number; height: number } }) => {
+    try {
+      console.log('=== SETTING DRAGGED IMAGE AS BACKGROUND ===');
+      console.log('Image path:', item.path);
+
+      // Generate a temp ID for this background while importing
+      const tempId = `temp-${Date.now()}`;
+      const fileName = item.path.split(/[\\/]/).pop() || "Custom Background";
+
+      // Convert the path immediately and set as background - no need to import first!
+      const convertedSrc = convertFileSrc(item.path.replace('asset://', ''));
+      console.log('Setting background directly:', convertedSrc);
+      setBackground(convertedSrc);
+
+      // Add to importing set to show skeleton
+      setImportingBackgrounds(prev => new Set(prev).add(tempId));
+
+      // Then import in background for future use (non-blocking)
+      invoke<Background>("import_background", {
+        filePath: item.path,
+        name: fileName,
+      }).then(async (newBg) => {
+        // Reload backgrounds list in background
+        const updatedBackgrounds = await invoke<Background[]>("load_backgrounds");
+        setBackgrounds(updatedBackgrounds);
+
+        // Remove from importing set
+        setImportingBackgrounds(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(tempId);
+          return newSet;
+        });
+
+        console.log('Background imported for future use:', newBg.name);
+      }).catch(err => {
+        console.error('Failed to import background for future use:', err);
+
+        // Remove from importing set on error
+        setImportingBackgrounds(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(tempId);
+          return newSet;
+        });
+      });
+
+      console.log('Background set successfully (instant)');
+      console.log('=========================================');
+    } catch (error) {
+      console.error("Failed to set dragged background:", error);
+    }
+  };
+
+  // Slide animation variants for content
+  const slideVariants = {
+    enter: (direction: number) => ({
+      x: direction > 0 ? 50 : -50,
+      opacity: 0,
+    }),
+    center: {
+      x: 0,
+      opacity: 1,
+    },
+    exit: (direction: number) => ({
+      x: direction < 0 ? 50 : -50,
+      opacity: 0,
+    }),
+  };
+
+  const getPanelStyle = () => {
+    const mainPanel = document.querySelector(".main-panel") as HTMLElement;
+    const mainPanelWidth = mainPanel?.getBoundingClientRect().width || 600;
+    const panelWidth = mainPanelWidth * 0.9; // 90% of main panel (right area) width
+
+    const mainPanelRect = mainPanel?.getBoundingClientRect();
+    const mainPanelCenter = mainPanelRect
+      ? mainPanelRect.left + mainPanelRect.width / 2
+      : window.innerWidth / 2;
+    const panelLeft = mainPanelCenter - panelWidth / 2;
+
+    return {
+      position: "fixed" as const,
+      left: `${panelLeft}px`,
+      width: `${panelWidth}px`,
+      bottom: "95px",
+      zIndex: 50,
+    };
+  };
+
+  const getPanelWidth = () => {
+    const mainPanel = document.querySelector(".main-panel") as HTMLElement;
+    const mainPanelWidth = mainPanel?.getBoundingClientRect().width || 600;
+    return `${mainPanelWidth * 0.9}px`;
   };
 
   return (
     <div className="floating-frame-selector">
       {/* Floating Pill Bar with All Buttons */}
-      <div className="pill-bar">
+      <div className="pill-bar" style={pillBarStyle}>
         {/* Frame Selector Button */}
         <motion.button
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           onClick={handleToggleFrame}
-          className={`frame-pill-button ${openPanel === 'frame' ? 'active' : ''}`}
+          className={`frame-pill-button ${
+            openPanel === "frame" ? "active" : ""
+          }`}
         >
           <span className="pill-icon">🖼️</span>
           <span className="pill-text">
             {currentFrame ? currentFrame.name : "Select Frame"}
           </span>
-          <span className="pill-indicator">{openPanel === 'frame' ? "▼" : "▲"}</span>
+          <span className="pill-indicator">
+            {openPanel === "frame" ? "▼" : "▲"}
+          </span>
         </motion.button>
 
         {/* Divider */}
         <div className="pill-divider" />
 
-        {/* Background Selector Button */}
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
+        {/* Background Selector Button - Droppable */}
+        <BackgroundPillButton
+          currentBackgroundName={getCurrentBackground()?.name || "Background"}
+          isActive={openPanel === "background"}
+          openPanel={openPanel}
           onClick={handleToggleBackground}
-          className={`frame-pill-button ${openPanel === 'background' ? 'active' : ''}`}
-        >
-          <span className="pill-icon">🎨</span>
-          <span className="pill-text">
-            {getCurrentBackground() ? getCurrentBackground()?.name : 'Background'}
-          </span>
-          <span className="pill-indicator">{openPanel === 'background' ? "▼" : "▲"}</span>
-        </motion.button>
+          onDrop={handleDropImageOnBackground}
+        />
 
         {/* Divider */}
         <div className="pill-divider" />
@@ -118,203 +421,384 @@ const FloatingFrameSelector = () => {
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           onClick={handleToggleCanvas}
-          className={`frame-pill-button ${openPanel === 'canvas' ? 'active' : ''}`}
+          className={`frame-pill-button ${
+            openPanel === "canvas" ? "active" : ""
+          }`}
         >
           <span className="pill-icon">📐</span>
           <span className="pill-text">
             {canvasSize.name} ({canvasSize.width}×{canvasSize.height})
           </span>
-          <span className="pill-indicator">{openPanel === 'canvas' ? "▼" : "▲"}</span>
+          <span className="pill-indicator">
+            {openPanel === "canvas" ? "▼" : "▲"}
+          </span>
         </motion.button>
       </div>
 
-      {/* Frame Options Panel */}
+      {/* Single Panel Container with sliding content */}
       <AnimatePresence>
-        {openPanel === 'frame' && (
+        {openPanel && (
           <motion.div
-            initial={{ opacity: 0, y: 20, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 20, scale: 0.95 }}
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ duration: 0.2 }}
+            style={{
+              ...getPanelStyle(),
+              width: getPanelWidth(),
+              height: "220px",
+            }}
             className="frame-options-panel"
           >
             <div className="panel-header">
-              <h3>Frame Templates</h3>
-              <button onClick={() => setOpenPanel(null)} className="close-btn">
-                ✕
-              </button>
-            </div>
-
-            <div className="frame-list">
-              {loading ? (
-                <div className="loading-state">
-                  <div className="spinner-small"></div>
-                  <span>Loading frames...</span>
-                </div>
-              ) : frames.length > 0 ? (
-                frames.map((frame) => (
-                  <motion.div
-                    key={frame.id}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => handleSelectFrame(frame)}
-                    className={`frame-option ${currentFrame?.id === frame.id ? "selected" : ""}`}
+              <h3>
+                {openPanel === "frame" && "Frame Templates"}
+                {openPanel === "canvas" && "Canvas Size"}
+                {openPanel === "background" && "Backgrounds"}
+              </h3>
+              <div className="panel-header-actions">
+                {/* Delete mode toggle button - only for frame and background panels */}
+                {(openPanel === "frame" || openPanel === "background") && (
+                  <button
+                    onClick={() => {
+                      setDeleteMode(deleteMode === openPanel ? null : openPanel);
+                    }}
+                    className={`delete-toggle-btn ${deleteMode === openPanel ? 'active' : ''}`}
+                    title={deleteMode === openPanel ? "Exit delete mode" : "Enter delete mode"}
                   >
-                    <div className="frame-option-content">
-                      <div className="frame-option-header">
-                        <span className="frame-option-name">{frame.name}</span>
-                        {currentFrame?.id === frame.id && (
-                          <span className="selected-indicator">✓</span>
-                        )}
-                      </div>
-                      <div className="frame-option-meta">
-                        <span className="frame-zones">{frame.zones.length} zones</span>
-                        <span className="frame-size">
-                          {frame.width} × {frame.height}
-                        </span>
-                      </div>
-                      {frame.description && (
-                        <div className="frame-option-desc">{frame.description}</div>
-                      )}
-                    </div>
-                  </motion.div>
-                ))
-              ) : (
-                <div className="empty-state-small">
-                  <span>No frames available</span>
-                </div>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Canvas Size Options Panel */}
-      <AnimatePresence>
-        {openPanel === 'canvas' && (
-          <motion.div
-            initial={{ opacity: 0, y: 20, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            transition={{ duration: 0.2 }}
-            className="frame-options-panel canvas-size-panel"
-          >
-            <div className="panel-header">
-              <h3>Canvas Size</h3>
-              <button onClick={() => setOpenPanel(null)} className="close-btn">
-                ✕
-              </button>
-            </div>
-
-            <div className="frame-list">
-              {CANVAS_SIZES.map((size) => (
-                <motion.div
-                  key={size.name}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => handleSelectCanvasSize(size)}
-                  className={`frame-option ${canvasSize.name === size.name ? "selected" : ""}`}
+                    ✏️
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    setOpenPanel(null);
+                    setDeleteMode(null);
+                  }}
+                  className="close-btn"
                 >
-                  <div className="frame-option-content">
-                    <div className="frame-option-header">
-                      <span className="frame-option-name">{size.name}</span>
-                      {canvasSize.name === size.name && (
-                        <span className="selected-indicator">✓</span>
-                      )}
-                    </div>
-                    <div className="frame-option-meta">
-                      <span className="frame-size">
-                        {size.width} × {size.height}px
-                      </span>
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Background Options Panel */}
-      <AnimatePresence>
-        {openPanel === 'background' && (
-          <motion.div
-            initial={{ opacity: 0, y: 20, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            transition={{ duration: 0.2 }}
-            className="frame-options-panel background-panel"
-          >
-            <div className="panel-header">
-              <h3>Backgrounds</h3>
-              <button onClick={() => setOpenPanel(null)} className="close-btn">
-                ✕
-              </button>
+                  ✕
+                </button>
+              </div>
             </div>
 
             <div className="frame-list">
-              {loading ? (
-                <div className="loading-state">
-                  <div className="spinner-small"></div>
-                  <span>Loading backgrounds...</span>
-                </div>
-              ) : backgrounds.length > 0 ? (
-                backgrounds.map((bg) => (
+              <AnimatePresence mode="wait">
+                {openPanel === "frame" && (
                   <motion.div
-                    key={bg.id}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => handleSelectBackground(bg)}
-                    className={`frame-option ${background === bg.value ? "selected" : ""}`}
+                    key="frame-content"
+                    custom={direction}
+                    variants={slideVariants}
+                    initial="enter"
+                    animate="center"
+                    exit="exit"
+                    transition={{ duration: 0.2, ease: "easeInOut" }}
+                    style={{
+                      position: "absolute",
+                      width: "100%",
+                      height: "100%",
+                      display: "flex",
+                      flexDirection: "row",
+                      gap: "0.75rem",
+                      overflowX: "auto",
+                      overflowY: "hidden",
+                      padding: "0.5rem 0.75rem",
+                    }}
                   >
-                    <div className="frame-option-content">
-                      <div className="frame-option-header">
-                        <span className="frame-option-name">{bg.name}</span>
-                        {background === bg.value && (
-                          <span className="selected-indicator">✓</span>
-                        )}
+                    {loading ? (
+                      <div className="loading-state">
+                        <div className="spinner-small"></div>
+                        <span>Loading frames...</span>
                       </div>
-                      <div className="frame-option-meta">
-                        {bg.background_type === 'color' && (
-                          <div className="bg-preview-small">
-                            <div
-                              className="bg-color-swatch"
-                              style={{ backgroundColor: bg.value }}
-                              title={bg.description}
-                            />
-                            <span className="bg-color-value">{bg.value}</span>
+                    ) : frames.length > 0 ? (
+                      frames.map((frame) => (
+                        <motion.div
+                          key={frame.id}
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          onClick={() => deleteMode !== 'frame' && handleSelectFrame(frame)}
+                          className={`frame-option ${
+                            currentFrame?.id === frame.id ? "selected" : ""
+                          } ${deleteMode === 'frame' ? 'delete-mode' : ''}`}
+                        >
+                          <div className="frame-option-content">
+                            <div className="frame-preview-container">
+                              <div
+                                className="frame-zones-preview"
+                                style={{
+                                  aspectRatio: `${frame.width} / ${frame.height}`,
+                                }}
+                              >
+                                {frame.zones.map((zone) => (
+                                  <div
+                                    key={zone.id}
+                                    className="frame-zone-box"
+                                    style={{
+                                      left: `${zone.x}%`,
+                                      top: `${zone.y}%`,
+                                      width: `${zone.width}%`,
+                                      height: `${zone.height}%`,
+                                      transform: `rotate(${zone.rotation}deg)`,
+                                    }}
+                                  />
+                                ))}
+                              </div>
+                            </div>
+                            <div className="frame-option-info">
+                              <span className="frame-option-name">
+                                {frame.name}
+                              </span>
+                              <span className="frame-zones-count">
+                                {frame.zones.length} zones
+                              </span>
+                            </div>
+                            {deleteMode === 'frame' && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteFrame(frame.id);
+                                }}
+                                className="item-delete-btn"
+                                title="Delete frame"
+                              >
+                                🗑
+                              </button>
+                            )}
                           </div>
-                        )}
-                        {bg.background_type === 'gradient' && (
-                          <div
-                            className="bg-gradient-preview-small"
-                            style={{ background: bg.value }}
-                            title={bg.description}
-                          />
-                        )}
-                        {bg.background_type === 'image' && bg.thumbnail && (
-                          <div className="bg-image-preview-small">
-                            <img
-                              src={bg.thumbnail.replace('asset://', '')}
-                              alt={bg.name}
-                            />
-                          </div>
-                        )}
-                        {bg.is_default && (
-                          <span className="bg-default-badge">Default</span>
-                        )}
+                        </motion.div>
+                      ))
+                    ) : (
+                      <div className="empty-state-small">
+                        <span>No frames available</span>
                       </div>
-                      {bg.description && (
-                        <div className="frame-option-desc">{bg.description}</div>
-                      )}
-                    </div>
+                    )}
                   </motion.div>
-                ))
-              ) : (
-                <div className="empty-state-small">
-                  <span>No backgrounds available</span>
-                </div>
-              )}
+                )}
+
+                {openPanel === "canvas" && (
+                  <motion.div
+                    key="canvas-content"
+                    custom={direction}
+                    variants={slideVariants}
+                    initial="enter"
+                    animate="center"
+                    exit="exit"
+                    transition={{ duration: 0.2, ease: "easeInOut" }}
+                    style={{
+                      position: "absolute",
+                      width: "100%",
+                      height: "100%",
+                      display: "flex",
+                      flexDirection: "row",
+                      gap: "0.75rem",
+                      overflowX: "auto",
+                      overflowY: "hidden",
+                      padding: "0.5rem 0.75rem",
+                    }}
+                  >
+                    {CANVAS_SIZES.map((size) => (
+                      <motion.div
+                        key={size.name}
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => handleSelectCanvasSize(size)}
+                        className={`frame-option ${
+                          canvasSize.name === size.name ? "selected" : ""
+                        }`}
+                      >
+                        <div className="frame-option-content">
+                          <div className="frame-preview-container">
+                            <div
+                              className="canvas-preview-compact"
+                              style={{
+                                aspectRatio: `${size.width} / ${size.height}`,
+                                width:
+                                  size.width > size.height ? "50px" : "auto",
+                                height:
+                                  size.width > size.height ? "auto" : "70px",
+                                maxWidth: "50px",
+                                maxHeight: "70px",
+                              }}
+                            />
+                          </div>
+                          <div className="frame-option-info">
+                            <span className="frame-option-name">
+                              {size.name}
+                            </span>
+                            <span className="frame-zones-count">
+                              {size.width}×{size.height}
+                            </span>
+                          </div>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </motion.div>
+                )}
+
+                {openPanel === "background" && (
+                  <motion.div
+                    key="background-content"
+                    custom={direction}
+                    variants={slideVariants}
+                    initial="enter"
+                    animate="center"
+                    exit="exit"
+                    transition={{ duration: 0.2, ease: "easeInOut" }}
+                    style={{
+                      position: "absolute",
+                      width: "100%",
+                      height: "100%",
+                      display: "flex",
+                      flexDirection: "row",
+                      gap: "0.75rem",
+                      overflowX: "auto",
+                      overflowY: "hidden",
+                      padding: "0.5rem 0.75rem",
+                    }}
+                  >
+                    {/* Import button for custom backgrounds */}
+                    {!loading && backgrounds.length > 0 && (
+                      <motion.div
+                        key="import-bg-btn"
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={handleImportBackground}
+                        className="frame-option import-bg-button"
+                      >
+                        <div className="frame-option-content">
+                          <div className="frame-preview-container">
+                            <div
+                              className="bg-preview-compact import-bg-icon"
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '2.5rem',
+                                fontWeight: 300,
+                                lineHeight: '0.8',
+                                color: 'rgba(255, 255, 255, 0.4)',
+                                border: '2px dashed rgba(255, 255, 255, 0.25)',
+                                background: 'rgba(0, 0, 0, 0.15)',
+                                boxShadow: 'inset 0 1px 3px rgba(0, 0, 0, 0.2)',
+                                overflow: 'visible',
+                                paddingBottom: '10px'
+                              }}
+                            >
+                              +
+                            </div>
+                          </div>
+                          <div className="frame-option-info">
+                            <span className="frame-option-name">
+                              {importingBg ? "Importing..." : "Add Image"}
+                            </span>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+
+                    {/* Skeleton loaders for backgrounds being imported */}
+                    {Array.from(importingBackgrounds).map((tempId) => (
+                      <div key={tempId} className="frame-option skeleton-loading">
+                        <div className="frame-option-content">
+                          <div className="frame-preview-container">
+                            <div className="bg-preview-compact skeleton-thumbnail" />
+                          </div>
+                          <div className="frame-option-info">
+                            <div className="skeleton-text skeleton-filename" />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+
+                    {loading ? (
+                      <div className="loading-state">
+                        <div className="spinner-small"></div>
+                        <span>Loading backgrounds...</span>
+                      </div>
+                    ) : backgrounds.filter(
+                        (bg) => bg.background_type !== "gradient"
+                      ).length > 0 ? (
+                      backgrounds
+                        .filter((bg) => bg.background_type !== "gradient")
+                        .sort((a, b) => {
+                          // Sort: image backgrounds first, then solid colors
+                          // Within each category, sort by name
+                          const aIsImage = a.background_type === "image";
+                          const bIsImage = b.background_type === "image";
+
+                          if (aIsImage && !bIsImage) return -1;
+                          if (!aIsImage && bIsImage) return 1;
+
+                          // Same type - sort by name
+                          return a.name.localeCompare(b.name);
+                        })
+                        .map((bg) => (
+                          <motion.div
+                            key={bg.id}
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            onClick={() => deleteMode !== 'background' && handleSelectBackground(bg)}
+                            className={`frame-option ${
+                              background === bg.value ? "selected" : ""
+                            } ${deleteMode === 'background' ? 'delete-mode' : ''} ${
+                              bg.background_type !== 'image' ? 'non-deletable' : ''
+                            }`}
+                          >
+                            <div className="frame-option-content">
+                              <div className="frame-preview-container">
+                                <div
+                                  className="bg-preview-compact"
+                                  style={
+                                    bg.background_type === "image" &&
+                                    bg.thumbnail
+                                      ? {}
+                                      : bg.background_type === "gradient"
+                                      ? { background: bg.value }
+                                      : { backgroundColor: bg.value }
+                                  }
+                                  title={bg.description}
+                                >
+                                  {bg.background_type === "image" &&
+                                    bg.thumbnail && (
+                                      <img
+                                        src={convertFileSrc(bg.thumbnail.replace('asset://', ''))}
+                                        alt={bg.name}
+                                        style={{
+                                          width: "100%",
+                                          height: "100%",
+                                          objectFit: "cover",
+                                        }}
+                                      />
+                                    )}
+                                </div>
+                              </div>
+                              <div className="frame-option-info">
+                                <span className="frame-option-name">
+                                  {bg.name}
+                                </span>
+                              </div>
+                              {deleteMode === 'background' && bg.background_type === 'image' && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteBackground(bg);
+                                  }}
+                                  className="item-delete-btn"
+                                  title="Delete background"
+                                >
+                                  🗑
+                                </button>
+                              )}
+                            </div>
+                          </motion.div>
+                        ))
+                    ) : (
+                      <div className="empty-state-small">
+                        <span>No backgrounds available</span>
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </motion.div>
         )}

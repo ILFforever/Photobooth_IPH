@@ -1,6 +1,7 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useDrag } from 'react-dnd';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { useWorkingFolder } from '../../contexts/WorkingFolderContext';
 import { WorkingImage } from '../../types/assets';
 import './WorkingFolderGallery.css';
@@ -15,13 +16,23 @@ function DraggableImage({ img, isSelected, onSelect }: DraggableImageProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [imageLoaded, setImageLoaded] = useState(false);
 
+  const dragItem = { path: img.path, thumbnail: img.thumbnail || img.path, dimensions: img.dimensions };
+
   const [{ isDragging }, drag] = useDrag({
     type: 'IMAGE',
-    item: { path: img.path, thumbnail: img.thumbnail || img.path, dimensions: img.dimensions },
+    item: dragItem,
     collect: (monitor) => ({
       isDragging: monitor.isDragging(),
     }),
   });
+
+  // Debug drag start
+  if (isDragging) {
+    console.log('=== DRAG START ===');
+    console.log('Image filename:', img.filename);
+    console.log('Drag item:', dragItem);
+    console.log('==================');
+  }
 
   drag(ref);
 
@@ -78,27 +89,107 @@ function DraggableImage({ img, isSelected, onSelect }: DraggableImageProps) {
   );
 }
 
+// Skeleton loader component
+function SkeletonImageCard() {
+  return (
+    <div className="image-item skeleton-loading">
+      <div className="skeleton-thumbnail" />
+      <div className="image-info">
+        <div className="skeleton-text skeleton-filename" />
+        <div className="skeleton-text skeleton-meta" />
+      </div>
+    </div>
+  );
+}
+
 export function WorkingFolderGallery() {
-  const { folderPath, setFolderPath, images, setImages, loading, setLoading, selectedImage, setSelectedImage } = useWorkingFolder();
+  const { folderPath, setFolderPath, setImages, loading, setLoading, selectedImage, setSelectedImage } = useWorkingFolder();
   const [searchTerm, setSearchTerm] = useState('');
+  const [skeletonCount, setSkeletonCount] = useState(0);
+  const [loadedImagesMap, setLoadedImagesMap] = useState<Map<number, WorkingImage>>(new Map());
+
+  // Set up event listeners for progressive loading
+  useEffect(() => {
+    const unlistenPromises = [
+      // Listen for total count to set skeleton count
+      listen<number>('thumbnail-total-count', (event) => {
+        console.log('Total thumbnail count:', event.payload);
+        setSkeletonCount(event.payload);
+        setLoadedImagesMap(new Map()); // Clear previous images
+      }),
+
+      // Listen for each loaded image - use current as the position index
+      listen<{ current: number; total: number; image: WorkingImage }>('thumbnail-loaded', (event) => {
+        console.log(`Thumbnail loaded: ${event.payload.current}/${event.payload.total} - ${event.payload.image.filename}`);
+        setLoadedImagesMap(prev => {
+          const newMap = new Map(prev);
+          // Use current (1-based) as 0-based index
+          newMap.set(event.payload.current - 1, event.payload.image);
+          return newMap;
+        });
+      }),
+    ];
+
+    // Cleanup listeners on unmount
+    return () => {
+      unlistenPromises.forEach(promise => {
+        promise.then(unlisten => unlisten());
+      });
+    };
+  }, []);
 
   const handleSelectFolder = async () => {
     try {
       setLoading(true);
-      const result = await invoke<{ path: string; images: WorkingImage[] }>('select_working_folder');
-      setFolderPath(result.path);
-      setImages(result.images);
+      setImages([]);
+      setLoadedImagesMap(new Map());
+      setSkeletonCount(0);
+
+      // Don't await - let it run in background while events update the UI
+      invoke<{ path: string; images: WorkingImage[] }>('select_working_folder')
+        .then(result => {
+          setFolderPath(result.path);
+          // Set final images from backend (in case any were missed)
+          setImages(result.images);
+          // Convert array to map with indices
+          const finalMap = new Map<number, WorkingImage>();
+          result.images.forEach((img, index) => finalMap.set(index, img));
+          setLoadedImagesMap(finalMap);
+        })
+        .catch(error => {
+          console.error('Failed to select working folder:', error);
+          alert(`Failed to select folder: ${error}`);
+        })
+        .finally(() => {
+          setLoading(false);
+        });
     } catch (error) {
       console.error('Failed to select working folder:', error);
       alert(`Failed to select folder: ${error}`);
-    } finally {
       setLoading(false);
     }
   };
 
-  const filteredImages = images.filter(img =>
+  // Convert map to sorted array for filtering
+  const loadedImages = Array.from(loadedImagesMap.entries())
+    .sort(([a], [b]) => a - b)
+    .map(([, img]) => img);
+
+  const filteredImages = loadedImages.filter(img =>
     img.filename.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  // Create a stable array of items (images + skeletons) with fixed positions
+  const displayItems = loading && skeletonCount > 0
+    ? Array.from({ length: skeletonCount }, (_, index) => {
+        const img = loadedImagesMap.get(index);
+        return img ? { type: 'image', data: img, originalIndex: index } : { type: 'skeleton', index };
+      })
+    : filteredImages.map(img => ({ type: 'image', data: img }));
+
+  // During loading, sort by original index (file order) - loaded images will naturally appear in correct order
+  // Unloaded skeletons remain in their original positions
+  const sortedDisplayItems = displayItems; // No extra sorting needed - displayItems is already in correct order
 
   return (
     <div className="working-folder-gallery">
@@ -118,7 +209,7 @@ export function WorkingFolderGallery() {
         </div>
       )}
 
-      {images.length > 0 && (
+      {loadedImages.length > 0 && (
         <div className="search-bar">
           <input
             type="text"
@@ -131,21 +222,26 @@ export function WorkingFolderGallery() {
       )}
 
       <div className="images-container">
-        {loading ? (
-          <div className="loading-state">
-            <div className="spinner"></div>
-            <p>Scanning folder...</p>
-          </div>
-        ) : filteredImages.length > 0 ? (
+        {sortedDisplayItems.length > 0 ? (
+          // Progressive loading with stable positions
           <div className="images-grid">
-            {filteredImages.map((img) => (
-              <DraggableImage
-                key={img.path}
-                img={img}
-                isSelected={selectedImage === img.path}
-                onSelect={() => setSelectedImage(img.path)}
-              />
-            ))}
+            {sortedDisplayItems.map((item, index) =>
+              item.type === 'image' && item.data ? (
+                <DraggableImage
+                  key={item.data.path}
+                  img={item.data}
+                  isSelected={selectedImage === item.data.path}
+                  onSelect={() => setSelectedImage(item.data.path)}
+                />
+              ) : (
+                <SkeletonImageCard key={`skeleton-${index}`} />
+              )
+            )}
+          </div>
+        ) : loading ? (
+          // Initial loading state before we know the count
+          <div className="empty-state">
+            <p>Scanning folder...</p>
           </div>
         ) : folderPath ? (
           <div className="empty-state">

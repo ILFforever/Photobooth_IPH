@@ -28,6 +28,13 @@ struct UploadProgress {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+struct ThumbnailLoadProgress {
+    current: usize,
+    total: usize,
+    image: WorkingImage,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
 struct GoogleAccount {
     email: String,
     name: String,
@@ -114,7 +121,7 @@ async fn google_login(state: State<'_, AppState>, app: tauri::AppHandle) -> Resu
     let cache_path = app.path()
         .app_data_dir()
         .map_err(|e| format!("Failed to get app data dir: {}", e))?
-        .join("tokencache_v2.json");
+        .join("tokenhcache_v2.json");
 
     if let Some(parent) = cache_path.parent() {
         let _ = std::fs::create_dir_all(parent);
@@ -886,7 +893,7 @@ struct WorkingImage {
     dimensions: Option<ImageDimensions>,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 struct ImageDimensions {
     width: u32,
     height: u32,
@@ -900,6 +907,8 @@ struct WorkingFolderInfo {
 
 #[tauri::command]
 async fn select_working_folder(app: tauri::AppHandle) -> Result<WorkingFolderInfo, String> {
+    println!("=== SELECT WORKING FOLDER START ===");
+
     // Open folder picker
     let folder_path = app.dialog()
         .file()
@@ -908,10 +917,14 @@ async fn select_working_folder(app: tauri::AppHandle) -> Result<WorkingFolderInf
         .ok_or("No folder selected")?;
 
     let folder_path_str = folder_path.to_string();
+    println!("Selected folder: {}", folder_path_str);
 
     // Scan folder for images
+    println!("Starting folder scan...");
     let images = scan_folder_for_images(&folder_path_str, &app).await?;
+    println!("Folder scan complete. Found {} images", images.len());
 
+    println!("=== SELECT WORKING FOLDER END ===");
     Ok(WorkingFolderInfo {
         path: folder_path_str,
         images,
@@ -919,11 +932,16 @@ async fn select_working_folder(app: tauri::AppHandle) -> Result<WorkingFolderInf
 }
 
 async fn scan_folder_for_images(folder_path: &str, app: &tauri::AppHandle) -> Result<Vec<WorkingImage>, String> {
+    println!("=== SCAN FOLDER START ===");
+    println!("Folder path: {}", folder_path);
+
     let path = PathBuf::from(folder_path);
     let mut images = Vec::new();
 
     let entries = fs::read_dir(&path)
         .map_err(|e| format!("Failed to read directory: {}", e))?;
+
+    println!("Reading directory entries...");
 
     // Collect all valid image files first
     let mut image_files = Vec::new();
@@ -961,57 +979,99 @@ async fn scan_folder_for_images(folder_path: &str, app: &tauri::AppHandle) -> Re
         image_files.push((file_path_str, filename, size, extension));
     }
 
-    // Generate thumbnails in parallel for JPG/PNG files
-    let mut thumbnail_tasks = Vec::new();
-    let app_clone = app.clone();
+    let total_files = image_files.len();
+    println!("Found {} image files", total_files);
 
-    for (file_path, _filename, _size, extension) in image_files.iter() {
+    // Emit total count first so frontend can show correct skeleton count
+    let _ = app.emit("thumbnail-total-count", total_files);
+
+    // Use JoinSet to process tasks as they complete
+    let mut join_set = tokio::task::JoinSet::new();
+
+    println!("Starting thumbnail generation...");
+
+    // We need to consume image_files to avoid lifetime issues
+    for (index, (file_path, filename, size, extension)) in image_files.into_iter().enumerate() {
         if matches!(extension.as_str(), "jpg" | "jpeg" | "png") {
+            // Spawn task for thumbnail generation
             let file_path_clone = file_path.clone();
-            let app_clone = app_clone.clone();
+            let filename_clone = filename.clone();
+            let extension_clone = extension.clone();
+            let app_clone = app.clone();
 
-            thumbnail_tasks.push(tokio::task::spawn_blocking(move || {
+            join_set.spawn_blocking(move || {
                 tokio::runtime::Handle::current().block_on(async {
-                    generate_thumbnail_cached(&file_path_clone, &app_clone).await
+                    let result = generate_thumbnail_cached(&file_path_clone, &app_clone).await;
+                    (index, result, file_path_clone, filename_clone, size, extension_clone)
                 })
-            }));
-        }
-    }
-
-    // Wait for all thumbnails to generate
-    let mut thumbnail_results = Vec::new();
-    for task in thumbnail_tasks {
-        match task.await {
-            Ok(Ok(result)) => thumbnail_results.push(Some(result)),
-            _ => thumbnail_results.push(None),
-        }
-    }
-
-    // Build the final images list
-    let mut thumb_index = 0;
-    for (file_path, filename, size, extension) in image_files {
-        let (thumbnail, dimensions) = if matches!(extension.as_str(), "jpg" | "jpeg" | "png") {
-            if thumb_index < thumbnail_results.len() {
-                let result = thumbnail_results[thumb_index].clone();
-                thumb_index += 1;
-                result.map(|r| (r.thumbnail, r.dimensions)).unwrap_or((String::new(), None))
-            } else {
-                (String::new(), None)
-            }
+            });
         } else {
-            (String::new(), None)
-        };
+            // RAW files - emit immediately without thumbnail
+            let working_image = WorkingImage {
+                path: file_path.clone(),
+                filename: filename.clone(),
+                thumbnail: String::new(),
+                size,
+                extension,
+                dimensions: None,
+            };
 
-        images.push(WorkingImage {
-            path: file_path,
-            filename,
-            thumbnail,
-            size,
-            extension,
-            dimensions,
-        });
+            images.push(working_image.clone());
+
+            println!(">>> Emitting RAW image (no thumbnail): {}/{}", index + 1, total_files);
+            let _ = app.emit("thumbnail-loaded", ThumbnailLoadProgress {
+                current: index + 1,
+                total: total_files,
+                image: working_image,
+            });
+        }
     }
 
+    // Process thumbnail tasks as they complete (in order of completion, not spawning)
+    println!("Processing {} thumbnail tasks as they complete...", join_set.len());
+
+    let mut results = Vec::new();
+    while let Some(result) = join_set.join_next().await {
+        match result {
+            Ok((index, thumb_result, file_path, filename, size, extension)) => {
+                let (thumbnail, dimensions) = match thumb_result {
+                    Ok(r) => (Some(r.thumbnail), r.dimensions),
+                    Err(_) => (None, None),
+                };
+
+                let working_image = WorkingImage {
+                    path: file_path,
+                    filename,
+                    thumbnail: thumbnail.unwrap_or_default(),
+                    size,
+                    extension,
+                    dimensions,
+                };
+
+                // Emit immediately as each completes
+                println!(">>> Emitting thumbnail loaded: {}/{}", index + 1, total_files);
+                let _ = app.emit("thumbnail-loaded", ThumbnailLoadProgress {
+                    current: index + 1,
+                    total: total_files,
+                    image: working_image.clone(),
+                });
+
+                results.push((index, working_image));
+            }
+            _ => {
+                println!(">>> Task failed");
+            }
+        }
+    }
+
+    // Sort results by original index and add to images
+    results.sort_by_key(|(index, _)| *index);
+    for (_, image) in results {
+        images.push(image);
+    }
+
+    println!("=== SCAN FOLDER END ===");
+    println!("Returning {} images", images.len());
     Ok(images)
 }
 
@@ -1022,8 +1082,7 @@ struct ThumbnailResult {
 }
 
 async fn generate_thumbnail_cached(image_path: &str, app: &tauri::AppHandle) -> Result<ThumbnailResult, String> {
-    use image::imageops::FilterType;
-    use image::ImageFormat;
+    println!(">>> generate_thumbnail_cached: {}", image_path);
 
     // Get thumbnail path
     let app_data_dir = app.path().app_data_dir()
@@ -1041,19 +1100,27 @@ async fn generate_thumbnail_cached(image_path: &str, app: &tauri::AppHandle) -> 
 
     let thumbnail_path = thumbnails_dir.join(format!("thumb_{}", filename));
 
-    // Check if thumbnail already exists and is newer than source
-    if thumbnail_path.exists() {
+    // Check if thumbnail and metadata already exist and are newer than source
+    let metadata_path = thumbnails_dir.join(format!("thumb_{}.meta", filename));
+
+    if thumbnail_path.exists() && metadata_path.exists() {
         if let Ok(source_mtime) = fs::metadata(&path_buf).and_then(|m| m.modified()) {
             if let Ok(thumb_mtime) = fs::metadata(&thumbnail_path).and_then(|m| m.modified()) {
                 if thumb_mtime > source_mtime {
-                    // Thumbnail exists and is newer, use it
+                    println!(">>> Using cached thumbnail for {}", filename);
+                    // Thumbnail exists and is newer, load dimensions from metadata file
                     let asset_url = format!("asset://{}", thumbnail_path.to_string_lossy());
-                    // Get dimensions from the ORIGINAL image, not the thumbnail
-                    let dimensions = image::open(image_path)
+                    let dimensions = fs::read_to_string(&metadata_path)
                         .ok()
-                        .map(|img| ImageDimensions {
-                            width: img.width(),
-                            height: img.height(),
+                        .and_then(|meta| {
+                            let parts: Vec<&str> = meta.split('x').collect();
+                            if parts.len() == 2 {
+                                let width = parts[0].parse::<u32>().ok()?;
+                                let height = parts[1].parse::<u32>().ok()?;
+                                Some(ImageDimensions { width, height })
+                            } else {
+                                None
+                            }
                         });
                     return Ok(ThumbnailResult { thumbnail: asset_url, dimensions });
                 }
@@ -1061,45 +1128,133 @@ async fn generate_thumbnail_cached(image_path: &str, app: &tauri::AppHandle) -> 
         }
     }
 
-    // Try to extract embedded thumbnail first (much faster!)
-    if let Ok(embedded_thumb) = extract_embedded_thumbnail(image_path) {
+    // Check if this is a JPEG file
+    let is_jpeg = path_buf
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.eq_ignore_ascii_case("jpg") || e.eq_ignore_ascii_case("jpeg"))
+        .unwrap_or(false);
+
+    if is_jpeg {
+        println!(">>> Using mozjpeg with scaling for {}", filename);
+
+        // Read JPEG file
+        let jpeg_data = fs::read(image_path)
+            .map_err(|e| format!("Failed to read JPEG file: {}", e))?;
+
+        // Use mozjpeg to decompress with scaling
+        let mut decompress = mozjpeg::Decompress::new_mem(&jpeg_data)
+            .map_err(|e| format!("Failed to create mozjpeg decompressor: {}", e))?;
+
+        // Since we can't easily get dimensions before scaling in mozjpeg 0.10,
+        // we'll use a conservative scale that works for most images
+        let scale_num = 4; // Start with 1/4 scale, good for most photos
+
+        println!(">>> Using scale factor: 1/{}", scale_num);
+
+        // Apply scaling during decompression - scale() takes numerator directly (1, 2, 4, or 8)
+        decompress.scale(scale_num);
+
+        // Decompress to RGB
+        let mut image = decompress.rgb()
+            .map_err(|e| format!("Failed to decompress JPEG: {}", e))?;
+
+        let scaled_width = image.width();
+        let scaled_height = image.height();
+        println!(">>> Scaled dimensions: {}x{}", scaled_width, scaled_height);
+
+        // Estimate original dimensions (inverse of scale)
+        let scale_num_usize = scale_num as usize;
+        let orig_width = (scaled_width * scale_num_usize) as u32;
+        let orig_height = (scaled_height * scale_num_usize) as u32;
         let dimensions = ImageDimensions {
-            width: embedded_thumb.width(),
-            height: embedded_thumb.height(),
+            width: orig_width,
+            height: orig_height,
         };
-        // Save embedded thumbnail
-        embedded_thumb.save_with_format(&thumbnail_path, ImageFormat::Jpeg)
-            .map_err(|e| format!("Failed to save embedded thumbnail: {}", e))?;
+
+        // Convert to image crate's DynamicImage
+        // Use read_scanlines to get the actual pixel data
+        let img_data = image.read_scanlines()
+            .map_err(|e| format!("Failed to read scanlines: {}", e))?;
+
+        let img: image::RgbImage = image::ImageBuffer::from_raw(
+            scaled_width as u32,
+            scaled_height as u32,
+            img_data
+        )
+            .ok_or("Failed to create image buffer")?;
+
+        let dyn_img = image::DynamicImage::ImageRgb8(img);
+
+        // Save thumbnail
+        dyn_img.save_with_format(&thumbnail_path, image::ImageFormat::Jpeg)
+            .map_err(|e| format!("Failed to save thumbnail: {}", e))?;
+
+        println!(">>> Saved mozjpeg-scaled thumbnail to: {}", thumbnail_path.display());
+
+        // Save dimensions to metadata
+        let metadata_content = format!("{}x{}", dimensions.width, dimensions.height);
+        let _ = fs::write(&metadata_path, metadata_content);
 
         let asset_url = format!("asset://{}", thumbnail_path.to_string_lossy());
         return Ok(ThumbnailResult { thumbnail: asset_url, dimensions: Some(dimensions) });
     }
 
-    // Fall back to full image processing
-    let img = image::open(image_path)
-        .map_err(|e| format!("Failed to open image: {}", e))?;
+    // Fallback for non-JPEG images (PNG, etc.)
+    println!(">>> Using standard image library for {}", filename);
+    use image::io::Reader as ImageReader;
+
+    let img = ImageReader::open(image_path)
+        .map_err(|e| format!("Failed to open image: {}", e))?
+        .with_guessed_format()
+        .map_err(|e| format!("Failed to guess format: {}", e))?
+        .decode()
+        .map_err(|e| format!("Failed to decode image: {}", e))?;
 
     let dimensions = ImageDimensions {
         width: img.width(),
         height: img.height(),
     };
 
-    // Resize to thumbnail size (120x120 max, maintaining aspect ratio)
-    let thumbnail = img.resize(120, 120, FilterType::Lanczos3);
+    // Resize to thumbnail size (200px max dimension)
+    let max_dim = 200;
+    let thumbnail = if dimensions.width > max_dim || dimensions.height > max_dim {
+        let scale = max_dim as f32 / dimensions.width.max(dimensions.height) as f32;
+        let new_width = (dimensions.width as f32 * scale).round() as u32;
+        let new_height = (dimensions.height as f32 * scale).round() as u32;
+        println!(">>> Resizing to {}x{}", new_width, new_height);
+        img.resize(new_width, new_height, image::imageops::FilterType::Lanczos3)
+    } else {
+        img
+    };
 
-    thumbnail.save_with_format(&thumbnail_path, ImageFormat::Jpeg)
+    thumbnail.save_with_format(&thumbnail_path, image::ImageFormat::Jpeg)
         .map_err(|e| format!("Failed to save thumbnail: {}", e))?;
 
-    // Return as asset URL with dimensions
+    // Save dimensions to metadata
+    let metadata_content = format!("{}x{}", dimensions.width, dimensions.height);
+    let _ = fs::write(&metadata_path, metadata_content);
+
     let asset_url = format!("asset://{}", thumbnail_path.to_string_lossy());
     Ok(ThumbnailResult { thumbnail: asset_url, dimensions: Some(dimensions) })
 }
 
 /// Extract embedded thumbnail from image (JPEG/EXIF)
-fn extract_embedded_thumbnail(_image_path: &str) -> Result<image::DynamicImage, String> {
-    // For now, skip embedded thumbnail extraction
-    // The parallel processing and caching will still provide good performance
-    Err("Embedded thumbnail extraction disabled".to_string())
+fn extract_embedded_thumbnail(image_path: &str) -> Result<image::DynamicImage, String> {
+    println!(">>> Attempting to extract embedded thumbnail from {}", image_path);
+
+    match rexif::parse_file(image_path) {
+        Ok(_exif_data) => {
+            // rexif doesn't have direct thumbnail extraction, so we'll skip it
+            // The thumbnail() method in image crate is already fast enough
+            println!(">>> EXIF found but no thumbnail extraction support");
+            Err("No embedded thumbnail".to_string())
+        }
+        Err(e) => {
+            println!(">>> Failed to parse EXIF: {}", e);
+            Err(format!("EXIF parse error: {}", e))
+        }
+    }
 }
 
 async fn generate_thumbnail(image_path: &str, app: &tauri::AppHandle) -> Result<String, String> {

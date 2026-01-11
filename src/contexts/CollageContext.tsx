@@ -1,6 +1,8 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { PlacedImage } from '../types/collage';
 import { Frame } from '../types/frame';
+import { Background } from '../types/background';
 
 export interface CanvasSize {
   width: number;
@@ -15,6 +17,12 @@ export const CANVAS_SIZES: CanvasSize[] = [
   { width: 2400, height: 3600, name: '4x6 HD' },
 ];
 
+export interface BackgroundTransform {
+  scale: number;
+  offsetX: number;
+  offsetY: number;
+}
+
 interface CollageContextType {
   currentFrame: Frame | null;
   setCurrentFrame: (frame: Frame | null) => void;
@@ -22,6 +30,10 @@ interface CollageContextType {
   setCanvasSize: (size: CanvasSize) => void;
   background: string | null;
   setBackground: (bg: string | null) => void;
+  backgroundTransform: BackgroundTransform;
+  setBackgroundTransform: (transform: BackgroundTransform) => void;
+  backgrounds: Background[];
+  setBackgrounds: (bgs: Background[]) => void;
   placedImages: Map<string, PlacedImage>;
   setPlacedImages: (images: Map<string, PlacedImage>) => void;
   selectedZone: string | null;
@@ -29,16 +41,64 @@ interface CollageContextType {
   addPlacedImage: (zoneId: string, image: PlacedImage) => void;
   removePlacedImage: (zoneId: string) => void;
   updatePlacedImage: (zoneId: string, updates: Partial<PlacedImage>) => void;
+  isBackgroundSelected: boolean;
+  setIsBackgroundSelected: (selected: boolean) => void;
+  canvasZoom: number;
+  setCanvasZoom: (zoom: number) => void;
 }
 
 const CollageContext = createContext<CollageContextType | undefined>(undefined);
+
+const DEFAULT_BACKGROUND_TRANSFORM: BackgroundTransform = {
+  scale: 1,
+  offsetX: 0,
+  offsetY: 0,
+};
 
 export function CollageProvider({ children }: { children: ReactNode }) {
   const [currentFrame, setCurrentFrame] = useState<Frame | null>(null);
   const [canvasSize, setCanvasSize] = useState<CanvasSize>(CANVAS_SIZES[0]);
   const [background, setBackground] = useState<string | null>(null);
+  const [backgroundTransform, setBackgroundTransform] = useState<BackgroundTransform>(DEFAULT_BACKGROUND_TRANSFORM);
+  const [backgrounds, setBackgrounds] = useState<Background[]>([]);
   const [placedImages, setPlacedImages] = useState<Map<string, PlacedImage>>(new Map());
   const [selectedZone, setSelectedZone] = useState<string | null>(null);
+  const [isBackgroundSelected, setIsBackgroundSelected] = useState<boolean>(false);
+  const [canvasZoom, setCanvasZoom] = useState<number>(1);
+
+  // Load backgrounds and settings on mount
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const [loadedBgs, savedBg, savedTransform] = await Promise.all([
+          invoke<Background[]>('load_backgrounds'),
+          invoke<string | null>('get_app_setting', { key: 'selected_background' }),
+          invoke<string>('get_app_setting', { key: 'background_transform' }).catch(() => null),
+        ]);
+
+        setBackgrounds(loadedBgs);
+        if (savedBg) setBackground(savedBg);
+        if (savedTransform) {
+          setBackgroundTransform(JSON.parse(savedTransform));
+        }
+      } catch (error) {
+        console.error('Failed to load settings:', error);
+      }
+    };
+
+    loadSettings();
+  }, []);
+
+  // Save background settings when they change
+  useEffect(() => {
+    if (background !== null) {
+      invoke('save_app_setting', { key: 'selected_background', value: background }).catch(console.error);
+    }
+  }, [background]);
+
+  useEffect(() => {
+    invoke('save_app_setting', { key: 'background_transform', value: JSON.stringify(backgroundTransform) }).catch(console.error);
+  }, [backgroundTransform]);
 
   const addPlacedImage = (zoneId: string, image: PlacedImage) => {
     setPlacedImages(prev => {
@@ -76,6 +136,10 @@ export function CollageProvider({ children }: { children: ReactNode }) {
         setCanvasSize,
         background,
         setBackground,
+        backgroundTransform,
+        setBackgroundTransform,
+        backgrounds,
+        setBackgrounds,
         placedImages,
         setPlacedImages,
         selectedZone,
@@ -83,6 +147,10 @@ export function CollageProvider({ children }: { children: ReactNode }) {
         addPlacedImage,
         removePlacedImage,
         updatePlacedImage,
+        isBackgroundSelected,
+        setIsBackgroundSelected,
+        canvasZoom,
+        setCanvasZoom,
       }}
     >
       {children}

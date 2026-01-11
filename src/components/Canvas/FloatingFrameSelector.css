@@ -1,5 +1,5 @@
 .floating-frame-selector {
-  position: absolute !important;
+  position: fixed !important;
   bottom: 0 !important;
   left: 0 !important;
   right: 0 !important;
@@ -19,14 +19,13 @@
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(99, 102, 241, 0.15));
+  background: rgba(59, 130, 246, 0.15);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 50px;
   padding: 0.625rem 1.5rem;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(59, 130, 246, 0.1);
   backdrop-filter: blur(20px);
   width: fit-content;
-  margin: 0 auto;
   max-width: 100%;
   pointer-events: auto !important;
 }
@@ -40,26 +39,8 @@
   background: transparent;
   color: white;
   border: none;
-  border-radius: 50px;
+  border-radius:  50px;
   font-size: 0.875rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  position: relative;
-  white-space: nowrap;
-}
-
-/* Floating Pill Button */
-.frame-pill-button {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.625rem 1rem;
-  background: transparent;
-  color: white;
-  border: none;
-  border-radius: 50px;
-  font-size: 0.8125rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -68,201 +49,338 @@
 }
 
 .frame-pill-button:hover {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .frame-pill-button.active {
-  background: rgba(255, 255, 255, 0.2);
-}
-
-/* Pill Divider */
-.pill-divider {
-  width: 1px;
-  height: 24px;
-  background: rgba(255, 255, 255, 0.3);
-  margin: 0 0.25rem;
+  background: rgba(59, 130, 246, 0.3);
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.5);
 }
 
 .pill-icon {
-  font-size: 1.25rem;
+  font-size: 1.125rem;
 }
 
 .pill-text {
-  font-weight: 600;
+  font-size: 0.875rem;
+  font-weight: 500;
 }
 
 .pill-indicator {
   font-size: 0.75rem;
-  opacity: 0.8;
+  margin-left: 0.25rem;
 }
 
-/* Frame Options Panel */
+.pill-divider {
+  width: 1px;
+  height: 24px;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* Options Panel */
 .frame-options-panel {
-  position: absolute;
-  bottom: calc(100% + 1rem);
-  left: 50%;
-  transform: translateX(-50%);
-  width: 900px;
-  max-width: 90vw;
-  max-height: 320px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 16px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+  background: rgba(30, 30, 30, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(30px);
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  z-index: 10;
-}
-
-.canvas-size-panel {
-  width: 500px;
-}
-
-.background-panel {
-  width: 700px;
+  pointer-events: auto;
 }
 
 .panel-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 1rem 1.5rem;
-  background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
-  color: white;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.2);
+  min-height: 44px;
+  background: linear-gradient(135deg, rgba(0, 120, 212, 0.25) 0%, rgba(0, 120, 212, 0.15) 100%);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
 .panel-header h3 {
   margin: 0;
-  font-size: 1rem;
+  font-size: 0.9375rem;
   font-weight: 600;
-  letter-spacing: 0.5px;
+  color: white;
+  letter-spacing: 0.01em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
-.close-btn {
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+.panel-header-actions {
+  display: flex;
+  gap: 0.375rem;
+  align-items: center;
+}
+
+.close-btn,
+.delete-toggle-btn {
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.25);
   color: white;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
   cursor: pointer;
-  font-size: 1.25rem;
+  padding: 0.375rem 0.5rem;
+  font-size: 0.875rem;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  min-width: 32px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
-.close-btn:hover {
-  background: rgba(255, 255, 255, 0.2);
-  border-color: rgba(255, 255, 255, 0.3);
-  transform: rotate(90deg);
+.close-btn:hover,
+.delete-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.4);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
 }
 
-/* Frame List - Horizontal Scrolling */
+.delete-toggle-btn.active {
+  color: #ff6b6b;
+  background: rgba(255, 107, 107, 0.15);
+  border-color: rgba(255, 107, 107, 0.3);
+}
+
+/* Frame List */
 .frame-list {
+  position: relative;
+  width: 100%;
   flex: 1;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding: 1rem;
-  display: flex;
-  flex-direction: row;
-  gap: 1rem;
-  scroll-snap-type: x mandatory;
+  overflow: hidden;
+  pointer-events: auto;
 }
 
+/* Ensure animated content divs receive pointer events */
+.frame-list > div {
+  pointer-events: auto !important;
+}
+
+/* Frame Option */
 .frame-option {
   background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
   flex-shrink: 0;
-  scroll-snap-align: start;
-  min-width: 200px;
-  display: flex;
-  flex-direction: column;
+  position: relative;
+  pointer-events: auto;
+  max-width: 120px;
+  width: 120px;
 }
 
 .frame-option:hover {
-  border-color: var(--accent-blue);
   background: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
-  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.15);
+  transform: scale(1.02);
 }
 
 .frame-option.selected {
+  background: rgba(59, 130, 246, 0.2);
   border-color: var(--accent-blue);
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(99, 102, 241, 0.2));
-  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3);
+}
+
+.frame-option.delete-mode {
+  cursor: pointer !important;
+}
+
+.frame-option.delete-mode:hover {
+  transform: scale(1.02);
+}
+
+.frame-option.non-deletable {
+  opacity: 0.4;
+  cursor: not-allowed !important;
+}
+
+.frame-option.non-deletable:hover {
+  transform: none !important;
+}
+
+/* Only show non-deletable styling when in delete mode */
+.frame-option.delete-mode .non-deletable {
+  opacity: 0.4;
+  cursor: not-allowed !important;
+}
+
+/* Reset opacity for non-deletable items when not in delete mode */
+.frame-option:not(.delete-mode).non-deletable {
+  opacity: 1;
+  cursor: pointer !important;
 }
 
 .frame-option-content {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  padding: 0.75rem;
+  width: 100%;
+  overflow: hidden;
+  align-items: center;
 }
 
-.frame-option-header {
+.frame-preview-container {
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
+  width: 80px;
+  height: 80px;
+  flex-shrink: 0;
+}
+
+.frame-zones-preview {
+  width: 100%;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  position: relative;
+}
+
+.frame-zone-box {
+  position: absolute;
+  background: rgba(59, 130, 246, 0.3);
+  border: 1px solid rgba(59, 130, 246, 0.5);
+  border-radius: 2px;
+}
+
+.frame-option-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  text-align: center;
 }
 
 .frame-option-name {
-  font-weight: 600;
-  font-size: 0.9375rem;
-  color: var(--text-primary);
-}
-
-.selected-indicator {
-  color: var(--accent-blue);
-  font-size: 1.25rem;
-  font-weight: bold;
-}
-
-.frame-option-meta {
-  display: flex;
-  gap: 1rem;
   font-size: 0.8125rem;
-  color: var(--text-muted);
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.frame-zones::before {
-  content: "📐 ";
+.frame-zones-count {
+  font-size: 0.6875rem;
+  color: rgba(255, 255, 255, 0.5);
 }
 
-.frame-size::before {
-  content: "📏 ";
+/* Canvas Preview */
+.canvas-preview-compact {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
 }
 
-.frame-option-desc {
-  font-size: 0.8125rem;
-  color: var(--text-muted);
-  font-style: italic;
-}
-
-/* Loading State */
-.loading-state {
+/* Background Preview */
+.bg-preview-compact {
+  width: 80px;
+  height: 80px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
+}
+
+.bg-preview-compact img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Delete Button on Items */
+.item-delete-btn {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  background: #ff6b6b;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  border-radius: 4px;
+  width: 24px;
+  height: 24px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 0.875rem;
+  z-index: 10;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  transition: all 0.2s ease;
+}
+
+.item-delete-btn:hover {
+  background: #ff5252;
+  transform: scale(1.05);
+}
+
+.frame-option.delete-mode .item-delete-btn {
+  display: flex;
+}
+
+/* Import Background Button */
+.import-bg-button {
+  border: 1.5px dashed rgba(255, 255, 255, 0.3) !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+.import-bg-button:hover {
+  border-color: var(--accent-blue) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+.import-bg-icon {
+  width: 100% !important;
+  max-width: 70px !important;
+  height: 70px !important;
+  border-radius: 6px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 2.5rem !important;
+  font-weight: 300 !important;
+  line-height: 1 !important;
+  color: rgba(255, 255, 255, 0.4) !important;
+  background: rgba(0, 0, 0, 0.15) !important;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2) !important;
+  overflow: visible !important;
+}
+
+.import-bg-button:hover .import-bg-icon {
+  color: var(--accent-blue) !important;
+  border-color: rgba(59, 130, 246, 0.5) !important;
+  background: rgba(59, 130, 246, 0.1) !important;
+  box-shadow: inset 0 1px 3px rgba(59, 130, 246, 0.2) !important;
+}
+
+/* Loading States */
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   gap: 0.75rem;
-  padding: 2rem;
-  color: var(--text-muted);
+  color: rgba(255, 255, 255, 0.6);
   font-size: 0.875rem;
 }
 
 .spinner-small {
   width: 20px;
   height: 20px;
-  border: 2px solid var(--border-color);
+  border: 2px solid rgba(255, 255, 255, 0.1);
   border-top-color: var(--accent-blue);
   border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+  animation: spin 1s linear infinite;
 }
 
 @keyframes spin {
@@ -273,112 +391,65 @@
 
 /* Empty State */
 .empty-state-small {
-  text-align: center;
-  padding: 2rem;
-  color: var(--text-muted);
-  font-size: 0.875rem;
-}
-
-/* Scrollbar - Horizontal */
-.frame-list::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-.frame-list::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 4px;
-}
-
-.frame-list::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
-}
-
-.frame-list::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
-}
-
-/* Background Preview Styles */
-.bg-preview-small {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-}
-
-.bg-color-swatch {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  border: 2px solid rgba(255, 255, 255, 0.2);
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
-}
-
-.bg-color-value {
-  font-family: monospace;
-  font-size: 0.75rem;
-  color: var(--text-muted);
-}
-
-.bg-gradient-preview-small {
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 0.8125rem;
   width: 100%;
-  height: 40px;
-  border-radius: 8px;
-  border: 2px solid rgba(255, 255, 255, 0.2);
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+  padding: 2rem;
+  text-align: center;
 }
 
-.bg-image-preview-small {
+/* Skeleton Loading Styles for Background Import */
+.frame-option.skeleton-loading {
+  pointer-events: none;
+  cursor: default;
+  opacity: 0.7;
+}
+
+.skeleton-thumbnail {
   width: 100%;
-  height: 80px;
-  border-radius: 8px;
-  border: 2px solid rgba(255, 255, 255, 0.2);
-  overflow: hidden;
-  background: rgba(0, 0, 0, 0.2);
+  height: 70px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.05) 25%, rgba(255, 255, 255, 0.1) 50%, rgba(255, 255, 255, 0.05) 75%);
+  background-size: 200% 100%;
+  animation: loading-shimmer 1.5s infinite;
+  border-radius: 6px;
 }
 
-.bg-image-preview-small img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.bg-default-badge {
-  font-size: 0.625rem;
-  padding: 0.25rem 0.5rem;
-  background: rgba(102, 126, 234, 0.2);
-  color: #a5b4fc;
+.skeleton-text {
+  height: 12px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.05) 25%, rgba(255, 255, 255, 0.1) 50%, rgba(255, 255, 255, 0.05) 75%);
+  background-size: 200% 100%;
+  animation: loading-shimmer 1.5s infinite;
   border-radius: 4px;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
 }
 
-/* Responsive */
-@media (max-width: 768px) {
-  .frame-options-panel {
-    width: 340px;
-  }
+.skeleton-filename {
+  width: 80px;
+}
 
-  .canvas-size-panel {
-    width: 280px;
+@keyframes loading-shimmer {
+  0% {
+    background-position: 200% 0;
   }
-
-  .pill-bar {
-    flex-direction: column;
-    padding: 0.375rem;
+  100% {
+    background-position: -200% 0;
   }
+}
 
-  .pill-divider {
-    width: 80%;
-    height: 1px;
-    margin: 0.25rem 0;
+/* Background Pill Drop Zone */
+.background-pill-wrapper.drag-over .frame-pill-button {
+  animation: pulse-border 1s ease-in-out infinite;
+}
+
+@keyframes pulse-border {
+  0%, 100% {
+    border-color: rgba(59, 130, 246, 0.5);
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4);
   }
-
-  .frame-pill-button {
-    padding: 0.625rem 1rem;
-    font-size: 0.8125rem;
-    width: 100%;
-    justify-content: center;
+  50% {
+    border-color: rgba(59, 130, 246, 1);
+    box-shadow: 0 0 0 8px rgba(59, 130, 246, 0);
   }
 }

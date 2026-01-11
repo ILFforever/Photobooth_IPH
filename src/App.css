@@ -365,6 +365,7 @@ body {
 .sidebar {
   position: relative;
   width: 360px;
+  min-width: 320px;
   background: var(--sidebar-bg);
   border-right: 1px solid var(--border-color);
   padding: 24px;
