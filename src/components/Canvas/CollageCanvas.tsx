@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { useCollage } from "../../contexts/CollageContext";
 import { FrameZone } from "../../types/frame";
+import { PlacedImage } from "../../types/collage";
 import { DEFAULT_TRANSFORM } from "../../types/collage";
 import { Background } from "../../types/background";
 import FloatingFrameSelector from "./FloatingFrameSelector";
@@ -20,11 +21,12 @@ interface ImageZoneProps {
 
 // Background image layer - treated as a large frame that covers the entire canvas
 function BackgroundLayer() {
-  const { background, canvasSize, backgroundTransform, setBackgroundTransform, isBackgroundSelected, setIsBackgroundSelected } = useCollage();
+  const { background, canvasSize, backgroundTransform, setBackgroundTransform, isBackgroundSelected, setIsBackgroundSelected, selectedZone, setSelectedZone } = useCollage();
   const bgRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [transformStart, setTransformStart] = useState({ x: 0, y: 0 });
+  const [snapGuides, setSnapGuides] = useState({ horizontal: false, vertical: false, centerH: false, centerV: false });
   const SNAP_THRESHOLD = 10;
 
   // Convert background path to Tauri-compatible URL
@@ -56,17 +58,54 @@ function BackgroundLayer() {
         let newOffsetX = transformStart.x + deltaX;
         let newOffsetY = transformStart.y + deltaY;
 
-        // Snap to center
+        // Get container dimensions
         const containerWidth = bgRef.current?.offsetWidth || 0;
         const containerHeight = bgRef.current?.offsetHeight || 0;
-        const containerCenterX = containerWidth / 2;
-        const containerCenterY = containerHeight / 2;
 
+        // With scale() and translate(), the transform origin is center (default)
+        // At scale=1 and offset=0, image exactly covers container
+        // When scaled, the image grows/shrinks from center
+        // The translate offset moves the already-scaled image
+
+        const scale = backgroundTransform.scale;
+
+        // Calculate how much the image extends beyond the container on each side (before translate)
+        // With scale > 1: image is larger, so negative overflow
+        // With scale < 1: image is smaller, so positive "underflow"
+        const overflowX = (containerWidth * scale - containerWidth) / 2;
+        const overflowY = (containerHeight * scale - containerHeight) / 2;
+
+        // Snap to center - when offset is 0, image is centered
         const snapToCenterX = Math.abs(newOffsetX) < SNAP_THRESHOLD;
         const snapToCenterY = Math.abs(newOffsetY) < SNAP_THRESHOLD;
 
         if (snapToCenterX) newOffsetX = 0;
         if (snapToCenterY) newOffsetY = 0;
+
+        // Snap edges to container edges
+        // When image left edge aligns with container left edge:
+        // The image center is at (containerWidth/2) + newOffsetX
+        // The image left edge is at: (containerWidth/2) + newOffsetX - (scaledWidth/2)
+        // We want: (containerWidth/2) + newOffsetX - (containerWidth * scale / 2) = 0
+        // So: newOffsetX = (containerWidth * scale / 2) - (containerWidth / 2) = overflowX
+
+        const leftEdgeSnap = Math.abs(newOffsetX - overflowX) < SNAP_THRESHOLD;
+        const rightEdgeSnap = Math.abs(newOffsetX + overflowX) < SNAP_THRESHOLD;
+        const topEdgeSnap = Math.abs(newOffsetY - overflowY) < SNAP_THRESHOLD;
+        const bottomEdgeSnap = Math.abs(newOffsetY + overflowY) < SNAP_THRESHOLD;
+
+        if (leftEdgeSnap) newOffsetX = overflowX;
+        if (rightEdgeSnap) newOffsetX = -overflowX;
+        if (topEdgeSnap) newOffsetY = overflowY;
+        if (bottomEdgeSnap) newOffsetY = -overflowY;
+
+        // Update snap guides for visual feedback
+        setSnapGuides({
+          horizontal: leftEdgeSnap || rightEdgeSnap, // Horizontal guides when left/right edges snap
+          vertical: topEdgeSnap || bottomEdgeSnap,   // Vertical guides when top/bottom edges snap
+          centerH: snapToCenterX,                    // Vertical guide when horizontally centered
+          centerV: snapToCenterY,                    // Horizontal guide when vertically centered
+        });
 
         setBackgroundTransform({
           ...backgroundTransform,
@@ -77,6 +116,7 @@ function BackgroundLayer() {
 
       const handleGlobalMouseUp = () => {
         setIsDragging(false);
+        setSnapGuides({ horizontal: false, vertical: false, centerH: false, centerV: false });
       };
 
       window.addEventListener('mousemove', handleGlobalMouseMove);
@@ -87,7 +127,7 @@ function BackgroundLayer() {
         window.removeEventListener('mouseup', handleGlobalMouseUp);
       };
     }
-  }, [isDragging, dragStart, transformStart, backgroundTransform, setBackgroundTransform, SNAP_THRESHOLD]);
+  }, [isDragging, dragStart, transformStart, backgroundTransform, setBackgroundTransform, setSnapGuides, SNAP_THRESHOLD]);
 
   if (!bgSrc) return null;
 
@@ -105,7 +145,9 @@ function BackgroundLayer() {
       onMouseDown={handleMouseDown}
       onClick={(e) => {
         e.stopPropagation();
-        setIsBackgroundSelected(true);
+        // If clicking on the background area, deselect zones and select background
+        setSelectedZone(null); // Deselect any frame zone
+        setIsBackgroundSelected(true); // Select background
       }}
     >
       <div
@@ -131,6 +173,91 @@ function BackgroundLayer() {
             display: 'block',
           }}
         />
+        {/* 3x3 Grid Overlay - shown when background is selected */}
+        {isBackgroundSelected && (
+          <div className="grid-overlay" style={{
+            position: 'absolute',
+            inset: 0,
+            pointerEvents: 'none',
+          }}>
+            <div className="grid-line grid-line-vertical" style={{ left: '33.33%' }} />
+            <div className="grid-line grid-line-vertical" style={{ left: '66.67%' }} />
+            <div className="grid-line grid-line-horizontal" style={{ top: '33.33%' }} />
+            <div className="grid-line grid-line-horizontal" style={{ top: '66.67%' }} />
+          </div>
+        )}
+        {/* Overflow visualization - shows parts of bg extending beyond canvas with transparency and grid */}
+        {isBackgroundSelected && backgroundTransform.scale > 1 && (
+          <div className="background-overflow-mask" style={{
+            position: 'absolute',
+            width: '100%',
+            height: '100%',
+            pointerEvents: 'none',
+            overflow: 'hidden',
+          }}>
+            <img
+              src={bgSrc}
+              alt="Background Overflow"
+              draggable={false}
+              style={{
+                position: 'absolute',
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                opacity: 0.2,
+                // Counteract parent transform to show overflow
+                transform: `
+                  translate(${-backgroundTransform.offsetX}px, ${-backgroundTransform.offsetY}px)
+                  scale(${1 / backgroundTransform.scale})
+                `,
+                transformOrigin: 'center center',
+              }}
+            />
+            {/* 3x3 grid on the overflow area */}
+            <div className="grid-overlay grid-overlay-overflow" style={{
+              position: 'absolute',
+              inset: 0,
+            }}>
+              <div className="grid-line grid-line-vertical" style={{ left: '33.33%' }} />
+              <div className="grid-line grid-line-vertical" style={{ left: '66.67%' }} />
+              <div className="grid-line grid-line-horizontal" style={{ top: '33.33%' }} />
+              <div className="grid-line grid-line-horizontal" style={{ top: '66.67%' }} />
+            </div>
+          </div>
+        )}
+        {/* Snap Guides - shown during dragging */}
+        {snapGuides.centerH && (
+          <div className="snap-guide snap-guide-vertical" style={{
+            position: 'absolute',
+            left: '50%',
+            top: 0,
+            height: '100%',
+            transform: 'translateX(-50%)',
+            pointerEvents: 'none',
+          }} />
+        )}
+        {snapGuides.centerV && (
+          <div className="snap-guide snap-guide-horizontal" style={{
+            position: 'absolute',
+            top: '50%',
+            left: 0,
+            width: '100%',
+            transform: 'translateY(-50%)',
+            pointerEvents: 'none',
+          }} />
+        )}
+        {snapGuides.horizontal && (
+          <>
+            <div className="snap-guide snap-guide-horizontal" style={{ position: 'absolute', top: 0, left: 0, width: '100%', pointerEvents: 'none' }} />
+            <div className="snap-guide snap-guide-horizontal" style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', pointerEvents: 'none' }} />
+          </>
+        )}
+        {snapGuides.vertical && (
+          <>
+            <div className="snap-guide snap-guide-vertical" style={{ position: 'absolute', left: 0, top: 0, height: '100%', pointerEvents: 'none' }} />
+            <div className="snap-guide snap-guide-vertical" style={{ position: 'absolute', right: 0, top: 0, height: '100%', pointerEvents: 'none' }} />
+          </>
+        )}
       </div>
       {/* Selection border */}
       {isBackgroundSelected && (
@@ -154,6 +281,7 @@ function ImageZone({ zone }: ImageZoneProps) {
   const placedImage = placedImages.get(zone.id);
   const dropRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
+  const transformContainerRef = useRef<HTMLDivElement>(null); // Ref to the inner transform container
   const [isDraggingImage, setIsDraggingImage] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [transformStart, setTransformStart] = useState({ x: 0, y: 0 });
@@ -165,49 +293,74 @@ function ImageZone({ zone }: ImageZoneProps) {
   const imageSrc = useMemo(() => {
     if (!placedImage) return null;
     const src = placedImage.sourceFile;
-    const convertedSrc = convertFileSrc(src.replace('asset://', ''));
-    console.log('=== IMAGE SOURCE CONVERSION ===');
-    console.log('Zone ID:', zone.id);
-    console.log('Original sourceFile:', src);
-    console.log('Converted src:', convertedSrc);
-    console.log('===============================');
-    return convertedSrc;
+    return convertFileSrc(src.replace('asset://', ''));
   }, [placedImage, zone.id]);
 
   const [{ isOver, canDrop }, drop] = useDrop({
     accept: 'IMAGE',
     drop: (item: { path: string; thumbnail: string; dimensions?: { width: number; height: number } }) => {
-      console.log('=== IMAGE DROP ===');
-      console.log('Zone ID:', zone.id);
-      console.log('Item path:', item.path);
-      console.log('Item thumbnail:', item.thumbnail);
-      console.log('Item dimensions:', item.dimensions);
-      console.log('==================');
 
-      // Calculate scale to fill the zone
+      // Calculate scale to fill the zone vertically
+      // With objectFit: 'contain', the image is fitted to show completely
+      // We want to scale it up so it fills the zone better (like objectFit: 'cover' but allowing pan)
       let scale = 1.0;
       if (item.dimensions) {
-        const imgAspectRatio = item.dimensions.width / item.dimensions.height;
-
         // Calculate actual zone dimensions in pixels for correct aspect ratio
         const zoneWidthPx = (zone.width / 100) * canvasSize.width;
         const zoneHeightPx = (zone.height / 100) * canvasSize.height;
-        const zoneAspectRatio = zoneWidthPx / zoneHeightPx;
 
         // Debug logging
-        console.log('=== DROP DEBUG ===');
-        console.log('Image dimensions:', item.dimensions.width, 'x', item.dimensions.height);
-        console.log('Image aspect ratio:', imgAspectRatio.toFixed(4));
-        console.log('Zone dimensions (%):', zone.width, 'x', zone.height);
-        console.log('Zone dimensions (px):', zoneWidthPx.toFixed(0), 'x', zoneHeightPx.toFixed(0));
-        console.log('Zone aspect ratio:', zoneAspectRatio.toFixed(4));
 
-        // With objectFit: 'contain':
-        // - If img > zone (aspect ratio wise): img height fills zone height, we scale by img.aspect/zone.aspect
-        // - If zone > img (aspect ratio wise): img width fills zone width, we scale by zone.aspect/img.aspect
-        scale = imgAspectRatio > zoneAspectRatio
-          ? imgAspectRatio / zoneAspectRatio
-          : zoneAspectRatio / imgAspectRatio;
+        // Work with the dimensions - may need to swap if EXIF orientation wasn't handled
+        let imgWidth = item.dimensions.width;
+        let imgHeight = item.dimensions.height;
+
+        const rawImgAspect = imgWidth / imgHeight;
+        const zoneAspect = zoneWidthPx / zoneHeightPx;
+
+        console.log('Raw image aspect ratio (width/height):', rawImgAspect.toFixed(4));
+        console.log('Zone aspect ratio (width/height):', zoneAspect.toFixed(4));
+
+        // Detect if dimensions might be swapped due to EXIF orientation
+        // If image is much wider than zone (aspect > 1.2x different), it might need swapping
+        // This is a heuristic - for portrait photos stored as landscape
+        const aspectRatioDiff = Math.abs(rawImgAspect - zoneAspect);
+        const mightBeSwapped = rawImgAspect > 1.0 && zoneAspect < 1.0 && aspectRatioDiff > 0.3;
+
+        if (mightBeSwapped) {
+          console.log('⚠️ Dimensions might be swapped due to EXIF orientation');
+          console.log('   Image looks landscape but zone is portrait');
+          console.log('   Aspect ratio difference:', aspectRatioDiff.toFixed(4));
+        }
+
+        const imgAspect = imgWidth / imgHeight;
+        const imgIsWider = imgAspect > zoneAspect;
+
+        console.log('Image is wider than zone?', imgIsWider);
+
+        if (imgIsWider) {
+          // Image is wider - constrained by zone width, leaving gaps top/bottom
+          // objectFit: 'contain' will scale image to fit zone width
+          // Rendered height = zoneWidth / imgAspect
+          const renderedHeight = zoneWidthPx / imgAspect;
+          console.log('objectFit:contain will render image at:', zoneWidthPx.toFixed(0), 'x', renderedHeight.toFixed(0));
+          console.log('Empty space top/bottom:', (zoneHeightPx - renderedHeight).toFixed(0), 'px');
+
+          // We need to scale up so height fills the zone
+          // Scale needed = zoneHeight / renderedHeight
+          // Which simplifies to: (zoneHeight * imgAspect) / zoneWidth = imgAspect / zoneAspect
+          scale = imgAspect / zoneAspect;
+          console.log('Scale needed to fill height:', scale.toFixed(4));
+          console.log('Image is width-constrained, scaling to fill height');
+        } else {
+          // Image is taller - already constrained by zone height, no gaps
+          // Width might have gaps, but we want to fill vertically which is already done
+          const renderedWidth = zoneHeightPx * imgAspect;
+          console.log('objectFit:contain will render image at:', renderedWidth.toFixed(0), 'x', zoneHeightPx.toFixed(0));
+          console.log('Empty space left/right:', (zoneWidthPx - renderedWidth).toFixed(0), 'px');
+          console.log('Image is height-constrained, no scaling needed');
+          scale = 1.0;
+        }
 
         console.log('Calculated scale:', scale.toFixed(4));
         console.log('==================');
@@ -222,6 +375,7 @@ function ImageZone({ zone }: ImageZoneProps) {
         thumbnail: item.thumbnail,
         zoneId: zone.id,
         transform: { ...DEFAULT_TRANSFORM, scale: scaleRounded },
+        originalScale: scaleRounded, // Store the optimal scale for reset
       };
 
       console.log('=== ADDING PLACED IMAGE ===');
@@ -259,49 +413,55 @@ function ImageZone({ zone }: ImageZoneProps) {
         let newOffsetX = transformStart.x + deltaX;
         let newOffsetY = transformStart.y + deltaY;
 
-        // Calculate snap points
-        const containerWidth = dropRef.current?.offsetWidth || 0;
-        const containerHeight = dropRef.current?.offsetHeight || 0;
-        const imgWidth = imageSize.width;
-        const imgHeight = imageSize.height;
+        // Use the transform container's dimensions (parent of the image), not the outer zone container
+        const containerWidth = transformContainerRef.current?.offsetWidth || 0;
+        const containerHeight = transformContainerRef.current?.offsetHeight || 0;
 
-        // Snap to center (when image center aligns with container center)
-        // Image center is at: imgLeft + imgWidth/2 + newOffsetX
-        // Container center is at: containerWidth/2
-        const imageCenterX = imageSize.left + imgWidth / 2 + newOffsetX;
-        const imageCenterY = imageSize.top + imgHeight / 2 + newOffsetY;
+        const scale = placedImage.transform.scale;
+        const scaledWidth = imageSize.width * scale;
+        const scaledHeight = imageSize.height * scale;
+        const imageBaseCenterX = imageSize.left + imageSize.width / 2;
+        const imageBaseCenterY = imageSize.top + imageSize.height / 2;
         const containerCenterX = containerWidth / 2;
         const containerCenterY = containerHeight / 2;
 
+        // Current center position after all transforms
+        const imageCenterX = imageBaseCenterX + newOffsetX;
+        const imageCenterY = imageBaseCenterY + newOffsetY;
+
+        // Snap to center
         const snapToCenterH = Math.abs(imageCenterX - containerCenterX) < SNAP_THRESHOLD;
         const snapToCenterV = Math.abs(imageCenterY - containerCenterY) < SNAP_THRESHOLD;
 
         if (snapToCenterH) {
-          newOffsetX = containerCenterX - imageSize.left - imgWidth / 2;
+          newOffsetX = containerCenterX - imageBaseCenterX;
         }
         if (snapToCenterV) {
-          newOffsetY = containerCenterY - imageSize.top - imgHeight / 2;
+          newOffsetY = containerCenterY - imageBaseCenterY;
         }
 
-        // Snap to edges (when image edges align with container edges)
-        // Left edge: imgLeft + newOffsetX = 0
-        // Right edge: imgLeft + imgWidth + newOffsetX = containerWidth
-        const snapToLeft = Math.abs(imageSize.left + newOffsetX) < SNAP_THRESHOLD;
-        const snapToRight = Math.abs(imageSize.left + imgWidth + newOffsetX - containerWidth) < SNAP_THRESHOLD;
-        const snapToTop = Math.abs(imageSize.top + newOffsetY) < SNAP_THRESHOLD;
-        const snapToBottom = Math.abs(imageSize.top + imgHeight + newOffsetY - containerHeight) < SNAP_THRESHOLD;
+        // Snap to edges
+        const imageLeft = imageBaseCenterX - scaledWidth / 2 + newOffsetX;
+        const imageRight = imageBaseCenterX + scaledWidth / 2 + newOffsetX;
+        const imageTop = imageBaseCenterY - scaledHeight / 2 + newOffsetY;
+        const imageBottom = imageBaseCenterY + scaledHeight / 2 + newOffsetY;
 
-        if (snapToLeft) newOffsetX = -imageSize.left;
-        if (snapToRight) newOffsetX = containerWidth - imageSize.left - imgWidth;
-        if (snapToTop) newOffsetY = -imageSize.top;
-        if (snapToBottom) newOffsetY = containerHeight - imageSize.top - imgHeight;
+        const snapToLeft = Math.abs(imageLeft) < SNAP_THRESHOLD;
+        const snapToRight = Math.abs(imageRight - containerWidth) < SNAP_THRESHOLD;
+        const snapToTop = Math.abs(imageTop) < SNAP_THRESHOLD;
+        const snapToBottom = Math.abs(imageBottom - containerHeight) < SNAP_THRESHOLD;
+
+        if (snapToLeft) newOffsetX = -imageBaseCenterX + scaledWidth / 2;
+        if (snapToRight) newOffsetX = containerWidth - imageBaseCenterX - scaledWidth / 2;
+        if (snapToTop) newOffsetY = -imageBaseCenterY + scaledHeight / 2;
+        if (snapToBottom) newOffsetY = containerHeight - imageBaseCenterY - scaledHeight / 2;
 
         // Update snap guides for visual feedback
         setSnapGuides({
-          horizontal: snapToLeft || snapToRight, // Horizontal line when left/right edges snap
-          vertical: snapToTop || snapToBottom,     // Vertical line when top/bottom edges snap
-          centerH: snapToCenterH,                  // Vertical line through center when horizontally centered
-          centerV: snapToCenterV,                  // Horizontal line through center when vertically centered
+          horizontal: snapToLeft || snapToRight, // Horizontal guides when left/right edges snap
+          vertical: snapToTop || snapToBottom,   // Vertical guides when top/bottom edges snap
+          centerH: snapToCenterH,                // Vertical guide when horizontally centered
+          centerV: snapToCenterV,                // Horizontal guide when vertically centered
         });
 
         updatePlacedImage(zone.id, {
@@ -362,6 +522,14 @@ function ImageZone({ zone }: ImageZoneProps) {
           offsetY = 0;
         }
 
+        console.log('=== IMAGE SIZE CALCULATION ===');
+        console.log('Zone ID:', zone.id);
+        console.log('containerSize:', { width: containerWidth, height: containerHeight });
+        console.log('imageNaturalSize:', { width: imgNaturalWidth, height: imgNaturalHeight });
+        console.log('aspects:', { container: containerAspect.toFixed(4), image: imgAspect.toFixed(4) });
+        console.log('calculated:', { renderWidth, renderHeight, offsetX, offsetY });
+        console.log('============================');
+
         setImageSize({ width: renderWidth, height: renderHeight, left: offsetX, top: offsetY });
       };
 
@@ -383,14 +551,16 @@ function ImageZone({ zone }: ImageZoneProps) {
     backgroundColor: isOver ? 'rgba(59, 130, 246, 0.2)' : 'rgba(0, 0, 0, 0.1)',
     cursor: 'pointer',
     overflow: 'hidden',
-    transition: 'all 0.2s ease',
+    // Only animate border, background-color, and box-shadow - NOT transform
+    transition: 'border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease',
   };
 
   return (
     <div
       ref={dropRef}
       style={zoneStyle}
-      onClick={() => {
+      onClick={(e) => {
+        e.stopPropagation(); // Prevent click from bubbling to container
         setSelectedZone(zone.id);
         setIsBackgroundSelected(false);
       }}
@@ -398,6 +568,7 @@ function ImageZone({ zone }: ImageZoneProps) {
     >
       {placedImage && imageSrc ? (
         <div
+          ref={transformContainerRef}
           style={{
             width: '100%',
             height: '100%',
@@ -439,6 +610,7 @@ function ImageZone({ zone }: ImageZoneProps) {
             }}
           />
           {/* 3x3 Grid Overlay - shown when zone is selected */}
+          {/* Grid is positioned relative to the transformed container, so it scales and translates with the image */}
           {selectedZone === zone.id && imageSize.width > 0 && (
             <div
               className="grid-overlay"
@@ -509,18 +681,148 @@ function ImageZone({ zone }: ImageZoneProps) {
   );
 }
 
+// Image Zone Overflow Component - renders the overflow visualization at canvas level
+interface ImageZoneOverflowProps {
+  zone: FrameZone;
+  placedImage: PlacedImage;
+}
+
+function ImageZoneOverflow({ zone, placedImage }: ImageZoneOverflowProps) {
+  const imageSrc = convertFileSrc(placedImage.sourceFile.replace('asset://', ''));
+  const overflowRef = useRef<HTMLDivElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [imageSize, setImageSize] = useState({ width: 0, height: 0, left: 0, top: 0 });
+
+  // Measure the actual rendered size of the image (with objectFit: contain)
+  useEffect(() => {
+    if (imgRef.current) {
+      const updateImageSize = () => {
+        const img = imgRef.current;
+        if (!img) return;
+
+        const containerWidth = img.parentElement?.offsetWidth || 0;
+        const containerHeight = img.parentElement?.offsetHeight || 0;
+        const imgNaturalWidth = img.naturalWidth;
+        const imgNaturalHeight = img.naturalHeight;
+
+        if (!imgNaturalWidth || !imgNaturalHeight) return;
+
+        // Calculate how the image is positioned with objectFit: contain
+        const containerAspect = containerWidth / containerHeight;
+        const imgAspect = imgNaturalWidth / imgNaturalHeight;
+
+        let renderWidth, renderHeight, offsetX, offsetY;
+
+        if (imgAspect > containerAspect) {
+          // Image is wider than container - width is constrained
+          renderWidth = containerWidth;
+          renderHeight = containerWidth / imgAspect;
+          offsetX = 0;
+          offsetY = (containerHeight - renderHeight) / 2;
+        } else {
+          // Image is taller than container - height is constrained
+          renderHeight = containerHeight;
+          renderWidth = containerHeight * imgAspect;
+          offsetX = (containerWidth - renderWidth) / 2;
+          offsetY = 0;
+        }
+
+        setImageSize({ width: renderWidth, height: renderHeight, left: offsetX, top: offsetY });
+      };
+
+      updateImageSize();
+      window.addEventListener('resize', updateImageSize);
+      return () => window.removeEventListener('resize', updateImageSize);
+    }
+  }, [imageSrc]);
+
+  return (
+    <div
+      ref={overflowRef}
+      style={{
+        position: 'absolute',
+        left: `${zone.x}%`,
+        top: `${zone.y}%`,
+        width: `${zone.width}%`,
+        height: `${zone.height}%`,
+        transform: `rotate(${zone.rotation}deg)`,
+        pointerEvents: 'none',
+        zIndex: 1,
+      }}
+    >
+      <div
+        style={{
+          width: '100%',
+          height: '100%',
+          position: 'relative',
+          transform: `
+            scale(${placedImage.transform.scale})
+            translate(${placedImage.transform.offsetX}px, ${placedImage.transform.offsetY}px)
+            rotate(${placedImage.transform.rotation}deg)
+            scaleX(${placedImage.transform.flipHorizontal ? -1 : 1})
+            scaleY(${placedImage.transform.flipVertical ? -1 : 1})
+          `,
+        }}
+      >
+        <img
+          ref={imgRef}
+          src={imageSrc}
+          alt="Overflow"
+          draggable={false}
+          style={{
+            position: 'absolute',
+            width: '100%',
+            height: '100%',
+            objectFit: 'contain',
+            opacity: 0.25,
+            filter: 'brightness(0.7)',
+            display: 'block',
+          }}
+        />
+        {/* 3x3 grid overlay - positioned to match actual image bounds */}
+        {imageSize.width > 0 && (
+          <div
+            className="grid-overlay grid-overlay-overflow overflow-overlay-frame"
+            style={{
+              position: 'absolute',
+              left: imageSize.left,
+              top: imageSize.top,
+              width: imageSize.width,
+              height: imageSize.height,
+            }}
+          >
+            <div className="grid-line grid-line-vertical" style={{ left: '33.33%' }} />
+            <div className="grid-line grid-line-vertical" style={{ left: '66.67%' }} />
+            <div className="grid-line grid-line-horizontal" style={{ top: '33.33%' }} />
+            <div className="grid-line grid-line-horizontal" style={{ top: '66.67%' }} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function CollageCanvas({ width: propWidth, height: propHeight }: CollageCanvasProps) {
-  const { currentFrame, background, canvasSize, backgroundTransform, setBackgroundTransform, isBackgroundSelected, setIsBackgroundSelected, canvasZoom, setCanvasZoom } = useCollage();
+  const { currentFrame, setCurrentFrame, background, canvasSize, backgroundTransform, setBackgroundTransform, isBackgroundSelected, setIsBackgroundSelected, canvasZoom, setCanvasZoom, selectedZone, setSelectedZone, placedImages } = useCollage();
   const canvasRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [localZoom, setLocalZoom] = useState(canvasZoom);
   const [zoomCenter, setZoomCenter] = useState({ x: 0, y: 0 });
   const prevZoomRef = useRef(canvasZoom);
+  // Use refs to store latest values for completely stable callbacks
+  const localZoomRef = useRef(localZoom);
+  const setCanvasZoomRef = useRef(setCanvasZoom);
+  const setLocalZoomRef = useRef(setLocalZoom);
+  const setZoomCenterRef = useRef(setZoomCenter);
 
-  // Sync local zoom with context
+  // Keep refs in sync with latest functions and values
   useEffect(() => {
     setLocalZoom(canvasZoom);
-  }, [canvasZoom]);
+    localZoomRef.current = canvasZoom;
+    setCanvasZoomRef.current = setCanvasZoom;
+    setLocalZoomRef.current = setLocalZoom;
+    setZoomCenterRef.current = setZoomCenter;
+  }, [canvasZoom, setCanvasZoom, setLocalZoom, setZoomCenter]);
 
   // Handle Ctrl+Scroll to zoom from mouse position
   const handleWheel = useCallback((e: WheelEvent) => {
@@ -542,16 +844,16 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
       const relativeY = (mouseY - centerY) / centerY;
 
       const delta = e.deltaY > 0 ? -0.1 : 0.1;
-      const oldZoom = localZoom;
-      const newZoom = Math.max(0.5, Math.min(3, localZoom + delta));
+      const currentZoom = localZoomRef.current;
+      const newZoom = Math.max(0.5, Math.min(3, currentZoom + delta));
 
       // Store zoom center for the scroll adjustment
-      setZoomCenter({ x: relativeX, y: relativeY });
+      setZoomCenterRef.current({ x: relativeX, y: relativeY });
 
-      setLocalZoom(newZoom);
-      setCanvasZoom(newZoom);
+      setLocalZoomRef.current(newZoom);
+      setCanvasZoomRef.current(newZoom);
     }
-  }, [localZoom, setCanvasZoom]);
+  }, []); // No dependencies - completely stable
 
   // Handle touch pad pinch gesture
   const handleTouchStart = useCallback((e: TouchEvent) => {
@@ -565,7 +867,7 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
       );
       (e.currentTarget as HTMLElement).dataset.pinchDistance = distance.toString();
     }
-  }, []);
+  }, []); // No dependencies - completely stable
 
   const handleTouchMove = useCallback((e: TouchEvent) => {
     if (e.touches.length === 2) {
@@ -580,15 +882,16 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
 
       if (initialDistance > 0) {
         const delta = (distance - initialDistance) * 0.01;
-        const newZoom = Math.max(0.5, Math.min(3, localZoom + delta));
-        setLocalZoom(newZoom);
-        setCanvasZoom(newZoom);
+        const currentZoom = localZoomRef.current;
+        const newZoom = Math.max(0.5, Math.min(3, currentZoom + delta));
+        setLocalZoomRef.current(newZoom);
+        setCanvasZoomRef.current(newZoom);
         (e.currentTarget as HTMLElement).dataset.pinchDistance = distance.toString();
       }
     }
-  }, [localZoom, setCanvasZoom]);
+  }, []); // No dependencies - completely stable
 
-  // Add event listeners for zoom
+  // Add event listeners for zoom - setup when canvas is available
   useEffect(() => {
     const canvas = canvasRef.current;
     if (canvas) {
@@ -602,14 +905,13 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
         canvas.removeEventListener('touchmove', handleTouchMove);
       };
     }
-  }, [handleWheel, handleTouchStart, handleTouchMove]);
+  }, [currentFrame, handleWheel, handleTouchStart, handleTouchMove]);
 
   // Debug: Log background changes
   useEffect(() => {
-    console.log('=== CollageCanvas Background Changed ===');
-    console.log('Background value:', background);
-    console.log('Background type:', typeof background);
-    console.log('=============================');
+    if (background) {
+      console.log('Background loaded:', background);
+    }
   }, [background]);
 
   // Use canvas size from context, falling back to props
@@ -653,7 +955,7 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
     background: '#ffffff',
     boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
     borderRadius: '4px',
-    overflow: 'hidden',
+    overflow: 'visible', // Changed to visible to allow overflow to show
     flexShrink: 0 as const,
   };
 
@@ -661,7 +963,18 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
     width: '100%',
     height: '100%',
     position: 'relative' as const,
+    overflow: 'hidden', // Add clipping to inner canvas
+    borderRadius: '4px', // Match the canvas border radius
   };
+
+  // Convert background path to Tauri-compatible URL
+  const bgSrc = useMemo(() => {
+    if (!background) return null;
+    if (background.startsWith('http') || background.startsWith('data:')) {
+      return background;
+    }
+    return convertFileSrc(background.replace('asset://', ''));
+  }, [background]);
 
   // Auto-scroll to zoom center when zooming
   // This ensures the point under the mouse stays stable during zoom
@@ -728,10 +1041,70 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
           </div>
         </div>
       ) : (
-        <div ref={containerRef} style={containerStyle}>
+        <div
+          ref={containerRef}
+          style={containerStyle}
+          onClick={() => {
+            // Clicking outside the canvas (in the container area) deselects everything
+            setSelectedZone(null);
+            setIsBackgroundSelected(false);
+          }}
+        >
           {/* Invisible spacers to allow scrolling in all directions when zoomed */}
           {spacing > 0 && <div style={{ height: `${spacing}px`, flexShrink: 0 }} />}
           <div ref={canvasRef} style={canvasStyle} className="collage-canvas">
+            {/* Overflow visualizations - rendered OUTSIDE inner canvas so they can extend beyond */}
+            {/* Background overflow */}
+            {isBackgroundSelected && background && backgroundTransform.scale > 1 && bgSrc && (
+              <div style={{
+                position: 'absolute',
+                inset: 0,
+                pointerEvents: 'none',
+                zIndex: 0,
+                overflow: 'hidden', // Clip grid to bounds
+              }}>
+                <img
+                  src={bgSrc}
+                  alt="Background Overflow"
+                  draggable={false}
+                  style={{
+                    position: 'absolute',
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                    opacity: 0.2,
+                    transform: `
+                      scale(${backgroundTransform.scale})
+                      translate(${backgroundTransform.offsetX}px, ${backgroundTransform.offsetY}px)
+                    `,
+                  }}
+                />
+                <div className="grid-overlay grid-overlay-overflow overflow-overlay-frame" style={{
+                  position: 'absolute',
+                  inset: 0,
+                }}>
+                  <div className="grid-line grid-line-vertical" style={{ left: '33.33%' }} />
+                  <div className="grid-line grid-line-vertical" style={{ left: '66.67%' }} />
+                  <div className="grid-line grid-line-horizontal" style={{ top: '33.33%' }} />
+                  <div className="grid-line grid-line-horizontal" style={{ top: '66.67%' }} />
+                </div>
+              </div>
+            )}
+            {/* Image zone overflows */}
+            {currentFrame.zones.map((zone) => {
+              const placedImage = placedImages.get(zone.id);
+              const isSelected = selectedZone === zone.id;
+              if (!isSelected || !placedImage) return null;
+
+              return (
+                <ImageZoneOverflow
+                  key={`${zone.id}-overflow`}
+                  zone={zone}
+                  placedImage={placedImage}
+                />
+              );
+            })}
+
             <div style={innerCanvasStyle}>
               {/* Background Layer - rendered as transformable image */}
               <BackgroundLayer />
@@ -743,7 +1116,7 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
 
               {/* Frame Info Overlay */}
               <div className="canvas-info">
-                <span className="canvas-frame-name">{currentFrame.name}</span>
+                <span className="canvas-frame-name">{canvasSize.name}</span>
                 <span className="canvas-dimensions">{width} × {height}px</span>
               </div>
             </div>

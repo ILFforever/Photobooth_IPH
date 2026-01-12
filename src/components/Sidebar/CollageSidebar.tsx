@@ -1,29 +1,44 @@
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { WorkingFolderGallery } from "../WorkingFolder/WorkingFolderGallery";
 import ImageManipulator from "../Canvas/ImageManipulator";
 import "./CollageSidebar.css";
 
 const CollageSidebar = () => {
+  const [activeTab, setActiveTab] = useState<'file' | 'edit'>('file');
+
   return (
-    <motion.div
-      initial={{ opacity: 0, x: -20 }}
-      animate={{ opacity: 1, x: 0 }}
-      className="collage-sidebar"
-    >
-      {/* Working Folder Gallery Section */}
-      <div className="sidebar-subsection">
-        <div className="subsection-content">
-          <WorkingFolderGallery />
-        </div>
+    <div className="collage-sidebar">
+      {/* Vertical Button Column */}
+      <div className="sidebar-tabs-column">
+        <motion.button
+          className={`sidebar-tab ${activeTab === 'file' ? 'active' : ''}`}
+          onClick={() => setActiveTab('file')}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+        >
+          <span className="tab-icon">📁</span>
+        </motion.button>
+        <motion.button
+          className={`sidebar-tab ${activeTab === 'edit' ? 'active' : ''}`}
+          onClick={() => setActiveTab('edit')}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+        >
+          <span className="tab-icon">✏️</span>
+        </motion.button>
       </div>
 
-      {/* Image Manipulator Section */}
-      <div className="sidebar-subsection">
-        <div className="subsection-content">
+      {/* Content Area - Both components stay mounted */}
+      <div className="sidebar-content">
+        <div className={`sidebar-panel ${activeTab === 'file' ? 'panel-visible' : 'panel-hidden'}`}>
+          <WorkingFolderGallery />
+        </div>
+        <div className={`sidebar-panel ${activeTab === 'edit' ? 'panel-visible' : 'panel-hidden'}`}>
           <ImageManipulator />
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 };
 

@@ -775,11 +775,27 @@ async fn process_photos(
 
 fn generate_qr_code_base64(url: &str) -> Result<String, String> {
     use qrcode::QrCode;
-    use image::Luma;
+    use image::{ImageEncoder, Luma};
+    use image::codecs::png::PngEncoder;
+
     let code = QrCode::new(url.as_bytes()).map_err(|e| e.to_string())?;
-    let image = code.render::<Luma<u8>>().max_dimensions(400, 400).build();
+    let qr_image = code.render::<Luma<u8>>().max_dimensions(400, 400).build();
+
+    // Get the raw pixel data and dimensions
+    let width = qr_image.width();
+    let height = qr_image.height();
+    let raw_data = qr_image.into_raw();
+
+    // Encode to PNG buffer
     let mut buffer = Cursor::new(Vec::new());
-    image.write_to(&mut buffer, image::ImageOutputFormat::Png).map_err(|e| e.to_string())?;
+    let encoder = PngEncoder::new(&mut buffer);
+    encoder.write_image(
+        &raw_data,
+        width,
+        height,
+        image::ExtendedColorType::L8,
+    ).map_err(|e: image::error::ImageError| e.to_string())?;
+
     Ok(general_purpose::STANDARD.encode(buffer.get_ref()))
 }
 
@@ -932,16 +948,13 @@ async fn select_working_folder(app: tauri::AppHandle) -> Result<WorkingFolderInf
 }
 
 async fn scan_folder_for_images(folder_path: &str, app: &tauri::AppHandle) -> Result<Vec<WorkingImage>, String> {
-    println!("=== SCAN FOLDER START ===");
-    println!("Folder path: {}", folder_path);
+    println!("Scanning folder: {}", folder_path);
 
     let path = PathBuf::from(folder_path);
     let mut images = Vec::new();
 
     let entries = fs::read_dir(&path)
         .map_err(|e| format!("Failed to read directory: {}", e))?;
-
-    println!("Reading directory entries...");
 
     // Collect all valid image files first
     let mut image_files = Vec::new();
@@ -970,30 +983,33 @@ async fn scan_folder_for_images(folder_path: &str, app: &tauri::AppHandle) -> Re
             .unwrap_or("unknown")
             .to_string();
 
-        let size = fs::metadata(&file_path)
-            .map(|m| m.len())
-            .unwrap_or(0);
+        let metadata = fs::metadata(&file_path)
+            .map_err(|e| format!("Failed to read metadata: {}", e))?;
+
+        let size = metadata.len();
+        let modified = metadata.modified()
+            .map_err(|e| format!("Failed to read modified time: {}", e))?;
 
         let file_path_str = file_path.to_string_lossy().to_string();
 
-        image_files.push((file_path_str, filename, size, extension));
+        image_files.push((file_path_str, filename, size, extension, modified));
     }
 
+    // Sort by modification time, newest first
+    image_files.sort_by(|a, b| b.4.cmp(&a.4));
+
     let total_files = image_files.len();
-    println!("Found {} image files", total_files);
+    println!("Found {} image files (sorted newest first)", total_files);
 
     // Emit total count first so frontend can show correct skeleton count
     let _ = app.emit("thumbnail-total-count", total_files);
 
-    // Use JoinSet to process tasks as they complete
+    // Use JoinSet for concurrent processing
     let mut join_set = tokio::task::JoinSet::new();
 
-    println!("Starting thumbnail generation...");
-
-    // We need to consume image_files to avoid lifetime issues
-    for (index, (file_path, filename, size, extension)) in image_files.into_iter().enumerate() {
+    // Spawn tasks for thumbnail generation
+    for (index, (file_path, filename, size, extension, _modified)) in image_files.into_iter().enumerate() {
         if matches!(extension.as_str(), "jpg" | "jpeg" | "png") {
-            // Spawn task for thumbnail generation
             let file_path_clone = file_path.clone();
             let filename_clone = filename.clone();
             let extension_clone = extension.clone();
@@ -1001,7 +1017,7 @@ async fn scan_folder_for_images(folder_path: &str, app: &tauri::AppHandle) -> Re
 
             join_set.spawn_blocking(move || {
                 tokio::runtime::Handle::current().block_on(async {
-                    let result = generate_thumbnail_cached(&file_path_clone, &app_clone).await;
+                    let result = generate_thumbnail_cached(&file_path_clone, &app_clone, index).await;
                     (index, result, file_path_clone, filename_clone, size, extension_clone)
                 })
             });
@@ -1018,7 +1034,6 @@ async fn scan_folder_for_images(folder_path: &str, app: &tauri::AppHandle) -> Re
 
             images.push(working_image.clone());
 
-            println!(">>> Emitting RAW image (no thumbnail): {}/{}", index + 1, total_files);
             let _ = app.emit("thumbnail-loaded", ThumbnailLoadProgress {
                 current: index + 1,
                 total: total_files,
@@ -1027,9 +1042,7 @@ async fn scan_folder_for_images(folder_path: &str, app: &tauri::AppHandle) -> Re
         }
     }
 
-    // Process thumbnail tasks as they complete (in order of completion, not spawning)
-    println!("Processing {} thumbnail tasks as they complete...", join_set.len());
-
+    // Collect results as they complete
     let mut results = Vec::new();
     while let Some(result) = join_set.join_next().await {
         match result {
@@ -1049,7 +1062,6 @@ async fn scan_folder_for_images(folder_path: &str, app: &tauri::AppHandle) -> Re
                 };
 
                 // Emit immediately as each completes
-                println!(">>> Emitting thumbnail loaded: {}/{}", index + 1, total_files);
                 let _ = app.emit("thumbnail-loaded", ThumbnailLoadProgress {
                     current: index + 1,
                     total: total_files,
@@ -1058,9 +1070,7 @@ async fn scan_folder_for_images(folder_path: &str, app: &tauri::AppHandle) -> Re
 
                 results.push((index, working_image));
             }
-            _ => {
-                println!(">>> Task failed");
-            }
+            _ => {}
         }
     }
 
@@ -1070,8 +1080,7 @@ async fn scan_folder_for_images(folder_path: &str, app: &tauri::AppHandle) -> Re
         images.push(image);
     }
 
-    println!("=== SCAN FOLDER END ===");
-    println!("Returning {} images", images.len());
+    println!("Scan complete: {} images", images.len());
     Ok(images)
 }
 
@@ -1081,8 +1090,8 @@ struct ThumbnailResult {
     dimensions: Option<ImageDimensions>,
 }
 
-async fn generate_thumbnail_cached(image_path: &str, app: &tauri::AppHandle) -> Result<ThumbnailResult, String> {
-    println!(">>> generate_thumbnail_cached: {}", image_path);
+async fn generate_thumbnail_cached(image_path: &str, app: &tauri::AppHandle, task_id: usize) -> Result<ThumbnailResult, String> {
+    println!("[Task {}] Generating thumbnail for {}", task_id, image_path);
 
     // Get thumbnail path
     let app_data_dir = app.path().app_data_dir()
@@ -1107,7 +1116,7 @@ async fn generate_thumbnail_cached(image_path: &str, app: &tauri::AppHandle) -> 
         if let Ok(source_mtime) = fs::metadata(&path_buf).and_then(|m| m.modified()) {
             if let Ok(thumb_mtime) = fs::metadata(&thumbnail_path).and_then(|m| m.modified()) {
                 if thumb_mtime > source_mtime {
-                    println!(">>> Using cached thumbnail for {}", filename);
+                    println!("[Task {}] Using cached thumbnail", task_id);
                     // Thumbnail exists and is newer, load dimensions from metadata file
                     let asset_url = format!("asset://{}", thumbnail_path.to_string_lossy());
                     let dimensions = fs::read_to_string(&metadata_path)
@@ -1136,61 +1145,149 @@ async fn generate_thumbnail_cached(image_path: &str, app: &tauri::AppHandle) -> 
         .unwrap_or(false);
 
     if is_jpeg {
-        println!(">>> Using mozjpeg with scaling for {}", filename);
+        println!("[Task {}] Processing JPEG", task_id);
 
-        // Read JPEG file
+        // Step 1: Use mozjpeg for FAST decoding with scaling
         let jpeg_data = fs::read(image_path)
             .map_err(|e| format!("Failed to read JPEG file: {}", e))?;
 
-        // Use mozjpeg to decompress with scaling
         let mut decompress = mozjpeg::Decompress::new_mem(&jpeg_data)
             .map_err(|e| format!("Failed to create mozjpeg decompressor: {}", e))?;
 
-        // Since we can't easily get dimensions before scaling in mozjpeg 0.10,
-        // we'll use a conservative scale that works for most images
-        let scale_num = 4; // Start with 1/4 scale, good for most photos
-
-        println!(">>> Using scale factor: 1/{}", scale_num);
-
-        // Apply scaling during decompression - scale() takes numerator directly (1, 2, 4, or 8)
+        let scale_num = 4; // 1/4 scale for 200px max dimension from 800px images
         decompress.scale(scale_num);
 
-        // Decompress to RGB
         let mut image = decompress.rgb()
             .map_err(|e| format!("Failed to decompress JPEG: {}", e))?;
 
         let scaled_width = image.width();
         let scaled_height = image.height();
-        println!(">>> Scaled dimensions: {}x{}", scaled_width, scaled_height);
 
-        // Estimate original dimensions (inverse of scale)
-        let scale_num_usize = scale_num as usize;
-        let orig_width = (scaled_width * scale_num_usize) as u32;
-        let orig_height = (scaled_height * scale_num_usize) as u32;
+        // Step 2: Read EXIF orientation tag and dimensions
+        let (exif_width, exif_height, exif_orientation_value) = match image::ImageReader::open(image_path) {
+            Ok(reader) => {
+                match reader.decode() {
+                    Ok(exif_img) => {
+                        let w = exif_img.width();
+                        let h = exif_img.height();
+
+                        // Try to read EXIF orientation tag using rexif
+                        let orientation_tag = rexif::parse_file(image_path)
+                            .ok()
+                            .and_then(|exif_data| {
+                                for entry in &exif_data.entries {
+                                    if entry.tag == rexif::ExifTag::Orientation {
+                                        if let rexif::TagValue::U16(ref shorts) = entry.value {
+                                            return shorts.first().copied();
+                                        }
+                                    }
+                                }
+                                None
+                            });
+
+                        if orientation_tag.is_some() {
+                            println!("[Task {}] EXIF orientation: {:?}", task_id, orientation_tag);
+                        }
+                        (Some(w), Some(h), orientation_tag)
+                    }
+                    Err(_) => {
+                        (None, None, None)
+                    }
+                }
+            }
+            Err(_) => {
+                (None, None, None)
+            }
+        };
+
+        // Step 3: Determine final dimensions (considering EXIF orientation)
+        // Orientation values: 1=normal, 3=180°, 6=90° CW, 8=90° CCW
+        // Values 6 and 8 require swapping width/height
+        let needs_swap = exif_orientation_value == Some(6) || exif_orientation_value == Some(8);
+        let (orig_width, orig_height) = match (exif_width, exif_height) {
+            (Some(w), Some(h)) => {
+                if needs_swap {
+                    (h, w)
+                } else {
+                    (w, h)
+                }
+            },
+            _ => {
+                // Fallback: estimate from mozjpeg scaled dimensions
+                let scale_num_usize = scale_num as usize;
+                let fallback_w = (scaled_width * scale_num_usize) as u32;
+                let fallback_h = (scaled_height * scale_num_usize) as u32;
+                (fallback_w, fallback_h)
+            }
+        };
+
         let dimensions = ImageDimensions {
             width: orig_width,
             height: orig_height,
         };
 
-        // Convert to image crate's DynamicImage
-        // Use read_scanlines to get the actual pixel data
+        // Step 4: Convert mozjpeg data to image and apply EXIF orientation rotation
         let img_data = image.read_scanlines()
             .map_err(|e| format!("Failed to read scanlines: {}", e))?;
 
-        let img: image::RgbImage = image::ImageBuffer::from_raw(
+        let mut rgb_img = image::RgbImage::from_raw(
             scaled_width as u32,
             scaled_height as u32,
             img_data
-        )
-            .ok_or("Failed to create image buffer")?;
+        ).ok_or("Failed to create image buffer")?;
 
-        let dyn_img = image::DynamicImage::ImageRgb8(img);
+        let mut dynamic_img = image::DynamicImage::ImageRgb8(rgb_img);
+
+        // Apply rotation based on EXIF orientation
+        if let Some(orientation) = exif_orientation_value {
+            println!("[Task {}] Applying orientation: {}", task_id, orientation);
+            dynamic_img = match orientation {
+                1 => dynamic_img, // Normal
+                2 => {
+                    // Flip horizontal
+                    image::DynamicImage::ImageRgb8(
+                        image::imageops::flip_horizontal(&dynamic_img.to_rgb8())
+                    )
+                }
+                3 => dynamic_img.rotate180(),
+                4 => {
+                    // Flip vertical
+                    image::DynamicImage::ImageRgb8(
+                        image::imageops::flip_vertical(&dynamic_img.to_rgb8())
+                    )
+                }
+                5 => {
+                    // Flip horizontal then rotate 270
+                    let flipped = image::imageops::flip_horizontal(&dynamic_img.to_rgb8());
+                    image::DynamicImage::ImageRgb8(flipped).rotate270()
+                }
+                6 => dynamic_img.rotate90(),  // 90° CW - common for portrait photos
+                7 => {
+                    // Flip horizontal then rotate 90
+                    let flipped = image::imageops::flip_horizontal(&dynamic_img.to_rgb8());
+                    image::DynamicImage::ImageRgb8(flipped).rotate90()
+                }
+                8 => dynamic_img.rotate270(), // 90° CCW
+                _ => dynamic_img
+            };
+        }
+
+        // Resize to thumbnail size (200px max dimension)
+        let max_dim = 200;
+        let thumbnail = if dynamic_img.width() > max_dim || dynamic_img.height() > max_dim {
+            let scale = max_dim as f32 / (dynamic_img.width().max(dynamic_img.height()) as f32);
+            let new_width = (dynamic_img.width() as f32 * scale).round() as u32;
+            let new_height = (dynamic_img.height() as f32 * scale).round() as u32;
+            dynamic_img.resize(new_width, new_height, image::imageops::FilterType::Nearest)
+        } else {
+            dynamic_img
+        };
 
         // Save thumbnail
-        dyn_img.save_with_format(&thumbnail_path, image::ImageFormat::Jpeg)
+        thumbnail.save_with_format(&thumbnail_path, image::ImageFormat::Jpeg)
             .map_err(|e| format!("Failed to save thumbnail: {}", e))?;
 
-        println!(">>> Saved mozjpeg-scaled thumbnail to: {}", thumbnail_path.display());
+        println!("[Task {}] Saved thumbnail: {}x{}", task_id, orig_width, orig_height);
 
         // Save dimensions to metadata
         let metadata_content = format!("{}x{}", dimensions.width, dimensions.height);
@@ -1201,10 +1298,9 @@ async fn generate_thumbnail_cached(image_path: &str, app: &tauri::AppHandle) -> 
     }
 
     // Fallback for non-JPEG images (PNG, etc.)
-    println!(">>> Using standard image library for {}", filename);
-    use image::io::Reader as ImageReader;
+    println!("[Task {}] Processing PNG/other", task_id);
 
-    let img = ImageReader::open(image_path)
+    let img = image::ImageReader::open(image_path)
         .map_err(|e| format!("Failed to open image: {}", e))?
         .with_guessed_format()
         .map_err(|e| format!("Failed to guess format: {}", e))?
@@ -1222,7 +1318,6 @@ async fn generate_thumbnail_cached(image_path: &str, app: &tauri::AppHandle) -> 
         let scale = max_dim as f32 / dimensions.width.max(dimensions.height) as f32;
         let new_width = (dimensions.width as f32 * scale).round() as u32;
         let new_height = (dimensions.height as f32 * scale).round() as u32;
-        println!(">>> Resizing to {}x{}", new_width, new_height);
         img.resize(new_width, new_height, image::imageops::FilterType::Lanczos3)
     } else {
         img
@@ -1231,65 +1326,14 @@ async fn generate_thumbnail_cached(image_path: &str, app: &tauri::AppHandle) -> 
     thumbnail.save_with_format(&thumbnail_path, image::ImageFormat::Jpeg)
         .map_err(|e| format!("Failed to save thumbnail: {}", e))?;
 
+    println!("[Task {}] Saved thumbnail: {}x{}", task_id, dimensions.width, dimensions.height);
+
     // Save dimensions to metadata
     let metadata_content = format!("{}x{}", dimensions.width, dimensions.height);
     let _ = fs::write(&metadata_path, metadata_content);
 
     let asset_url = format!("asset://{}", thumbnail_path.to_string_lossy());
     Ok(ThumbnailResult { thumbnail: asset_url, dimensions: Some(dimensions) })
-}
-
-/// Extract embedded thumbnail from image (JPEG/EXIF)
-fn extract_embedded_thumbnail(image_path: &str) -> Result<image::DynamicImage, String> {
-    println!(">>> Attempting to extract embedded thumbnail from {}", image_path);
-
-    match rexif::parse_file(image_path) {
-        Ok(_exif_data) => {
-            // rexif doesn't have direct thumbnail extraction, so we'll skip it
-            // The thumbnail() method in image crate is already fast enough
-            println!(">>> EXIF found but no thumbnail extraction support");
-            Err("No embedded thumbnail".to_string())
-        }
-        Err(e) => {
-            println!(">>> Failed to parse EXIF: {}", e);
-            Err(format!("EXIF parse error: {}", e))
-        }
-    }
-}
-
-async fn generate_thumbnail(image_path: &str, app: &tauri::AppHandle) -> Result<String, String> {
-    use image::imageops::FilterType;
-    use image::ImageFormat;
-
-    // Load image
-    let img = image::open(image_path)
-        .map_err(|e| format!("Failed to open image: {}", e))?;
-
-    // Resize to thumbnail size (120x120 max, maintaining aspect ratio)
-    let thumbnail = img.resize(120, 120, FilterType::Lanczos3);
-
-    // Save to app data directory
-    let app_data_dir = app.path().app_data_dir()
-        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
-
-    let thumbnails_dir = app_data_dir.join("thumbnails");
-    fs::create_dir_all(&thumbnails_dir)
-        .map_err(|e| format!("Failed to create thumbnails dir: {}", e))?;
-
-    let path_buf = PathBuf::from(image_path);
-    let filename = path_buf
-        .file_name()
-        .and_then(|n| n.to_str())
-        .ok_or("Invalid filename")?;
-
-    let thumbnail_path = thumbnails_dir.join(format!("thumb_{}", filename));
-
-    thumbnail.save_with_format(&thumbnail_path, ImageFormat::Jpeg)
-        .map_err(|e| format!("Failed to save thumbnail: {}", e))?;
-
-    // Return as asset URL
-    let asset_url = format!("asset://{}", thumbnail_path.to_string_lossy());
-    Ok(asset_url)
 }
 
 // ==================== FRAME SYSTEM ====================

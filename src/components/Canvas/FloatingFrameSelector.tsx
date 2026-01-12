@@ -2,9 +2,10 @@ import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { useDrop } from "react-dnd";
-import { useCollage, CANVAS_SIZES } from "../../contexts/CollageContext";
+import { useCollage, CANVAS_SIZES, CanvasSize } from "../../contexts/CollageContext";
 import { Frame } from "../../types/frame";
 import { Background } from "../../types/background";
+import CustomCanvasDialog from "./CustomCanvasDialog";
 import "./FloatingFrameSelector.css";
 
 type PanelType = "frame" | "canvas" | "background" | null;
@@ -94,6 +95,8 @@ const FloatingFrameSelector = () => {
     setBackground,
     backgrounds,
     setBackgrounds,
+    customCanvasSizes,
+    setCustomCanvasSizes,
   } = useCollage();
   const [openPanel, setOpenPanel] = useState<PanelType>(null);
   const [frames, setFrames] = useState<Frame[]>([]);
@@ -102,7 +105,8 @@ const FloatingFrameSelector = () => {
   const [importingBackgrounds, setImportingBackgrounds] = useState<Set<string>>(new Set());
   const [direction, setDirection] = useState(0);
   const [pillBarStyle, setPillBarStyle] = useState({});
-  const [deleteMode, setDeleteMode] = useState<'frame' | 'background' | null>(null);
+  const [deleteMode, setDeleteMode] = useState<'frame' | 'background' | 'canvas' | null>(null);
+  const [showCustomCanvasDialog, setShowCustomCanvasDialog] = useState(false);
 
   // Update pill bar position on mount and window resize
   useEffect(() => {
@@ -126,7 +130,7 @@ const FloatingFrameSelector = () => {
     return () => window.removeEventListener("resize", updatePillBarPosition);
   }, []);
 
-  // Auto-load frames and backgrounds on mount
+  // Auto-load frames, backgrounds, and custom canvases on mount
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
@@ -142,6 +146,9 @@ const FloatingFrameSelector = () => {
         if (!currentFrame && loadedFrames.length > 0) {
           setCurrentFrame(loadedFrames[0]);
         }
+
+        // Load custom canvas sizes
+        await refreshCustomCanvases();
       } catch (error) {
         console.error("Failed to load data:", error);
       } finally {
@@ -227,8 +234,48 @@ const FloatingFrameSelector = () => {
     }
   };
 
-  const handleSelectCanvasSize = (size: (typeof CANVAS_SIZES)[0]) => {
+  const handleSelectCanvasSize = (size: CanvasSize) => {
     setCanvasSize(size);
+  };
+
+  const handleDeleteCustomCanvas = async (canvasToDelete: CanvasSize) => {
+    try {
+      // Delete using dedicated command
+      await invoke('delete_custom_canvas_size', { name: canvasToDelete.name });
+
+      // Update state
+      const updatedCanvases = customCanvasSizes.filter(c => c.name !== canvasToDelete.name);
+      setCustomCanvasSizes(updatedCanvases);
+
+      // If the deleted canvas was selected, switch to default
+      if (canvasSize.name === canvasToDelete.name) {
+        setCanvasSize(CANVAS_SIZES[0]);
+      }
+
+      console.log('Custom canvas deleted:', canvasToDelete.name);
+    } catch (error) {
+      console.error('Failed to delete custom canvas:', error);
+    }
+  };
+
+  const refreshCustomCanvases = async () => {
+    try {
+      const customCanvases = await invoke<{
+        width: number;
+        height: number;
+        name: string;
+        created_at: string;
+      }[]>('get_custom_canvas_sizes');
+      setCustomCanvasSizes(customCanvases.map(c => ({
+        width: c.width,
+        height: c.height,
+        name: c.name,
+        isCustom: true,
+        createdAt: c.created_at,
+      })));
+    } catch (error) {
+      console.error('Failed to refresh custom canvases:', error);
+    }
   };
 
   const handleSelectBackground = (bg: Background) => {
@@ -446,7 +493,7 @@ const FloatingFrameSelector = () => {
             style={{
               ...getPanelStyle(),
               width: getPanelWidth(),
-              height: "220px",
+              height: "235px",
             }}
             className="frame-options-panel"
           >
@@ -457,8 +504,8 @@ const FloatingFrameSelector = () => {
                 {openPanel === "background" && "Backgrounds"}
               </h3>
               <div className="panel-header-actions">
-                {/* Delete mode toggle button - only for frame and background panels */}
-                {(openPanel === "frame" || openPanel === "background") && (
+                {/* Delete mode toggle button - for frame, background, and canvas panels */}
+                {(openPanel === "frame" || openPanel === "background" || openPanel === "canvas") && (
                   <button
                     onClick={() => {
                       setDeleteMode(deleteMode === openPanel ? null : openPanel);
@@ -466,7 +513,7 @@ const FloatingFrameSelector = () => {
                     className={`delete-toggle-btn ${deleteMode === openPanel ? 'active' : ''}`}
                     title={deleteMode === openPanel ? "Exit delete mode" : "Enter delete mode"}
                   >
-                    ✏️
+                    🗑️
                   </button>
                 )}
                 <button
@@ -595,6 +642,88 @@ const FloatingFrameSelector = () => {
                       padding: "0.5rem 0.75rem",
                     }}
                   >
+                    {/* Custom Canvas Button */}
+                    <motion.div
+                      key="custom-canvas-btn"
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => setShowCustomCanvasDialog(true)}
+                      className="frame-option import-bg-button"
+                    >
+                      <div className="frame-option-content">
+                        <div className="frame-preview-container">
+                          <div
+                            className="import-bg-icon"
+                            style={{
+                              border: '2px dashed rgba(255, 255, 255, 0.25)',
+                              overflow: 'visible',
+                              paddingBottom: '10px'
+                            }}
+                          >
+                            +
+                          </div>
+                        </div>
+                        <div className="frame-option-info">
+                          <span className="frame-option-name">
+                            Custom
+                          </span>
+                        </div>
+                      </div>
+                    </motion.div>
+
+                    {/* Custom Canvas Sizes */}
+                    {customCanvasSizes.map((size) => (
+                      <motion.div
+                        key={size.name}
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => deleteMode !== 'canvas' && handleSelectCanvasSize(size)}
+                        className={`frame-option ${
+                          canvasSize.name === size.name ? "selected" : ""
+                        } ${deleteMode === 'canvas' ? 'delete-mode' : ''}`}
+                        style={{
+                          position: 'relative',
+                        }}
+                      >
+                        <div className="frame-option-content">
+                          <div className="frame-preview-container">
+                            <div
+                              className="canvas-preview-compact"
+                              style={{
+                                aspectRatio: `${size.width} / ${size.height}`,
+                                width: "50px",
+                                height: "auto",
+                                maxHeight: "70px",
+                                background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(147, 51, 234, 0.2))',
+                                border: '1px solid rgba(59, 130, 246, 0.3)',
+                              }}
+                            />
+                          </div>
+                          <div className="frame-option-info">
+                            <span className="frame-option-name">
+                              {size.name}
+                            </span>
+                            <span className="frame-zones-count">
+                              {size.width}×{size.height}
+                            </span>
+                          </div>
+                          {deleteMode === 'canvas' && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteCustomCanvas(size);
+                              }}
+                              className="item-delete-btn"
+                              title="Delete custom canvas"
+                            >
+                                🗑
+                              </button>
+                          )}
+                        </div>
+                      </motion.div>
+                    ))}
+
+                    {/* Default Canvas Sizes */}
                     {CANVAS_SIZES.map((size) => (
                       <motion.div
                         key={size.name}
@@ -603,7 +732,11 @@ const FloatingFrameSelector = () => {
                         onClick={() => handleSelectCanvasSize(size)}
                         className={`frame-option ${
                           canvasSize.name === size.name ? "selected" : ""
-                        }`}
+                        } ${deleteMode === 'canvas' ? 'disabled' : ''}`}
+                        style={{
+                          opacity: deleteMode === 'canvas' ? 0.4 : 1,
+                          pointerEvents: deleteMode === 'canvas' ? 'none' : 'auto',
+                        }}
                       >
                         <div className="frame-option-content">
                           <div className="frame-preview-container">
@@ -611,11 +744,8 @@ const FloatingFrameSelector = () => {
                               className="canvas-preview-compact"
                               style={{
                                 aspectRatio: `${size.width} / ${size.height}`,
-                                width:
-                                  size.width > size.height ? "50px" : "auto",
-                                height:
-                                  size.width > size.height ? "auto" : "70px",
-                                maxWidth: "50px",
+                                width: "50px",
+                                height: "auto",
                                 maxHeight: "70px",
                               }}
                             />
@@ -803,6 +933,15 @@ const FloatingFrameSelector = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Custom Canvas Dialog */}
+      <CustomCanvasDialog
+        isOpen={showCustomCanvasDialog}
+        onClose={async () => {
+          setShowCustomCanvasDialog(false);
+          await refreshCustomCanvases();
+        }}
+      />
     </div>
   );
 };

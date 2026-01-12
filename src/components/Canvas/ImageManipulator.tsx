@@ -90,8 +90,10 @@ const ImageManipulator = () => {
     if (isBackgroundMode) {
       setBackgroundTransform({ scale: 1, offsetX: 0, offsetY: 0 });
     } else {
+      // Use the original optimal scale calculated when the image was placed
+      const optimalScale = placedImage!.originalScale || DEFAULT_TRANSFORM.scale;
       updatePlacedImage(selectedZone!, {
-        transform: DEFAULT_TRANSFORM,
+        transform: { ...DEFAULT_TRANSFORM, scale: optimalScale },
       });
     }
   };

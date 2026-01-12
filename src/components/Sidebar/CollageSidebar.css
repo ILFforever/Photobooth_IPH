@@ -1,60 +1,95 @@
 .collage-sidebar {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   height: 100%;
   overflow: hidden;
+  gap: 0;
 }
 
-.sidebar-subsection {
+/* Vertical button column on the left */
+.sidebar-tabs-column {
   display: flex;
   flex-direction: column;
-  min-height: 0; /* Important for flexbox scrolling */
-  flex: 1;
+  gap: 8px;
+  padding: 12px 8px;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border-color);
+  flex-shrink: 0;
+  width: 56px;
 }
 
-.sidebar-subsection:first-child {
-  flex: 2;
-  border-bottom: 1px solid var(--border-color);
-  min-height: 0;
-  overflow: hidden;
-}
-
-.sidebar-subsection:last-child {
-  flex: 1;
-  min-height: 0;
-}
-
-.subsection-header {
+.sidebar-tab {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  border: none;
+  background: var(--bg-tertiary);
+  cursor: pointer;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 1rem;
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-color);
+  justify-content: center;
+  transition: all 0.2s ease;
+  position: relative;
 }
 
-.subsection-header h3 {
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--text-primary);
+.sidebar-tab:hover {
+  background: var(--bg-hover);
 }
 
-.subsection-icon {
+.sidebar-tab.active {
+  background: var(--accent-blue);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+}
+
+.sidebar-tab.active::after {
+  content: '';
+  position: absolute;
+  left: -8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 24px;
+  background: var(--accent-blue);
+  border-radius: 0 2px 2px 0;
+}
+
+.tab-icon {
   font-size: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.subsection-content {
+/* Content area */
+.sidebar-content {
   flex: 1;
-  min-height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  background: var(--sidebar-bg);
+  position: relative;
 }
 
-/* Frame selector within subsection */
-.sidebar-subsection:first-child .subsection-content {
-  min-height: 0;
+.sidebar-panel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   overflow-y: auto;
-  flex: 1;
+  overflow-x: hidden;
+  padding: 0;
+  transition: opacity 0.2s ease;
+}
+
+.sidebar-panel.panel-visible {
+  opacity: 1;
+  pointer-events: auto;
+  z-index: 1;
+}
+
+.sidebar-panel.panel-hidden {
+  opacity: 0;
+  pointer-events: none;
+  z-index: 0;
 }

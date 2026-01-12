@@ -8,6 +8,8 @@ export interface CanvasSize {
   width: number;
   height: number;
   name: string;
+  isCustom?: boolean;
+  createdAt?: string;
 }
 
 export const CANVAS_SIZES: CanvasSize[] = [
@@ -45,6 +47,8 @@ interface CollageContextType {
   setIsBackgroundSelected: (selected: boolean) => void;
   canvasZoom: number;
   setCanvasZoom: (zoom: number) => void;
+  customCanvasSizes: CanvasSize[];
+  setCustomCanvasSizes: (sizes: CanvasSize[]) => void;
 }
 
 const CollageContext = createContext<CollageContextType | undefined>(undefined);
@@ -65,15 +69,17 @@ export function CollageProvider({ children }: { children: ReactNode }) {
   const [selectedZone, setSelectedZone] = useState<string | null>(null);
   const [isBackgroundSelected, setIsBackgroundSelected] = useState<boolean>(false);
   const [canvasZoom, setCanvasZoom] = useState<number>(1);
+  const [customCanvasSizes, setCustomCanvasSizes] = useState<CanvasSize[]>([]);
 
   // Load backgrounds and settings on mount
   useEffect(() => {
     const loadSettings = async () => {
       try {
-        const [loadedBgs, savedBg, savedTransform] = await Promise.all([
+        const [loadedBgs, savedBg, savedTransform, customCanvases] = await Promise.all([
           invoke<Background[]>('load_backgrounds'),
-          invoke<string | null>('get_app_setting', { key: 'selected_background' }),
+          invoke<string | null>('get_app_setting', { key: 'selected_background' }).catch(() => null),
           invoke<string>('get_app_setting', { key: 'background_transform' }).catch(() => null),
+          invoke<Array<{ width: number; height: number; name: string; created_at: number }>>('get_custom_canvas_sizes').catch(() => []),
         ]);
 
         setBackgrounds(loadedBgs);
@@ -81,6 +87,15 @@ export function CollageProvider({ children }: { children: ReactNode }) {
         if (savedTransform) {
           setBackgroundTransform(JSON.parse(savedTransform));
         }
+
+        // Load custom canvas sizes
+        setCustomCanvasSizes(customCanvases.map((c: { width: number; height: number; name: string; created_at: number }) => ({
+          width: c.width,
+          height: c.height,
+          name: c.name,
+          isCustom: true,
+          createdAt: c.created_at.toString(),
+        })));
       } catch (error) {
         console.error('Failed to load settings:', error);
       }
@@ -151,6 +166,8 @@ export function CollageProvider({ children }: { children: ReactNode }) {
         setIsBackgroundSelected,
         canvasZoom,
         setCanvasZoom,
+        customCanvasSizes,
+        setCustomCanvasSizes,
       }}
     >
       {children}

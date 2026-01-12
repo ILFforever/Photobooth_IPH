@@ -12,6 +12,7 @@ export interface PlacedImage {
   thumbnail?: string;
   zoneId: string;
   transform: ImageTransform;
+  originalScale: number; // Store the initially calculated optimal scale for reset
 }
 
 export interface CollageProject {

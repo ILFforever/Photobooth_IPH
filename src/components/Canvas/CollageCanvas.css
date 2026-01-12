@@ -39,6 +39,11 @@
   z-index: 10;
 }
 
+.grid-overlay-overflow .grid-line {
+  background-color: rgba(59, 130, 246, 0.5);
+  box-shadow: 0 0 2px rgba(59, 130, 246, 0.3);
+}
+
 .grid-line {
   position: absolute;
   background-color: rgba(255, 255, 255, 0.8);
@@ -53,6 +58,23 @@
 .grid-line-horizontal {
   width: 100%;
   height: 1px;
+}
+
+/* Image Overflow Container */
+.image-overflow-container {
+  /* Positioned relative to zone, renders underneath */
+  /* overflow: visible allows content to extend beyond */
+}
+
+/* Overflow Overlay Frame */
+.overflow-overlay-frame {
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.2);
+}
+
+/* Background Overflow Mask */
+.background-overflow-mask {
+  z-index: 4;
 }
 
 /* Snap Guides - Smart guides like Photoshop */
