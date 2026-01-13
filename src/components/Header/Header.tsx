@@ -89,7 +89,7 @@ export default function Header({
               <>
                 <div className="account-avatar">
                   {account.picture ? (
-                    <img src={account.picture} alt={account.name} />
+                    <img src={account.picture} alt={account.name} referrerPolicy="no-referrer" crossOrigin="anonymous" />
                   ) : (
                     <span>{account.name.charAt(0).toUpperCase()}</span>
                   )}
@@ -119,7 +119,7 @@ export default function Header({
                     <div className="account-menu-header">
                       <div className="account-menu-avatar">
                         {account.picture ? (
-                          <img src={account.picture} alt={account.name} />
+                          <img src={account.picture} alt={account.name} referrerPolicy="no-referrer" crossOrigin="anonymous" />
                         ) : (
                           <span>{account.name.charAt(0).toUpperCase()}</span>
                         )}

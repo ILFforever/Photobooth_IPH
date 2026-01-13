@@ -121,7 +121,7 @@ async fn google_login(state: State<'_, AppState>, app: tauri::AppHandle) -> Resu
     let cache_path = app.path()
         .app_data_dir()
         .map_err(|e| format!("Failed to get app data dir: {}", e))?
-        .join("tokenhcache_v2.json");
+        .join("tokencache_v2.json");
 
     if let Some(parent) = cache_path.parent() {
         let _ = std::fs::create_dir_all(parent);
@@ -187,23 +187,46 @@ async fn google_logout(state: State<'_, AppState>, app: tauri::AppHandle) -> Res
     *state.auth.lock().unwrap() = None;
     *state.account.lock().unwrap() = None;
 
-    let cache_path = app.path()
+    let app_data_dir = app.path()
         .app_data_dir()
-        .map_err(|e| format!("Failed to get app data dir: {}", e))?
-        .join("tokencache_v2.json");
-    let _ = std::fs::remove_file(cache_path);
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+
+    // Remove ALL token cache files (the library may create multiple files)
+    let token_cache_files = [
+        "tokencache_v2.json",
+        "tokenhcache_v2.json", // Old typo version that might exist
+    ];
+
+    for filename in token_cache_files {
+        let cache_path = app_data_dir.join(filename);
+        if cache_path.exists() {
+            let _ = std::fs::remove_file(&cache_path);
+        }
+    }
+
+    // Also check for any yup-oauth2 storage directory
+    let oauth_storage_dir = app_data_dir.join("oauth_storage");
+    if oauth_storage_dir.exists() && oauth_storage_dir.is_dir() {
+        let _ = std::fs::remove_dir_all(&oauth_storage_dir);
+    }
 
     Ok(())
 }
 
 #[tauri::command]
 async fn check_cached_account(app: tauri::AppHandle) -> Result<Option<GoogleAccount>, String> {
-    let cache_path = app.path()
+    let app_data_dir = app.path()
         .app_data_dir()
-        .map_err(|e| format!("Failed to get app data dir: {}", e))?
-        .join("tokencache_v2.json");
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+
+    let cache_path = app_data_dir.join("tokencache_v2.json");
 
     if !cache_path.exists() {
+        // Also check for the old typo version
+        let old_cache_path = app_data_dir.join("tokenhcache_v2.json");
+        if old_cache_path.exists() {
+            return Ok(None); // Don't use the old cache
+        }
         return Ok(None);
     }
 
@@ -1005,7 +1028,7 @@ async fn scan_folder_for_images(folder_path: &str, app: &tauri::AppHandle) -> Re
     let _ = app.emit("thumbnail-total-count", total_files);
 
     // Limit concurrent thumbnail generation to avoid overwhelming CPU
-    let max_concurrent_tasks = std::cmp::min(4, total_files); // Max 4 concurrent thumbnails
+    let max_concurrent_tasks = std::cmp::min(8, total_files); // Max 8 concurrent thumbnails
     let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(max_concurrent_tasks));
 
     // Use JoinSet for concurrent processing
@@ -1139,7 +1162,44 @@ async fn generate_thumbnail_cached(image_path: &str, app: &tauri::AppHandle, tas
                                 None
                             }
                         });
-                    return Ok(ThumbnailResult { thumbnail: asset_url, dimensions });
+
+                    // OPTIMIZATION: Verify EXIF orientation matches cached thumbnail
+                    // If the source file's EXIF has changed, we need to regenerate
+                    let cached_exif_valid = if dimensions.is_some() {
+                        let current_exif = rexif::parse_file(image_path)
+                            .ok()
+                            .and_then(|exif_data| {
+                                for entry in &exif_data.entries {
+                                    if entry.tag == rexif::ExifTag::Orientation {
+                                        if let rexif::TagValue::U16(ref shorts) = entry.value {
+                                            return shorts.first().copied();
+                                        }
+                                    }
+                                }
+                                None
+                            });
+
+                        // Read cached EXIF from thumbnail metadata
+                        let cached_exif = fs::read_to_string(thumbnail_path.join(".exif"))
+                            .ok()
+                            .and_then(|s| s.parse::<u16>().ok());
+
+                        // Check if orientations match
+                        match (current_exif, cached_exif) {
+                            (Some(curr), Some(cached)) if curr == cached => true,
+                            (None, None) => true, // Both no orientation
+                            _ => false // Mismatch or missing data
+                        }
+                    } else {
+                        true // No dimension info means no EXIF check possible
+                    };
+
+                    if cached_exif_valid {
+                        return Ok(ThumbnailResult { thumbnail: asset_url, dimensions });
+                    } else {
+                        println!("[Task {}] EXIF mismatch, regenerating thumbnail", task_id);
+                        // Fall through to regenerate thumbnail
+                    }
                 }
             }
         }
@@ -1155,14 +1215,53 @@ async fn generate_thumbnail_cached(image_path: &str, app: &tauri::AppHandle, tas
     if is_jpeg {
         println!("[Task {}] Processing JPEG", task_id);
 
-        // Step 1: Use mozjpeg for FAST decoding with scaling
+        // OPTIMIZATION 1: Read JPEG file once
         let jpeg_data = fs::read(image_path)
             .map_err(|e| format!("Failed to read JPEG file: {}", e))?;
 
+        // OPTIMIZATION 2: Get dimensions from mozjpeg with 1/8 scale (FAST)
+        let mut decompress_dims = mozjpeg::Decompress::new_mem(&jpeg_data)
+            .map_err(|e| format!("Failed to create mozjpeg decompressor: {}", e))?;
+        decompress_dims.scale(8); // 1/8 scale for super fast dimension extraction
+
+        let dims_image = decompress_dims.rgb()
+            .map_err(|e| format!("Failed to get JPEG dimensions: {}", e))?;
+
+        let img_width = (dims_image.width() * 8) as u32;
+        let img_height = (dims_image.height() * 8) as u32;
+
+        // OPTIMIZATION 3: Read EXIF orientation from JPEG headers (no decoding!)
+        let exif_orientation_value = rexif::parse_file(image_path)
+            .ok()
+            .and_then(|exif_data| {
+                for entry in &exif_data.entries {
+                    if entry.tag == rexif::ExifTag::Orientation {
+                        if let rexif::TagValue::U16(ref shorts) = entry.value {
+                            return shorts.first().copied();
+                        }
+                    }
+                }
+                None
+            });
+
+        // Determine final dimensions (considering EXIF orientation)
+        let needs_swap = exif_orientation_value == Some(6) || exif_orientation_value == Some(8);
+        let (orig_width, orig_height) = if needs_swap {
+            (img_height, img_width)
+        } else {
+            (img_width, img_height)
+        };
+
+        let dimensions = ImageDimensions {
+            width: orig_width,
+            height: orig_height,
+        };
+
+        // Step 4: Now do the actual fast decode with scaling
         let mut decompress = mozjpeg::Decompress::new_mem(&jpeg_data)
             .map_err(|e| format!("Failed to create mozjpeg decompressor: {}", e))?;
 
-        let scale_num = 4; // 1/4 scale for 200px max dimension from 800px images
+        let scale_num = 4; // 1/4 scale for faster processing
         decompress.scale(scale_num);
 
         let mut image = decompress.rgb()
@@ -1171,74 +1270,11 @@ async fn generate_thumbnail_cached(image_path: &str, app: &tauri::AppHandle, tas
         let scaled_width = image.width();
         let scaled_height = image.height();
 
-        // Step 2: Read EXIF orientation tag and dimensions
-        let (exif_width, exif_height, exif_orientation_value) = match image::ImageReader::open(image_path) {
-            Ok(reader) => {
-                match reader.decode() {
-                    Ok(exif_img) => {
-                        let w = exif_img.width();
-                        let h = exif_img.height();
-
-                        // Try to read EXIF orientation tag using rexif
-                        let orientation_tag = rexif::parse_file(image_path)
-                            .ok()
-                            .and_then(|exif_data| {
-                                for entry in &exif_data.entries {
-                                    if entry.tag == rexif::ExifTag::Orientation {
-                                        if let rexif::TagValue::U16(ref shorts) = entry.value {
-                                            return shorts.first().copied();
-                                        }
-                                    }
-                                }
-                                None
-                            });
-
-                        if orientation_tag.is_some() {
-                            println!("[Task {}] EXIF orientation: {:?}", task_id, orientation_tag);
-                        }
-                        (Some(w), Some(h), orientation_tag)
-                    }
-                    Err(_) => {
-                        (None, None, None)
-                    }
-                }
-            }
-            Err(_) => {
-                (None, None, None)
-            }
-        };
-
-        // Step 3: Determine final dimensions (considering EXIF orientation)
-        // Orientation values: 1=normal, 3=180°, 6=90° CW, 8=90° CCW
-        // Values 6 and 8 require swapping width/height
-        let needs_swap = exif_orientation_value == Some(6) || exif_orientation_value == Some(8);
-        let (orig_width, orig_height) = match (exif_width, exif_height) {
-            (Some(w), Some(h)) => {
-                if needs_swap {
-                    (h, w)
-                } else {
-                    (w, h)
-                }
-            },
-            _ => {
-                // Fallback: estimate from mozjpeg scaled dimensions
-                let scale_num_usize = scale_num as usize;
-                let fallback_w = (scaled_width * scale_num_usize) as u32;
-                let fallback_h = (scaled_height * scale_num_usize) as u32;
-                (fallback_w, fallback_h)
-            }
-        };
-
-        let dimensions = ImageDimensions {
-            width: orig_width,
-            height: orig_height,
-        };
-
-        // Step 4: Convert mozjpeg data to image and apply EXIF orientation rotation
+        // Convert mozjpeg data to RGB image
         let img_data = image.read_scanlines()
             .map_err(|e| format!("Failed to read scanlines: {}", e))?;
 
-        let mut rgb_img = image::RgbImage::from_raw(
+        let rgb_img = image::RgbImage::from_raw(
             scaled_width as u32,
             scaled_height as u32,
             img_data
@@ -1246,38 +1282,38 @@ async fn generate_thumbnail_cached(image_path: &str, app: &tauri::AppHandle, tas
 
         let mut dynamic_img = image::DynamicImage::ImageRgb8(rgb_img);
 
-        // Apply rotation based on EXIF orientation
+        // Apply EXIF rotation if needed (for proper thumbnails)
         if let Some(orientation) = exif_orientation_value {
-            println!("[Task {}] Applying orientation: {}", task_id, orientation);
-            dynamic_img = match orientation {
-                1 => dynamic_img, // Normal
-                2 => {
-                    // Flip horizontal
-                    image::DynamicImage::ImageRgb8(
-                        image::imageops::flip_horizontal(&dynamic_img.to_rgb8())
-                    )
-                }
-                3 => dynamic_img.rotate180(),
-                4 => {
-                    // Flip vertical
-                    image::DynamicImage::ImageRgb8(
-                        image::imageops::flip_vertical(&dynamic_img.to_rgb8())
-                    )
-                }
-                5 => {
-                    // Flip horizontal then rotate 270
-                    let flipped = image::imageops::flip_horizontal(&dynamic_img.to_rgb8());
-                    image::DynamicImage::ImageRgb8(flipped).rotate270()
-                }
-                6 => dynamic_img.rotate90(),  // 90° CW - common for portrait photos
-                7 => {
-                    // Flip horizontal then rotate 90
-                    let flipped = image::imageops::flip_horizontal(&dynamic_img.to_rgb8());
-                    image::DynamicImage::ImageRgb8(flipped).rotate90()
-                }
-                8 => dynamic_img.rotate270(), // 90° CCW
-                _ => dynamic_img
-            };
+            if orientation != 1 { // Only rotate if not normal
+                dynamic_img = match orientation {
+                    2 => {
+                        // Flip horizontal
+                        image::DynamicImage::ImageRgb8(
+                            image::imageops::flip_horizontal(&dynamic_img.to_rgb8())
+                        )
+                    }
+                    3 => dynamic_img.rotate180(),
+                    4 => {
+                        // Flip vertical
+                        image::DynamicImage::ImageRgb8(
+                            image::imageops::flip_vertical(&dynamic_img.to_rgb8())
+                        )
+                    }
+                    5 => {
+                        // Flip horizontal then rotate 270
+                        let flipped = image::imageops::flip_horizontal(&dynamic_img.to_rgb8());
+                        image::DynamicImage::ImageRgb8(flipped).rotate270()
+                    }
+                    6 => dynamic_img.rotate90(),  // 90° CW - common for portrait photos
+                    7 => {
+                        // Flip horizontal then rotate 90
+                        let flipped = image::imageops::flip_horizontal(&dynamic_img.to_rgb8());
+                        image::DynamicImage::ImageRgb8(flipped).rotate90()
+                    }
+                    8 => dynamic_img.rotate270(), // 90° CCW
+                    _ => dynamic_img
+                };
+            }
         }
 
         // Resize to thumbnail size (200px max dimension)
@@ -1300,6 +1336,12 @@ async fn generate_thumbnail_cached(image_path: &str, app: &tauri::AppHandle, tas
         // Save dimensions to metadata
         let metadata_content = format!("{}x{}", dimensions.width, dimensions.height);
         let _ = fs::write(&metadata_path, metadata_content);
+
+        // Save EXIF orientation to separate file for cache validation
+        if let Some(orientation) = exif_orientation_value {
+            let exif_path = format!("{}.exif", thumbnail_path.to_string_lossy());
+            let _ = fs::write(&exif_path, orientation.to_string());
+        }
 
         let asset_url = format!("asset://{}", thumbnail_path.to_string_lossy());
         return Ok(ThumbnailResult { thumbnail: asset_url, dimensions: Some(dimensions) });
@@ -1326,7 +1368,7 @@ async fn generate_thumbnail_cached(image_path: &str, app: &tauri::AppHandle, tas
         let scale = max_dim as f32 / dimensions.width.max(dimensions.height) as f32;
         let new_width = (dimensions.width as f32 * scale).round() as u32;
         let new_height = (dimensions.height as f32 * scale).round() as u32;
-        img.resize(new_width, new_height, image::imageops::FilterType::Lanczos3)
+        img.resize(new_width, new_height, image::imageops::FilterType::Nearest) // Use Nearest for speed
     } else {
         img
     };

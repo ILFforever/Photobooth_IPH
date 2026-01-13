@@ -43,7 +43,7 @@ export default function CachedAccountModal({
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px', margin: '20px 0', padding: '16px', background: 'var(--bg-primary)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
             <div className="account-menu-avatar" style={{ width: '48px', height: '48px', fontSize: '20px' }}>
               {cachedAccount.picture ? (
-                <img src={cachedAccount.picture} alt={cachedAccount.name} />
+                <img src={cachedAccount.picture} alt={cachedAccount.name} referrerPolicy="no-referrer" crossOrigin="anonymous" />
               ) : (
                 <span>{cachedAccount.name.charAt(0).toUpperCase()}</span>
               )}

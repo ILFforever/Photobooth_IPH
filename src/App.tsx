@@ -224,6 +224,7 @@ function App() {
 
     const checkAccount = async () => {
       try {
+        // Only check if backend has auth in memory (don't check cached account on startup)
         const savedAccount = await invoke<GoogleAccount | null>("get_account");
         if (savedAccount) {
           setAccount(savedAccount);
