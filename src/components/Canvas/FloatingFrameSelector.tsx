@@ -97,6 +97,7 @@ const FloatingFrameSelector = () => {
     setBackgrounds,
     customCanvasSizes,
     setCustomCanvasSizes,
+    activeSidebarTab,
   } = useCollage();
   const [openPanel, setOpenPanel] = useState<PanelType>(null);
   const [frames, setFrames] = useState<Frame[]>([]);
@@ -107,6 +108,16 @@ const FloatingFrameSelector = () => {
   const [pillBarStyle, setPillBarStyle] = useState({});
   const [deleteMode, setDeleteMode] = useState<'frame' | 'background' | 'canvas' | null>(null);
   const [showCustomCanvasDialog, setShowCustomCanvasDialog] = useState(false);
+
+  // Check if frame selector should be disabled (when creating custom frame)
+  const isFrameDisabled = activeSidebarTab === 'frames';
+
+  // Close frame panel when entering frame creator mode
+  useEffect(() => {
+    if (isFrameDisabled && openPanel === 'frame') {
+      setOpenPanel(null);
+    }
+  }, [isFrameDisabled, openPanel]);
 
   // Update pill bar position on mount and window resize
   useEffect(() => {
@@ -139,12 +150,14 @@ const FloatingFrameSelector = () => {
           invoke<Frame[]>("load_frames"),
           invoke<Background[]>("load_backgrounds"),
         ]);
-        setFrames(loadedFrames);
+        // Filter out the system blank frame from the list
+        const visibleFrames = loadedFrames.filter(f => f.id !== 'system-blank');
+        setFrames(visibleFrames);
         setBackgrounds(loadedBackgrounds);
 
-        // Auto-select first frame if none selected
-        if (!currentFrame && loadedFrames.length > 0) {
-          setCurrentFrame(loadedFrames[0]);
+        // Auto-select first frame if none selected (skip blank frame)
+        if (!currentFrame && visibleFrames.length > 0) {
+          setCurrentFrame(visibleFrames[0]);
         }
 
         // Load custom canvas sizes
@@ -432,19 +445,20 @@ const FloatingFrameSelector = () => {
       <div className="pill-bar" style={pillBarStyle}>
         {/* Frame Selector Button */}
         <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={handleToggleFrame}
+          whileHover={isFrameDisabled ? {} : { scale: 1.05 }}
+          whileTap={isFrameDisabled ? {} : { scale: 0.95 }}
+          onClick={isFrameDisabled ? undefined : handleToggleFrame}
           className={`frame-pill-button ${
             openPanel === "frame" ? "active" : ""
-          }`}
+          } ${isFrameDisabled ? "disabled" : ""}`}
+          disabled={isFrameDisabled}
         >
           <span className="pill-icon">🖼️</span>
           <span className="pill-text">
-            {currentFrame ? currentFrame.name : "Select Frame"}
+            {isFrameDisabled ? "Frame (Disabled)" : (currentFrame ? currentFrame.name : "Select Frame")}
           </span>
           <span className="pill-indicator">
-            {openPanel === "frame" ? "▼" : "▲"}
+            {isFrameDisabled ? "🔒" : (openPanel === "frame" ? "▼" : "▲")}
           </span>
         </motion.button>
 
@@ -580,11 +594,13 @@ const FloatingFrameSelector = () => {
                                     key={zone.id}
                                     className="frame-zone-box"
                                     style={{
-                                      left: `${zone.x}%`,
-                                      top: `${zone.y}%`,
-                                      width: `${zone.width}%`,
-                                      height: `${zone.height}%`,
+                                      position: 'absolute',
+                                      left: `${(zone.x / frame.width) * 100}%`,
+                                      top: `${(zone.y / frame.height) * 100}%`,
+                                      width: `${(zone.width / frame.width) * 100}%`,
+                                      height: `${(zone.height / frame.height) * 100}%`,
                                       transform: `rotate(${zone.rotation}deg)`,
+                                      borderRadius: zone.shape === 'circle' ? '50%' : (zone.shape === 'rounded_rect' ? '8px' : '2px'),
                                     }}
                                   />
                                 ))}

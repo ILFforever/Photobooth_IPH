@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { WorkingFolderGallery } from "../WorkingFolder/WorkingFolderGallery";
 import ImageManipulator from "../Canvas/ImageManipulator";
+import FrameCreator from "./FrameCreator";
 import { useCollage } from "../../contexts/CollageContext";
 import "./CollageSidebar.css";
 
@@ -27,15 +28,26 @@ const CollageSidebar = () => {
         >
           <span className="tab-icon">✏️</span>
         </motion.button>
+        <motion.button
+          className={`sidebar-tab ${activeSidebarTab === 'frames' ? 'active' : ''}`}
+          onClick={() => setActiveSidebarTab('frames')}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+        >
+          <span className="tab-icon">🖼️</span>
+        </motion.button>
       </div>
 
-      {/* Content Area - Both components stay mounted */}
+      {/* Content Area - All components stay mounted */}
       <div className="sidebar-content">
         <div className={`sidebar-panel ${activeSidebarTab === 'file' ? 'panel-visible' : 'panel-hidden'}`}>
           <WorkingFolderGallery />
         </div>
         <div className={`sidebar-panel ${activeSidebarTab === 'edit' ? 'panel-visible' : 'panel-hidden'}`}>
           <ImageManipulator />
+        </div>
+        <div className={`sidebar-panel ${activeSidebarTab === 'frames' ? 'panel-visible' : 'panel-hidden'}`}>
+          <FrameCreator />
         </div>
       </div>
     </div>

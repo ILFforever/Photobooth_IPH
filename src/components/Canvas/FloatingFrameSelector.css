@@ -57,6 +57,17 @@
   box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.5);
 }
 
+/* Disabled state for frame selector when creating custom frame */
+.frame-pill-button.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: rgba(100, 100, 100, 0.2);
+}
+
+.frame-pill-button.disabled:hover {
+  background: rgba(100, 100, 100, 0.2);
+}
+
 .pill-icon {
   font-size: 1.125rem;
 }

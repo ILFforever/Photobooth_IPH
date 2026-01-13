@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useCollage } from "../../contexts/CollageContext";
 import { DEFAULT_TRANSFORM } from "../../types/collage";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import "./ImageManipulator.css";
 
 const ImageManipulator = () => {
@@ -11,6 +12,15 @@ const ImageManipulator = () => {
 
   const placedImage = selectedZone ? placedImages.get(selectedZone) : null;
   const isBackgroundMode = isBackgroundSelected && background;
+
+  // Convert file paths to Tauri-compatible URLs for preview
+  const previewSrc = isBackgroundMode
+    ? (background?.startsWith('http') || background?.startsWith('data:')
+        ? background
+        : convertFileSrc(background?.replace('asset://', '') || ''))
+    : placedImage
+      ? convertFileSrc(placedImage.sourceFile.replace('asset://', ''))
+      : '';
 
   // Reset panning state when selection changes
   useEffect(() => {
@@ -151,7 +161,7 @@ const ImageManipulator = () => {
           onMouseLeave={handlePanEnd}
         >
           <img
-            src={isBackgroundMode ? background : (placedImage?.thumbnail || placedImage?.sourceFile)}
+            src={previewSrc}
             alt="Preview"
             style={{
               transform: isBackgroundMode

@@ -49,8 +49,11 @@ interface CollageContextType {
   setCanvasZoom: (zoom: number) => void;
   customCanvasSizes: CanvasSize[];
   setCustomCanvasSizes: (sizes: CanvasSize[]) => void;
-  activeSidebarTab: 'file' | 'edit';
-  setActiveSidebarTab: (tab: 'file' | 'edit') => void;
+  activeSidebarTab: 'file' | 'edit' | 'frames';
+  setActiveSidebarTab: (tab: 'file' | 'edit' | 'frames') => void;
+  customFrames: Frame[];
+  setCustomFrames: (frames: Frame[]) => void;
+  reloadFrames: () => Promise<void>;
 }
 
 const CollageContext = createContext<CollageContextType | undefined>(undefined);
@@ -72,17 +75,19 @@ export function CollageProvider({ children }: { children: ReactNode }) {
   const [isBackgroundSelected, setIsBackgroundSelected] = useState<boolean>(false);
   const [canvasZoom, setCanvasZoom] = useState<number>(1);
   const [customCanvasSizes, setCustomCanvasSizes] = useState<CanvasSize[]>([]);
-  const [activeSidebarTab, setActiveSidebarTab] = useState<'file' | 'edit'>('file');
+  const [activeSidebarTab, setActiveSidebarTab] = useState<'file' | 'edit' | 'frames'>('file');
+  const [customFrames, setCustomFrames] = useState<Frame[]>([]);
 
   // Load backgrounds and settings on mount
   useEffect(() => {
     const loadSettings = async () => {
       try {
-        const [loadedBgs, savedBg, savedTransform, customCanvases] = await Promise.all([
+        const [loadedBgs, savedBg, savedTransform, customCanvases, loadedFrames] = await Promise.all([
           invoke<Background[]>('load_backgrounds'),
           invoke<string | null>('get_app_setting', { key: 'selected_background' }).catch(() => null),
           invoke<string>('get_app_setting', { key: 'background_transform' }).catch(() => null),
           invoke<Array<{ width: number; height: number; name: string; created_at: number }>>('get_custom_canvas_sizes').catch(() => []),
+          invoke<Frame[]>('load_frames').catch(() => []),
         ]);
 
         setBackgrounds(loadedBgs);
@@ -99,6 +104,9 @@ export function CollageProvider({ children }: { children: ReactNode }) {
           isCustom: true,
           createdAt: c.created_at.toString(),
         })));
+
+        // Load custom frames (non-default frames)
+        setCustomFrames(loadedFrames.filter(f => !f.is_default));
       } catch (error) {
         console.error('Failed to load settings:', error);
       }
@@ -145,6 +153,15 @@ export function CollageProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  const reloadFrames = async () => {
+    try {
+      const loadedFrames = await invoke<Frame[]>('load_frames');
+      setCustomFrames(loadedFrames.filter(f => !f.is_default));
+    } catch (error) {
+      console.error('Failed to reload frames:', error);
+    }
+  };
+
   return (
     <CollageContext.Provider
       value={{
@@ -173,6 +190,9 @@ export function CollageProvider({ children }: { children: ReactNode }) {
         setCustomCanvasSizes,
         activeSidebarTab,
         setActiveSidebarTab,
+        customFrames,
+        setCustomFrames,
+        reloadFrames,
       }}
     >
       {children}

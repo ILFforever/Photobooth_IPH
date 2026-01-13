@@ -306,9 +306,9 @@ function ImageZone({ zone }: ImageZoneProps) {
       // We want to scale it up so it fills the zone better (like objectFit: 'cover' but allowing pan)
       let scale = 1.0;
       if (item.dimensions) {
-        // Calculate actual zone dimensions in pixels for correct aspect ratio
-        const zoneWidthPx = (zone.width / 100) * canvasSize.width;
-        const zoneHeightPx = (zone.height / 100) * canvasSize.height;
+        // FIXED POSITIONING: Zone dimensions are now in pixels directly
+        const zoneWidthPx = zone.width;
+        const zoneHeightPx = zone.height;
 
         // Debug logging
 
@@ -542,13 +542,13 @@ function ImageZone({ zone }: ImageZoneProps) {
 
   const zoneStyle = {
     position: 'absolute' as const,
-    left: `${zone.x}%`,
-    top: `${zone.y}%`,
-    width: `${zone.width}%`,
-    height: `${zone.height}%`,
+    left: `${zone.x}px`,
+    top: `${zone.y}px`,
+    width: `${zone.width}px`,
+    height: `${zone.height}px`,
     transform: `rotate(${zone.rotation}deg)`,
     border: selectedZone === zone.id ? '3px solid var(--accent-blue)' : '2px dashed rgba(255, 255, 255, 0.3)',
-    borderRadius: '8px',
+    borderRadius: zone.shape === 'circle' ? '50%' : (zone.shape === 'rounded_rect' ? '16px' : '8px'),
     backgroundColor: isOver ? 'rgba(59, 130, 246, 0.2)' : 'rgba(0, 0, 0, 0.1)',
     cursor: 'pointer',
     overflow: 'hidden',
@@ -816,10 +816,10 @@ function ImageZoneOverflow({ zone, placedImage }: ImageZoneOverflowProps) {
       ref={overflowRef}
       style={{
         position: 'absolute',
-        left: `${zone.x}%`,
-        top: `${zone.y}%`,
-        width: `${zone.width}%`,
-        height: `${zone.height}%`,
+        left: `${zone.x}px`,
+        top: `${zone.y}px`,
+        width: `${zone.width}px`,
+        height: `${zone.height}px`,
         transform: `rotate(${zone.rotation}deg)`,
         pointerEvents: 'auto',
         zIndex: 1,
@@ -959,7 +959,7 @@ function ImageZoneOverflow({ zone, placedImage }: ImageZoneOverflowProps) {
 }
 
 export default function CollageCanvas({ width: propWidth, height: propHeight }: CollageCanvasProps) {
-  const { currentFrame, setCurrentFrame, background, canvasSize, backgroundTransform, setBackgroundTransform, isBackgroundSelected, setIsBackgroundSelected, canvasZoom, setCanvasZoom, selectedZone, setSelectedZone, placedImages } = useCollage();
+  const { currentFrame, setCurrentFrame, background, canvasSize, backgroundTransform, setBackgroundTransform, isBackgroundSelected, setIsBackgroundSelected, canvasZoom, setCanvasZoom, selectedZone, setSelectedZone, placedImages, setActiveSidebarTab, activeSidebarTab } = useCollage();
   const canvasRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [localZoom, setLocalZoom] = useState(canvasZoom);
@@ -970,6 +970,60 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
   const setCanvasZoomRef = useRef(setCanvasZoom);
   const setLocalZoomRef = useRef(setLocalZoom);
   const setZoomCenterRef = useRef(setZoomCenter);
+
+  // Handle drop for frame creation zones
+  const handleCanvasDrop = useCallback((e: React.DragEvent) => {
+    if (activeSidebarTab !== 'frames') return;
+
+    const zoneData = e.dataTransfer.getData('zone');
+    if (!zoneData) return;
+
+    const zoneConfig = JSON.parse(zoneData);
+
+    // Get canvas bounds
+    const canvasRect = canvasRef.current?.getBoundingClientRect();
+    if (!canvasRect) return;
+
+    // Calculate drop position relative to canvas
+    const dropX = e.clientX - canvasRect.left;
+    const dropY = e.clientY - canvasRect.top;
+
+    // Convert to canvas coordinates (internal size)
+    const internalWidth = canvasSize.width;
+    const internalHeight = canvasSize.height;
+
+    const scaleX = internalWidth / canvasRect.width;
+    const scaleY = internalHeight / canvasRect.height;
+
+    const canvasX = dropX * scaleX;
+    const canvasY = dropY * scaleY;
+
+    // Create zone with dropped position
+    const newZone = {
+      id: `zone-${Date.now()}`,
+      x: Math.round(Math.max(0, canvasX - 150)), // Center on drop position
+      y: Math.round(Math.max(0, canvasY - 150)),
+      width: 300,
+      height: 300,
+      rotation: 0,
+      shape: zoneConfig.shape || 'rectangle',
+    };
+
+    // Update current frame with new zone
+    if (currentFrame) {
+      setCurrentFrame({
+        ...currentFrame,
+        zones: [...currentFrame.zones, newZone],
+      });
+    }
+  }, [activeSidebarTab, canvasSize, currentFrame, setCurrentFrame]);
+
+  const handleCanvasDragOver = useCallback((e: React.DragEvent) => {
+    if (activeSidebarTab === 'frames') {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+    }
+  }, [activeSidebarTab]);
 
   // Keep refs in sync with latest functions and values
   useEffect(() => {
@@ -1063,14 +1117,7 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
     }
   }, [currentFrame, handleWheel, handleTouchStart, handleTouchMove]);
 
-  // Debug: Log background changes
-  useEffect(() => {
-    if (background) {
-      console.log('Background loaded:', background);
-    }
-  }, [background]);
-
-  // Use canvas size from context, falling back to props
+// Use canvas size from context, falling back to props
   const width = propWidth ?? canvasSize.width;
   const height = propHeight ?? canvasSize.height;
 
@@ -1201,14 +1248,21 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
           ref={containerRef}
           style={containerStyle}
           onClick={() => {
-            // Clicking outside the canvas (in the container area) deselects everything
+            // Clicking outside the canvas (in the container area) deselects everything and returns to file tab
             setSelectedZone(null);
             setIsBackgroundSelected(false);
+            setActiveSidebarTab('file');
           }}
         >
           {/* Invisible spacers to allow scrolling in all directions when zoomed */}
           {spacing > 0 && <div style={{ height: `${spacing}px`, flexShrink: 0 }} />}
-          <div ref={canvasRef} style={canvasStyle} className="collage-canvas">
+          <div
+            ref={canvasRef}
+            style={canvasStyle}
+            className="collage-canvas"
+            onDrop={handleCanvasDrop}
+            onDragOver={handleCanvasDragOver}
+          >
             {/* Overflow visualizations - rendered OUTSIDE inner canvas so they can extend beyond */}
             {/* Background overflow */}
             {isBackgroundSelected && background && backgroundTransform.scale > 1 && bgSrc && (

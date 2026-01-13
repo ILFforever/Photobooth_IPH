@@ -1,0 +1,408 @@
+.frame-creator {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem;
+  height: 100%;
+  overflow-y: auto;
+}
+
+/* Zones List */
+.zones-list {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+.zones-list h4 {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.zones-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 0.5rem;
+}
+
+.zone-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.zone-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.zone-item.selected {
+  border-color: var(--accent-blue);
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.zone-item-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.zone-item-number {
+  font-weight: 600;
+  color: var(--accent-blue);
+  min-width: 20px;
+}
+
+.zone-item-shape {
+  font-size: 1rem;
+}
+
+.zone-item-size {
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.zone-item-delete {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.zone-item-delete:hover {
+  background: var(--accent-red);
+  color: white;
+}
+
+/* Shape Selector */
+.shape-selector h4 {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.shape-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+}
+
+.shape-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.5rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 0.75rem;
+}
+
+.shape-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.shape-btn.active {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: var(--accent-blue);
+  color: white;
+}
+
+.shape-icon {
+  width: 32px;
+  height: 32px;
+  background: rgba(255, 255, 255, 0.3);
+  border: 2px solid rgba(255, 255, 255, 0.5);
+}
+
+.shape-btn.active .shape-icon {
+  background: var(--accent-blue);
+  border-color: var(--accent-blue);
+}
+
+/* Canvas Preview */
+.canvas-preview-container {
+  display: flex;
+  justify-content: center;
+  padding: 1rem 0;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+}
+
+.canvas-preview {
+  position: relative;
+  width: 200px;
+  aspect-ratio: 1200 / 1800;
+  background: white;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.zone-editor {
+  transition: all 0.2s;
+}
+
+.zone-editor:hover {
+  background-color: rgba(59, 130, 246, 0.2) !important;
+}
+
+.zone-label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 0.7rem;
+  color: rgba(0, 0, 0, 0.6);
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.zone-delete-btn {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent-red);
+  color: white;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.zone-editor.selected .zone-delete-btn {
+  opacity: 1;
+}
+
+/* Zone Controls */
+.zone-controls {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+.zone-controls h4 {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.control-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.control-row:last-child {
+  margin-bottom: 0;
+}
+
+.control-row label {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.6);
+  min-width: 45px;
+}
+
+.control-row input[type="number"],
+.control-row select {
+  flex: 1;
+  padding: 0.4rem;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  color: white;
+  font-size: 0.8rem;
+}
+
+.control-row input[type="number"]:focus,
+.control-row select:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+}
+
+/* Add Zone Button */
+.add-zone-btn {
+  width: 100%;
+  padding: 0.75rem;
+  background: rgba(59, 130, 246, 0.2);
+  border: 1px dashed var(--accent-blue);
+  border-radius: 8px;
+  color: var(--accent-blue);
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+}
+
+.add-zone-btn:hover {
+  background: rgba(59, 130, 246, 0.3);
+  border-style: solid;
+}
+
+/* Frame Save Section */
+.frame-save-section {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.frame-name-input {
+  flex: 1;
+  padding: 0.75rem;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: white;
+  font-size: 0.9rem;
+}
+
+.frame-name-input:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+}
+
+.frame-name-input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.save-frame-btn {
+  padding: 0.75rem 1.5rem;
+  background: var(--accent-blue);
+  border: none;
+  border-radius: 8px;
+  color: white;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.save-frame-btn:hover {
+  background: #2563eb;
+}
+
+/* Saved Frames List */
+.saved-frames-list {
+  margin-top: auto;
+}
+
+.saved-frames-list h4 {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.frames-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.saved-frame-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  cursor: grab;
+  transition: all 0.2s;
+}
+
+.saved-frame-item:active {
+  cursor: grabbing;
+}
+
+.saved-frame-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.frame-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.frame-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: white;
+}
+
+.frame-zones-count {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.frame-delete-btn {
+  padding: 0.25rem 0.5rem;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: all 0.2s;
+}
+
+.frame-delete-btn:hover {
+  background: rgba(239, 68, 68, 0.2);
+}
+
+.empty-frames {
+  text-align: center;
+  padding: 2rem;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 0.9rem;
+}
+
+/* Scrollbar Styling */
+.frame-creator::-webkit-scrollbar,
+.frames-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.frame-creator::-webkit-scrollbar-track,
+.frames-list::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 3px;
+}
+
+.frame-creator::-webkit-scrollbar-thumb,
+.frames-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+.frame-creator::-webkit-scrollbar-thumb:hover,
+.frames-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}

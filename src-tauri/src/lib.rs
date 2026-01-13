@@ -53,11 +53,17 @@ struct DriveFolder {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 struct FrameZone {
     id: String,
-    x: f32,         // X position as percentage (0-100)
-    y: f32,         // Y position as percentage (0-100)
-    width: f32,     // Width as percentage (0-100)
-    height: f32,    // Height as percentage (0-100)
+    // Fixed positioning system - all in pixels
+    x: i32,         // X position in pixels from left edge
+    y: i32,         // Y position in pixels from top edge
+    width: u32,     // Width in pixels (fixed size)
+    height: u32,    // Height in pixels (fixed size)
     rotation: f32,  // Rotation in degrees
+    // Shape type for the zone
+    shape: String,  // "rectangle", "circle", "rounded_rect"
+    // Optional spacing properties for distance calculations
+    margin_right: Option<u32>,  // Distance to next zone on right (in pixels)
+    margin_bottom: Option<u32>, // Distance to next zone below (in pixels)
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -1121,8 +1127,7 @@ struct ThumbnailResult {
     dimensions: Option<ImageDimensions>,
 }
 
-async fn generate_thumbnail_cached(image_path: &str, app: &tauri::AppHandle, task_id: usize) -> Result<ThumbnailResult, String> {
-    println!("[Task {}] Generating thumbnail for {}", task_id, image_path);
+async fn generate_thumbnail_cached(image_path: &str, app: &tauri::AppHandle, _task_id: usize) -> Result<ThumbnailResult, String> {
 
     // Get thumbnail path
     let app_data_dir = app.path().app_data_dir()
@@ -1147,7 +1152,6 @@ async fn generate_thumbnail_cached(image_path: &str, app: &tauri::AppHandle, tas
         if let Ok(source_mtime) = fs::metadata(&path_buf).and_then(|m| m.modified()) {
             if let Ok(thumb_mtime) = fs::metadata(&thumbnail_path).and_then(|m| m.modified()) {
                 if thumb_mtime > source_mtime {
-                    println!("[Task {}] Using cached thumbnail", task_id);
                     // Thumbnail exists and is newer, load dimensions from metadata file
                     let asset_url = format!("asset://{}", thumbnail_path.to_string_lossy());
                     let dimensions = fs::read_to_string(&metadata_path)
@@ -1163,41 +1167,37 @@ async fn generate_thumbnail_cached(image_path: &str, app: &tauri::AppHandle, tas
                             }
                         });
 
-                    // OPTIMIZATION: Verify EXIF orientation matches cached thumbnail
-                    // If the source file's EXIF has changed, we need to regenerate
-                    let cached_exif_valid = if dimensions.is_some() {
-                        let current_exif = rexif::parse_file(image_path)
+                    // OPTIMIZATION: Verify EXIF DateTimeOriginal matches cached thumbnail
+                    // If the photo was re-taken/re-edited, we need to regenerate the thumbnail
+                    let cached_datetime_valid = if dimensions.is_some() {
+                        let current_datetime: Option<String> = rexif::parse_file(image_path)
                             .ok()
                             .and_then(|exif_data| {
                                 for entry in &exif_data.entries {
-                                    if entry.tag == rexif::ExifTag::Orientation {
-                                        if let rexif::TagValue::U16(ref shorts) = entry.value {
-                                            return shorts.first().copied();
+                                    if entry.tag == rexif::ExifTag::DateTimeOriginal {
+                                        if let rexif::TagValue::Ascii(ref datetime_str) = entry.value {
+                                            return Some(datetime_str.clone());
                                         }
                                     }
                                 }
-                                None
+                                None::<String>
                             });
 
-                        // Read cached EXIF from thumbnail metadata
-                        let cached_exif = fs::read_to_string(thumbnail_path.join(".exif"))
-                            .ok()
-                            .and_then(|s| s.parse::<u16>().ok());
+                        // Read cached datetime from thumbnail metadata
+                        let cached_datetime_path = thumbnail_path.with_extension("jpg.datetime");
+                        let cached_datetime: Option<String> = fs::read_to_string(&cached_datetime_path)
+                            .ok();
 
-                        // Check if orientations match
-                        match (current_exif, cached_exif) {
-                            (Some(curr), Some(cached)) if curr == cached => true,
-                            (None, None) => true, // Both no orientation
-                            _ => false // Mismatch or missing data
-                        }
+                        // Check if datetimes match
+                        let datetime_match = current_datetime == cached_datetime;
+                        datetime_match
                     } else {
-                        true // No dimension info means no EXIF check possible
+                        true // No dimension info means no check possible
                     };
 
-                    if cached_exif_valid {
+                    if cached_datetime_valid {
                         return Ok(ThumbnailResult { thumbnail: asset_url, dimensions });
                     } else {
-                        println!("[Task {}] EXIF mismatch, regenerating thumbnail", task_id);
                         // Fall through to regenerate thumbnail
                     }
                 }
@@ -1213,8 +1213,6 @@ async fn generate_thumbnail_cached(image_path: &str, app: &tauri::AppHandle, tas
         .unwrap_or(false);
 
     if is_jpeg {
-        println!("[Task {}] Processing JPEG", task_id);
-
         // OPTIMIZATION 1: Read JPEG file once
         let jpeg_data = fs::read(image_path)
             .map_err(|e| format!("Failed to read JPEG file: {}", e))?;
@@ -1231,6 +1229,8 @@ async fn generate_thumbnail_cached(image_path: &str, app: &tauri::AppHandle, tas
         let img_height = (dims_image.height() * 8) as u32;
 
         // OPTIMIZATION 3: Read EXIF orientation from JPEG headers (no decoding!)
+        // NOTE: mozjpeg dimensions are already in display orientation (EXIF-aware)
+        // We read EXIF here for thumbnail rotation purposes only, not dimension swapping
         let exif_orientation_value = rexif::parse_file(image_path)
             .ok()
             .and_then(|exif_data| {
@@ -1244,17 +1244,11 @@ async fn generate_thumbnail_cached(image_path: &str, app: &tauri::AppHandle, tas
                 None
             });
 
-        // Determine final dimensions (considering EXIF orientation)
-        let needs_swap = exif_orientation_value == Some(6) || exif_orientation_value == Some(8);
-        let (orig_width, orig_height) = if needs_swap {
-            (img_height, img_width)
-        } else {
-            (img_width, img_height)
-        };
-
+        // mozjpeg returns dimensions in display orientation (already EXIF-aware)
+        // No need to swap - use dimensions as-is
         let dimensions = ImageDimensions {
-            width: orig_width,
-            height: orig_height,
+            width: img_width,
+            height: img_height,
         };
 
         // Step 4: Now do the actual fast decode with scaling
@@ -1331,16 +1325,27 @@ async fn generate_thumbnail_cached(image_path: &str, app: &tauri::AppHandle, tas
         thumbnail.save_with_format(&thumbnail_path, image::ImageFormat::Jpeg)
             .map_err(|e| format!("Failed to save thumbnail: {}", e))?;
 
-        println!("[Task {}] Saved thumbnail: {}x{}", task_id, orig_width, orig_height);
-
         // Save dimensions to metadata
         let metadata_content = format!("{}x{}", dimensions.width, dimensions.height);
         let _ = fs::write(&metadata_path, metadata_content);
 
-        // Save EXIF orientation to separate file for cache validation
-        if let Some(orientation) = exif_orientation_value {
-            let exif_path = format!("{}.exif", thumbnail_path.to_string_lossy());
-            let _ = fs::write(&exif_path, orientation.to_string());
+        // Save EXIF DateTimeOriginal for cache validation
+        let datetime_original: Option<String> = rexif::parse_file(image_path)
+            .ok()
+            .and_then(|exif_data| {
+                for entry in &exif_data.entries {
+                    if entry.tag == rexif::ExifTag::DateTimeOriginal {
+                        if let rexif::TagValue::Ascii(ref datetime_str) = entry.value {
+                            return Some(datetime_str.clone());
+                        }
+                    }
+                }
+                None::<String>
+            });
+
+        if let Some(datetime) = datetime_original {
+            let datetime_path = thumbnail_path.with_extension("jpg.datetime");
+            let _ = fs::write(&datetime_path, datetime.clone());
         }
 
         let asset_url = format!("asset://{}", thumbnail_path.to_string_lossy());
@@ -1348,7 +1353,6 @@ async fn generate_thumbnail_cached(image_path: &str, app: &tauri::AppHandle, tas
     }
 
     // Fallback for non-JPEG images (PNG, etc.)
-    println!("[Task {}] Processing PNG/other", task_id);
 
     let img = image::ImageReader::open(image_path)
         .map_err(|e| format!("Failed to open image: {}", e))?
@@ -1375,8 +1379,6 @@ async fn generate_thumbnail_cached(image_path: &str, app: &tauri::AppHandle, tas
 
     thumbnail.save_with_format(&thumbnail_path, image::ImageFormat::Jpeg)
         .map_err(|e| format!("Failed to save thumbnail: {}", e))?;
-
-    println!("[Task {}] Saved thumbnail: {}x{}", task_id, dimensions.width, dimensions.height);
 
     // Save dimensions to metadata
     let metadata_content = format!("{}x{}", dimensions.width, dimensions.height);
@@ -1412,8 +1414,21 @@ fn initialize_default_frames(app: &tauri::AppHandle) -> Result<(), String> {
         }
     }
 
-    // Create 3 default frames
+    // Create 4 default frames with fixed pixel positioning (including blank)
     let default_frames = vec![
+        // Blank frame - no zones, for frame creator mode
+        Frame {
+            id: "system-blank".to_string(),
+            name: "Blank".to_string(),
+            description: "Blank canvas with no zones".to_string(),
+            width: 1200,
+            height: 1800,
+            zones: vec![],
+            thumbnail: None,
+            is_default: true,
+            created_at: chrono::Utc::now().to_rfc3339(),
+        },
+        // Single Photo - centered rectangle with fixed margins
         Frame {
             id: "default-single".to_string(),
             name: "Single Photo".to_string(),
@@ -1423,17 +1438,21 @@ fn initialize_default_frames(app: &tauri::AppHandle) -> Result<(), String> {
             zones: vec![
                 FrameZone {
                     id: "zone-1".to_string(),
-                    x: 10.0,
-                    y: 10.0,
-                    width: 80.0,
-                    height: 80.0,
+                    x: 100,      // 100px from left
+                    y: 100,      // 100px from top
+                    width: 1000, // 1000px wide (1200 - 100 - 100)
+                    height: 1600, // 1600px tall (1800 - 100 - 100)
                     rotation: 0.0,
+                    shape: "rectangle".to_string(),
+                    margin_right: None,
+                    margin_bottom: None,
                 }
             ],
             thumbnail: None,
             is_default: true,
             created_at: chrono::Utc::now().to_rfc3339(),
         },
+        // Side by Side - two equal zones with 50px gap and 100px margins
         Frame {
             id: "default-double".to_string(),
             name: "Side by Side".to_string(),
@@ -1443,25 +1462,32 @@ fn initialize_default_frames(app: &tauri::AppHandle) -> Result<(), String> {
             zones: vec![
                 FrameZone {
                     id: "zone-1".to_string(),
-                    x: 5.0,
-                    y: 25.0,
-                    width: 42.0,
-                    height: 50.0,
+                    x: 100,      // 100px from left
+                    y: 200,      // 200px from top
+                    width: 475,  // (1200 - 100 - 100 - 50) / 2
+                    height: 1400, // 1800 - 200 - 200
                     rotation: 0.0,
+                    shape: "rectangle".to_string(),
+                    margin_right: Some(50), // 50px gap to next zone
+                    margin_bottom: None,
                 },
                 FrameZone {
                     id: "zone-2".to_string(),
-                    x: 53.0,
-                    y: 25.0,
-                    width: 42.0,
-                    height: 50.0,
+                    x: 625,      // 100 + 475 + 50 (previous + gap)
+                    y: 200,      // Same top as zone-1
+                    width: 475,  // Same width as zone-1
+                    height: 1400, // Same height as zone-1
                     rotation: 0.0,
+                    shape: "rectangle".to_string(),
+                    margin_right: None,
+                    margin_bottom: None,
                 }
             ],
             thumbnail: None,
             is_default: true,
             created_at: chrono::Utc::now().to_rfc3339(),
         },
+        // Photo Grid - 2x2 grid with 50px gaps and 100px margins
         Frame {
             id: "default-grid".to_string(),
             name: "Photo Grid".to_string(),
@@ -1471,35 +1497,47 @@ fn initialize_default_frames(app: &tauri::AppHandle) -> Result<(), String> {
             zones: vec![
                 FrameZone {
                     id: "zone-1".to_string(),
-                    x: 10.0,
-                    y: 10.0,
-                    width: 35.0,
-                    height: 35.0,
+                    x: 100,      // 100px from left
+                    y: 100,      // 100px from top
+                    width: 475,  // (1200 - 100 - 100 - 50) / 2
+                    height: 775, // (1800 - 100 - 100 - 50) / 2
                     rotation: 0.0,
+                    shape: "rectangle".to_string(),
+                    margin_right: Some(50), // 50px gap to zone-2
+                    margin_bottom: Some(50), // 50px gap to zone-3
                 },
                 FrameZone {
                     id: "zone-2".to_string(),
-                    x: 55.0,
-                    y: 10.0,
-                    width: 35.0,
-                    height: 35.0,
+                    x: 625,      // 100 + 475 + 50
+                    y: 100,      // Same top as zone-1
+                    width: 475,  // Same as zone-1
+                    height: 775, // Same as zone-1
                     rotation: 0.0,
+                    shape: "rectangle".to_string(),
+                    margin_right: None,
+                    margin_bottom: Some(50), // 50px gap to zone-4
                 },
                 FrameZone {
                     id: "zone-3".to_string(),
-                    x: 10.0,
-                    y: 55.0,
-                    width: 35.0,
-                    height: 35.0,
+                    x: 100,      // Same left as zone-1
+                    y: 925,      // 100 + 775 + 50
+                    width: 475,  // Same as zone-1
+                    height: 775, // Same as zone-1
                     rotation: 0.0,
+                    shape: "rectangle".to_string(),
+                    margin_right: Some(50), // 50px gap to zone-4
+                    margin_bottom: None,
                 },
                 FrameZone {
                     id: "zone-4".to_string(),
-                    x: 55.0,
-                    y: 55.0,
-                    width: 35.0,
-                    height: 35.0,
+                    x: 625,      // Same left as zone-2
+                    y: 925,      // Same top as zone-3
+                    width: 475,  // Same as zone-1
+                    height: 775, // Same as zone-1
                     rotation: 0.0,
+                    shape: "rectangle".to_string(),
+                    margin_right: None,
+                    margin_bottom: None,
                 }
             ],
             thumbnail: None,
@@ -1594,10 +1632,63 @@ async fn delete_frame(app: tauri::AppHandle, frame_id: String) -> Result<(), Str
         return Err(format!("Frame not found: {}", frame_id));
     }
 
+    // Prevent deleting default frames
+    let frame_content = fs::read_to_string(&frame_path)
+        .map_err(|e| format!("Failed to read frame file: {}", e))?;
+    let frame_to_delete: Frame = serde_json::from_str(&frame_content)
+        .map_err(|e| format!("Failed to parse frame JSON: {}", e))?;
+
+    if frame_to_delete.is_default {
+        return Err("Cannot delete default frames".to_string());
+    }
+
     fs::remove_file(frame_path)
         .map_err(|e| format!("Failed to delete frame: {}", e))?;
 
     Ok(())
+}
+
+/// Duplicate a frame (create a copy with a new ID)
+#[tauri::command]
+async fn duplicate_frame(app: tauri::AppHandle, frame_id: String) -> Result<Frame, String> {
+    let frames_dir = get_frames_dir(&app)?;
+    let frame_path = frames_dir.join(format!("{}.json", frame_id));
+
+    if !frame_path.exists() {
+        return Err(format!("Frame not found: {}", frame_id));
+    }
+
+    // Load the original frame
+    let frame_content = fs::read_to_string(&frame_path)
+        .map_err(|e| format!("Failed to read frame file: {}", e))?;
+    let original: Frame = serde_json::from_str(&frame_content)
+        .map_err(|e| format!("Failed to parse frame JSON: {}", e))?;
+
+    // Create a new frame with a unique ID and is_default = false
+    let duplicated = Frame {
+        id: format!("custom-{}-{}",
+            chrono::Utc::now().timestamp(),
+            uuid::Uuid::new_v4().to_string().chars().take(8).collect::<String>()
+        ),
+        name: format!("{} (Copy)", original.name),
+        description: original.description.clone(),
+        width: original.width,
+        height: original.height,
+        zones: original.zones,
+        thumbnail: original.thumbnail,
+        is_default: false,
+        created_at: chrono::Utc::now().to_rfc3339(),
+    };
+
+    // Save the duplicated frame
+    let duplicated_path = frames_dir.join(format!("{}.json", duplicated.id));
+    let json = serde_json::to_string_pretty(&duplicated)
+        .map_err(|e| format!("Failed to serialize frame: {}", e))?;
+
+    fs::write(duplicated_path, json)
+        .map_err(|e| format!("Failed to write frame file: {}", e))?;
+
+    Ok(duplicated)
 }
 
 // ==================== END FRAME SYSTEM ====================
@@ -1994,7 +2085,7 @@ pub fn run() {
             get_images_with_metadata, save_dropped_image, clear_temp_images,
             remove_temp_image, get_history, clear_history,
             select_working_folder,
-            save_frame, load_frames, delete_frame,
+            save_frame, load_frames, delete_frame, duplicate_frame,
             save_background, load_backgrounds, delete_background, import_background,
             save_custom_canvas_size, get_custom_canvas_sizes, delete_custom_canvas_size
         ])
