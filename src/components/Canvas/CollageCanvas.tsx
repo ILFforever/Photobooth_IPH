@@ -21,7 +21,7 @@ interface ImageZoneProps {
 
 // Background image layer - treated as a large frame that covers the entire canvas
 function BackgroundLayer() {
-  const { background, canvasSize, backgroundTransform, setBackgroundTransform, isBackgroundSelected, setIsBackgroundSelected, selectedZone, setSelectedZone } = useCollage();
+  const { background, canvasSize, backgroundTransform, setBackgroundTransform, isBackgroundSelected, setIsBackgroundSelected, selectedZone, setSelectedZone, setActiveSidebarTab } = useCollage();
   const bgRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
@@ -148,6 +148,7 @@ function BackgroundLayer() {
         // If clicking on the background area, deselect zones and select background
         setSelectedZone(null); // Deselect any frame zone
         setIsBackgroundSelected(true); // Select background
+        setActiveSidebarTab('file'); // Switch to file folder tab
       }}
     >
       <div
@@ -277,7 +278,7 @@ function BackgroundLayer() {
 
 // Individual image zone with drop target
 function ImageZone({ zone }: ImageZoneProps) {
-  const { placedImages, addPlacedImage, selectedZone, setSelectedZone, updatePlacedImage, canvasSize, setIsBackgroundSelected } = useCollage();
+  const { placedImages, addPlacedImage, selectedZone, setSelectedZone, updatePlacedImage, canvasSize, setIsBackgroundSelected, setActiveSidebarTab } = useCollage();
   const placedImage = placedImages.get(zone.id);
   const dropRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
@@ -551,6 +552,7 @@ function ImageZone({ zone }: ImageZoneProps) {
     backgroundColor: isOver ? 'rgba(59, 130, 246, 0.2)' : 'rgba(0, 0, 0, 0.1)',
     cursor: 'pointer',
     overflow: 'hidden',
+    zIndex: selectedZone === zone.id ? 10 : 0,
     // Only animate border, background-color, and box-shadow - NOT transform
     transition: 'border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease',
   };
@@ -563,6 +565,7 @@ function ImageZone({ zone }: ImageZoneProps) {
         e.stopPropagation(); // Prevent click from bubbling to container
         setSelectedZone(zone.id);
         setIsBackgroundSelected(false);
+        setActiveSidebarTab('edit'); // Switch to edit tab when frame is selected
       }}
       className="image-zone"
     >
@@ -692,6 +695,78 @@ function ImageZoneOverflow({ zone, placedImage }: ImageZoneOverflowProps) {
   const overflowRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const [imageSize, setImageSize] = useState({ width: 0, height: 0, left: 0, top: 0 });
+  const { updatePlacedImage } = useCollage();
+  const [isZooming, setIsZooming] = useState(false);
+  const [zoomStart, setZoomStart] = useState({
+    x: 0,
+    y: 0,
+    scale: placedImage.transform.scale,
+    offsetX: placedImage.transform.offsetX,
+    offsetY: placedImage.transform.offsetY,
+    corner: '' as 'tl' | 'tr' | 'bl' | 'br'
+  });
+
+  // Handle zoom by dragging from corners
+  const handleZoomStart = (e: React.MouseEvent, corner: 'tl' | 'tr' | 'bl' | 'br') => {
+    e.stopPropagation();
+    setIsZooming(true);
+    setZoomStart({
+      x: e.clientX,
+      y: e.clientY,
+      scale: placedImage.transform.scale,
+      offsetX: placedImage.transform.offsetX,
+      offsetY: placedImage.transform.offsetY,
+      corner
+    });
+  };
+
+  useEffect(() => {
+    if (isZooming) {
+      const handleMouseMove = (e: MouseEvent) => {
+        const deltaX = e.clientX - zoomStart.x;
+        const deltaY = e.clientY - zoomStart.y;
+
+        // Use movement for zoom sensitivity - different corners use different directions
+        // Dragging AWAY from center should INCREASE scale (zoom in)
+        let scaleDelta: number;
+        if (zoomStart.corner === 'br') {
+          // Bottom-right: dragging down/right (away from center) increases scale
+          scaleDelta = (deltaX + deltaY) * 0.005;
+        } else if (zoomStart.corner === 'bl') {
+          // Bottom-left: dragging down/left (away from center) increases scale
+          scaleDelta = (-deltaX + deltaY) * 0.005;
+        } else if (zoomStart.corner === 'tr') {
+          // Top-right: dragging up/right (away from center) increases scale
+          scaleDelta = (deltaX - deltaY) * 0.005;
+        } else {
+          // Top-left: dragging up/left (away from center) increases scale
+          scaleDelta = (-deltaX - deltaY) * 0.005;
+        }
+
+        const newScale = Math.max(0.5, Math.min(3, zoomStart.scale + scaleDelta));
+
+        // Zoom from center - keep the same offset, just change scale
+        updatePlacedImage(zone.id, {
+          transform: {
+            ...placedImage.transform,
+            scale: newScale,
+          },
+        });
+      };
+
+      const handleMouseUp = () => {
+        setIsZooming(false);
+      };
+
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+
+      return () => {
+        window.removeEventListener('mousemove', handleMouseMove);
+        window.removeEventListener('mouseup', handleMouseUp);
+      };
+    }
+  }, [isZooming, zoomStart, zone.id, placedImage, updatePlacedImage, imageSize]);
 
   // Measure the actual rendered size of the image (with objectFit: contain)
   useEffect(() => {
@@ -746,7 +821,7 @@ function ImageZoneOverflow({ zone, placedImage }: ImageZoneOverflowProps) {
         width: `${zone.width}%`,
         height: `${zone.height}%`,
         transform: `rotate(${zone.rotation}deg)`,
-        pointerEvents: 'none',
+        pointerEvents: 'auto',
         zIndex: 1,
       }}
     >
@@ -796,6 +871,87 @@ function ImageZoneOverflow({ zone, placedImage }: ImageZoneOverflowProps) {
             <div className="grid-line grid-line-horizontal" style={{ top: '33.33%' }} />
             <div className="grid-line grid-line-horizontal" style={{ top: '66.67%' }} />
           </div>
+        )}
+
+        {/* Zoom handles at corners of the actual image */}
+        {imageSize.width > 0 && (
+          <>
+            {/* Top-left corner */}
+            <div
+              onMouseDown={(e) => handleZoomStart(e, 'tl')}
+              className="zoom-handle zoom-handle-corner"
+              style={{
+                position: 'absolute',
+                left: imageSize.left - 2,
+                top: imageSize.top - 2,
+                width: 16,
+                height: 16,
+                cursor: isZooming ? 'nwse-resize' : 'nwse-resize',
+                zIndex: 100,
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M1 1V8H2V2H8V1H1Z" fill="white" stroke="var(--accent-blue)" strokeWidth="1.5"/>
+              </svg>
+            </div>
+
+            {/* Top-right corner */}
+            <div
+              onMouseDown={(e) => handleZoomStart(e, 'tr')}
+              className="zoom-handle zoom-handle-corner"
+              style={{
+                position: 'absolute',
+                left: imageSize.left + imageSize.width - 14,
+                top: imageSize.top - 2,
+                width: 16,
+                height: 16,
+                cursor: isZooming ? 'nesw-resize' : 'nesw-resize',
+                zIndex: 100,
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M15 1V8H14V2H8V1H15Z" fill="white" stroke="var(--accent-blue)" strokeWidth="1.5"/>
+              </svg>
+            </div>
+
+            {/* Bottom-left corner */}
+            <div
+              onMouseDown={(e) => handleZoomStart(e, 'bl')}
+              className="zoom-handle zoom-handle-corner"
+              style={{
+                position: 'absolute',
+                left: imageSize.left - 2,
+                top: imageSize.top + imageSize.height - 14,
+                width: 16,
+                height: 16,
+                cursor: isZooming ? 'nesw-resize' : 'nesw-resize',
+                zIndex: 100,
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M1 15V8H2V14H8V15H1Z" fill="white" stroke="var(--accent-blue)" strokeWidth="1.5"/>
+              </svg>
+            </div>
+
+            {/* Bottom-right corner */}
+            <div
+              onMouseDown={(e) => handleZoomStart(e, 'br')}
+              className="zoom-handle zoom-handle-corner"
+              style={{
+                position: 'absolute',
+                left: imageSize.left + imageSize.width - 14,
+                top: imageSize.top + imageSize.height - 14,
+                width: 16,
+                height: 16,
+                cursor: isZooming ? 'nwse-resize' : 'nwse-resize',
+                zIndex: 100,
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M15 15V8H14V14H8V15H15Z" fill="white" stroke="var(--accent-blue)" strokeWidth="1.5"/>
+              </svg>
+            </div>
+          </>
         )}
       </div>
     </div>
@@ -1090,29 +1246,36 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
                 </div>
               </div>
             )}
-            {/* Image zone overflows */}
-            {currentFrame.zones.map((zone) => {
-              const placedImage = placedImages.get(zone.id);
-              const isSelected = selectedZone === zone.id;
-              if (!isSelected || !placedImage) return null;
-
-              return (
-                <ImageZoneOverflow
-                  key={`${zone.id}-overflow`}
-                  zone={zone}
-                  placedImage={placedImage}
-                />
-              );
-            })}
-
             <div style={innerCanvasStyle}>
               {/* Background Layer - rendered as transformable image */}
               <BackgroundLayer />
 
-              {/* Image Zones */}
-              {currentFrame.zones.map((zone) => (
-                <ImageZone key={zone.id} zone={zone} />
-              ))}
+              {/* Image Zones - render non-selected first, then selected */}
+              {currentFrame.zones.map((zone) => {
+                if (selectedZone === zone.id) return null;
+                return <ImageZone key={zone.id} zone={zone} />;
+              })}
+
+              {/* Selected zone overflow - renders on top of non-selected zones */}
+              {selectedZone && (() => {
+                const zone = currentFrame.zones.find(z => z.id === selectedZone);
+                const placedImage = zone ? placedImages.get(zone.id) : null;
+                if (!zone || !placedImage) return null;
+                return (
+                  <ImageZoneOverflow
+                    key={`${zone.id}-overflow`}
+                    zone={zone}
+                    placedImage={placedImage}
+                  />
+                );
+              })()}
+
+              {/* Selected zone - renders on top of everything */}
+              {selectedZone && (() => {
+                const zone = currentFrame.zones.find(z => z.id === selectedZone);
+                if (!zone) return null;
+                return <ImageZone key={zone.id} zone={zone} />;
+              })()}
 
               {/* Frame Info Overlay */}
               <div className="canvas-info">

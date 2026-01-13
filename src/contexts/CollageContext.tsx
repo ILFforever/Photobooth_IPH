@@ -49,6 +49,8 @@ interface CollageContextType {
   setCanvasZoom: (zoom: number) => void;
   customCanvasSizes: CanvasSize[];
   setCustomCanvasSizes: (sizes: CanvasSize[]) => void;
+  activeSidebarTab: 'file' | 'edit';
+  setActiveSidebarTab: (tab: 'file' | 'edit') => void;
 }
 
 const CollageContext = createContext<CollageContextType | undefined>(undefined);
@@ -70,6 +72,7 @@ export function CollageProvider({ children }: { children: ReactNode }) {
   const [isBackgroundSelected, setIsBackgroundSelected] = useState<boolean>(false);
   const [canvasZoom, setCanvasZoom] = useState<number>(1);
   const [customCanvasSizes, setCustomCanvasSizes] = useState<CanvasSize[]>([]);
+  const [activeSidebarTab, setActiveSidebarTab] = useState<'file' | 'edit'>('file');
 
   // Load backgrounds and settings on mount
   useEffect(() => {
@@ -168,6 +171,8 @@ export function CollageProvider({ children }: { children: ReactNode }) {
         setCanvasZoom,
         customCanvasSizes,
         setCustomCanvasSizes,
+        activeSidebarTab,
+        setActiveSidebarTab,
       }}
     >
       {children}

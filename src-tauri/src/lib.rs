@@ -1004,6 +1004,10 @@ async fn scan_folder_for_images(folder_path: &str, app: &tauri::AppHandle) -> Re
     // Emit total count first so frontend can show correct skeleton count
     let _ = app.emit("thumbnail-total-count", total_files);
 
+    // Limit concurrent thumbnail generation to avoid overwhelming CPU
+    let max_concurrent_tasks = std::cmp::min(4, total_files); // Max 4 concurrent thumbnails
+    let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(max_concurrent_tasks));
+
     // Use JoinSet for concurrent processing
     let mut join_set = tokio::task::JoinSet::new();
 
@@ -1014,9 +1018,13 @@ async fn scan_folder_for_images(folder_path: &str, app: &tauri::AppHandle) -> Re
             let filename_clone = filename.clone();
             let extension_clone = extension.clone();
             let app_clone = app.clone();
+            let semaphore_clone = semaphore.clone();
 
             join_set.spawn_blocking(move || {
                 tokio::runtime::Handle::current().block_on(async {
+                    // Acquire semaphore permit to limit concurrency
+                    let _permit = semaphore_clone.acquire().await.unwrap();
+
                     let result = generate_thumbnail_cached(&file_path_clone, &app_clone, index).await;
                     (index, result, file_path_clone, filename_clone, size, extension_clone)
                 })
@@ -1822,6 +1830,109 @@ async fn import_background(app: tauri::AppHandle, file_path: String, name: Strin
 
 // ==================== END BACKGROUND SYSTEM ====================
 
+// ==================== CUSTOM CANVAS SIZE SYSTEM ====================
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct CustomCanvasSize {
+    pub width: u32,
+    pub height: u32,
+    pub name: String,
+    #[serde(default)]
+    pub created_at: u64, // Unix timestamp
+}
+
+/// Get custom canvas sizes directory in app data
+fn get_custom_canvases_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    let app_data_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+    let canvases_dir = app_data_dir.join("custom_canvases");
+    fs::create_dir_all(&canvases_dir)
+        .map_err(|e| format!("Failed to create custom canvases dir: {}", e))?;
+    Ok(canvases_dir)
+}
+
+/// Save a custom canvas size to disk
+#[tauri::command]
+async fn save_custom_canvas_size(app: tauri::AppHandle, canvas: CustomCanvasSize) -> Result<CustomCanvasSize, String> {
+    let canvases_dir = get_custom_canvases_dir(&app)?;
+
+    // Create canvas with timestamp if not provided
+    let canvas_to_save = CustomCanvasSize {
+        created_at: if canvas.created_at == 0 {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|e| format!("Failed to get timestamp: {}", e))?
+                .as_secs()
+        } else {
+            canvas.created_at
+        },
+        ..canvas
+    };
+
+    let canvas_path = canvases_dir.join(format!("{}.json", canvas_to_save.name));
+    let json = serde_json::to_string_pretty(&canvas_to_save)
+        .map_err(|e| format!("Failed to serialize canvas: {}", e))?;
+
+    fs::write(canvas_path, json)
+        .map_err(|e| format!("Failed to write canvas file: {}", e))?;
+
+    Ok(canvas_to_save)
+}
+
+/// Get all custom canvas sizes from disk
+#[tauri::command]
+async fn get_custom_canvas_sizes(app: tauri::AppHandle) -> Result<Vec<CustomCanvasSize>, String> {
+    let canvases_dir = get_custom_canvases_dir(&app)?;
+    let mut canvases = Vec::new();
+
+    if !canvases_dir.exists() {
+        return Ok(canvases);
+    }
+
+    let entries = fs::read_dir(canvases_dir)
+        .map_err(|e| format!("Failed to read custom canvases directory: {}", e))?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
+        let path = entry.path();
+
+        if path.extension().and_then(|s| s.to_str()) != Some("json") {
+            continue;
+        }
+
+        let json = fs::read_to_string(&path)
+            .map_err(|e| format!("Failed to read canvas file: {}", e))?;
+
+        let canvas: CustomCanvasSize = serde_json::from_str(&json)
+            .map_err(|e| format!("Failed to parse canvas file: {}", e))?;
+
+        canvases.push(canvas);
+    }
+
+    // Sort by creation date (newest first)
+    canvases.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+
+    Ok(canvases)
+}
+
+/// Delete a custom canvas size from disk
+#[tauri::command]
+async fn delete_custom_canvas_size(app: tauri::AppHandle, name: String) -> Result<(), String> {
+    let canvases_dir = get_custom_canvases_dir(&app)?;
+    let canvas_path = canvases_dir.join(format!("{}.json", name));
+
+    if !canvas_path.exists() {
+        return Err(format!("Custom canvas not found: {}", name));
+    }
+
+    fs::remove_file(canvas_path)
+        .map_err(|e| format!("Failed to delete canvas: {}", e))?;
+
+    Ok(())
+}
+
+// ==================== END CUSTOM CANVAS SIZE SYSTEM ====================
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1842,7 +1953,8 @@ pub fn run() {
             remove_temp_image, get_history, clear_history,
             select_working_folder,
             save_frame, load_frames, delete_frame,
-            save_background, load_backgrounds, delete_background, import_background
+            save_background, load_backgrounds, delete_background, import_background,
+            save_custom_canvas_size, get_custom_canvas_sizes, delete_custom_canvas_size
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

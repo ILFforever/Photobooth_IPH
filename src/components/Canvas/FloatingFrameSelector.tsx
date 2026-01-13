@@ -264,14 +264,14 @@ const FloatingFrameSelector = () => {
         width: number;
         height: number;
         name: string;
-        created_at: string;
+        created_at: number;
       }[]>('get_custom_canvas_sizes');
       setCustomCanvasSizes(customCanvases.map(c => ({
         width: c.width,
         height: c.height,
         name: c.name,
         isCustom: true,
-        createdAt: c.created_at,
+        createdAt: c.created_at.toString(),
       })));
     } catch (error) {
       console.error('Failed to refresh custom canvases:', error);

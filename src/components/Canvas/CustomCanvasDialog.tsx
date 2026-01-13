@@ -131,7 +131,7 @@ export default function CustomCanvasDialog({ isOpen, onClose }: CustomCanvasDial
       width: pixelDimensions.width,
       height: pixelDimensions.height,
       name,
-      created_at: new Date().toISOString(),
+      created_at: Math.floor(Date.now() / 1000), // Unix timestamp in seconds
     };
 
     setCanvasSize({
