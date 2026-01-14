@@ -1,20 +1,253 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { invoke } from '@tauri-apps/api/core';
 import { useCollage } from '../../contexts/CollageContext';
 import { Frame, FrameZone, FrameShape } from '../../types/frame';
 import { generateFrameId } from '../../utils/frameTemplates';
 import './FrameCreator.css';
 
+// Drag and drop imports
+import { useDrag, useDrop } from 'react-dnd';
+
+const DRAG_TYPE = 'zone';
+
+const CANVAS_SIZE = { width: 1200, height: 1800 };
+
+// Draggable Zone Item Component
+function ZoneItem({
+  zone,
+  index,
+  isSelected,
+  onToggle,
+  onDelete,
+  onMove,
+  onSelect,
+}: {
+  zone: FrameZone;
+  index: number;
+  isSelected: boolean;
+  onToggle: () => void;
+  onDelete: () => void;
+  onMove: (dragIndex: number, hoverIndex: number) => void;
+  onSelect: (zoneId: string) => void;
+}) {
+  const [{ isDragging }, drag] = useDrag({
+    type: DRAG_TYPE,
+    item: { index },
+    collect: (monitor) => ({
+      isDragging: monitor.isDragging(),
+    }),
+  });
+
+  const [{ isOver, canDrop }, drop] = useDrop({
+    accept: DRAG_TYPE,
+    hover(item: { index: number }) {
+      if (item.index === index) return;
+      onMove(item.index, index);
+      item.index = index;
+    },
+    collect: (monitor) => ({
+      isOver: monitor.isOver({ shallow: true }),
+      canDrop: monitor.canDrop(),
+    }),
+  });
+
+  return (
+    <div
+      ref={(node) => {
+        drag(drop(node));
+      }}
+      className={`zone-item-wrapper ${isSelected ? 'expanded' : ''} ${isOver && canDrop && !isDragging ? 'drag-over' : ''}`}
+      style={{ opacity: isDragging ? 0.3 : 1 }}
+    >
+      {/* Zone Item Header - Always Visible */}
+      <div
+        className={`zone-item ${isSelected ? 'selected' : ''}`}
+        onClick={() => {
+          onSelect(zone.id);
+          onToggle();
+        }}
+      >
+        <div className="zone-item-left">
+          <div className="zone-drag-handle">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+          <div className="zone-item-info">
+            <span className="zone-item-number">
+              {(() => {
+                const match = zone.id.match(/zone-(\d+)/);
+                return match ? match[1] : index + 1;
+              })()}
+            </span>
+            <span className="zone-item-shape">
+              {zone.shape === 'rounded_rect' ? '🔲' :
+               zone.shape === 'circle' ? '⚪' :
+               zone.shape === 'ellipse' ? '⬭' :
+               zone.shape === 'rounded_rect_large' ? '▭' :
+               zone.shape === 'pill' ? '💊' : '⬜'}
+            </span>
+            <span className="zone-item-size">
+              {Math.round(zone.width)}×{Math.round(zone.height)}
+            </span>
+          </div>
+        </div>
+        <div className="zone-item-actions">
+          <button
+            className="zone-item-delete"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+          >
+            ×
+          </button>
+          <span className="zone-item-chevron">
+            {isSelected ? '▼' : '▶'}
+          </span>
+        </div>
+      </div>
+
+      {/* Zone Settings Dropdown - Only visible when selected */}
+      {isSelected && (
+        <div className="zone-settings-dropdown">
+          <div className="control-row">
+            <label>X:</label>
+            <input
+              type="number"
+              value={zone.x}
+              onChange={(e) => {
+                const event = new CustomEvent('zoneUpdate', {
+                  detail: { index, updates: { x: Number(e.target.value) } }
+                });
+                window.dispatchEvent(event);
+              }}
+            />
+            <label>Y:</label>
+            <input
+              type="number"
+              value={zone.y}
+              onChange={(e) => {
+                const event = new CustomEvent('zoneUpdate', {
+                  detail: { index, updates: { y: Number(e.target.value) } }
+                });
+                window.dispatchEvent(event);
+              }}
+            />
+          </div>
+          <div className="control-row">
+            <label>Width:</label>
+            <input
+              type="number"
+              value={zone.width}
+              onChange={(e) => {
+                const event = new CustomEvent('zoneUpdate', {
+                  detail: { index, updates: { width: Number(e.target.value) } }
+                });
+                window.dispatchEvent(event);
+              }}
+            />
+            <label>Height:</label>
+            <input
+              type="number"
+              value={zone.height}
+              onChange={(e) => {
+                const event = new CustomEvent('zoneUpdate', {
+                  detail: { index, updates: { height: Number(e.target.value) } }
+                });
+                window.dispatchEvent(event);
+              }}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function FrameCreator() {
-  const { reloadFrames, currentFrame, setCurrentFrame, placedImages, setPlacedImages, activeSidebarTab } = useCollage();
+  const { reloadFrames, currentFrame, setCurrentFrame, placedImages, setPlacedImages, activeSidebarTab, copiedZone, setCopiedZone, selectedZone, setSelectedZone } = useCollage();
   const [newFrameName, setNewFrameName] = useState('');
   const [zones, setZones] = useState<FrameZone[]>([]);
   const [selectedZoneIndex, setSelectedZoneIndex] = useState<number | null>(null);
   const [selectedShape, setSelectedShape] = useState<FrameShape>('rectangle');
   const [previousFrame, setPreviousFrame] = useState<Frame | null>(null);
   const [previousImages, setPreviousImages] = useState<Map<string, any> | null>(null);
+  const [showCopyNotification, setShowCopyNotification] = useState(false);
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
 
-  const selectedZone = selectedZoneIndex !== null ? zones[selectedZoneIndex] : null;
+  // Create portal root for modals on mount
+  useEffect(() => {
+    const portalRoot = document.createElement('div');
+    portalRoot.id = 'modal-portal-root';
+    portalRoot.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 9999;';
+    document.body.appendChild(portalRoot);
+
+    return () => {
+      document.body.removeChild(portalRoot);
+    };
+  }, []);
+
+  // Handle zone reordering
+  const moveZone = (dragIndex: number, hoverIndex: number) => {
+    const updatedZones = [...zones];
+    const [draggedZone] = updatedZones.splice(dragIndex, 1);
+    updatedZones.splice(hoverIndex, 0, draggedZone);
+    setZones(updatedZones);
+
+    console.log('Zones reordered:', updatedZones.map(z => z.id));
+
+    // Update selected zone index if needed
+    if (selectedZoneIndex === dragIndex) {
+      setSelectedZoneIndex(hoverIndex);
+    } else if (selectedZoneIndex !== null) {
+      if (dragIndex < selectedZoneIndex && hoverIndex >= selectedZoneIndex) {
+        setSelectedZoneIndex(selectedZoneIndex - 1);
+      } else if (dragIndex > selectedZoneIndex && hoverIndex <= selectedZoneIndex) {
+        setSelectedZoneIndex(selectedZoneIndex + 1);
+      }
+    }
+
+    // Update the blank frame to show zones on the canvas
+    if (currentFrame?.id === 'system-blank') {
+      setCurrentFrame({ ...currentFrame, zones: updatedZones });
+    }
+  };
+
+  // Handle zone updates from dropdown inputs
+  useEffect(() => {
+    const handleZoneUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent<{ index: number; updates: Partial<FrameZone> }>;
+      const { index, updates } = customEvent.detail;
+      const updated = [...zones];
+      updated[index] = { ...updated[index], ...updates };
+      setZones(updated);
+
+      // Update the blank frame to show zones on the canvas
+      if (currentFrame?.id === 'system-blank') {
+        setCurrentFrame({ ...currentFrame, zones: updated });
+      }
+    };
+
+    window.addEventListener('zoneUpdate', handleZoneUpdate);
+    return () => window.removeEventListener('zoneUpdate', handleZoneUpdate);
+  }, [zones, currentFrame, setCurrentFrame]);
+
+  // Helper function to get the next zone ID
+  const getNextZoneId = () => {
+    // Extract all existing zone numbers
+    const existingNumbers = zones
+      .map(zone => {
+        const match = zone.id.match(/zone-(\d+)/);
+        return match ? parseInt(match[1], 10) : 0;
+      })
+      .filter(num => num > 0);
+
+    // Find the highest number and add 1
+    const maxNumber = existingNumbers.length > 0 ? Math.max(...existingNumbers) : 0;
+    return `zone-${maxNumber + 1}`;
+  };
 
   // Sync zones with currentFrame when in frame creator mode
   useEffect(() => {
@@ -58,10 +291,91 @@ export default function FrameCreator() {
     }
   }, [activeSidebarTab, currentFrame, placedImages, setCurrentFrame, setPlacedImages]);
 
+  // Handle keyboard shortcuts for copy/paste zones and save dialog
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Handle save dialog shortcuts
+      if (showSaveDialog) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          saveFrame();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          setShowSaveDialog(false);
+        }
+        return;
+      }
+
+      // Only handle copy/paste in frame creator mode
+      if (activeSidebarTab !== 'frames') return;
+
+      // Don't handle if user is typing in an input
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return;
+      }
+
+      // Ctrl+C or Cmd+C to copy zone
+      if ((e.ctrlKey || e.metaKey) && e.key === 'c' && selectedZoneIndex !== null && zones.length > 0) {
+        const zone = zones[selectedZoneIndex];
+        if (zone) {
+          setCopiedZone(zone);
+          setShowCopyNotification(true);
+          setTimeout(() => setShowCopyNotification(false), 2000);
+          console.log('Zone copied:', zone);
+        }
+      }
+
+      // Ctrl+V or Cmd+V to paste zone
+      if ((e.ctrlKey || e.metaKey) && e.key === 'v' && copiedZone) {
+        // Create new zone with slight offset and sequential ID
+        const newZone: FrameZone = {
+          ...copiedZone,
+          id: getNextZoneId(),
+          x: Math.min(copiedZone.x + 20, CANVAS_SIZE.width - copiedZone.width - 10),
+          y: Math.min(copiedZone.y + 20, CANVAS_SIZE.height - copiedZone.height - 10),
+        };
+
+        const updatedZones = [...zones, newZone];
+        setZones(updatedZones);
+        setSelectedZoneIndex(updatedZones.length - 1);
+
+        // Update the blank frame to show zones on the canvas
+        if (currentFrame?.id === 'system-blank') {
+          setCurrentFrame({
+            ...currentFrame,
+            zones: updatedZones,
+          });
+        }
+
+        console.log('Zone pasted:', newZone);
+      }
+
+      // Delete or Backspace to delete selected zone
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedZoneIndex !== null && zones.length > 0) {
+        e.preventDefault();
+        const updated = zones.filter((_, i) => i !== selectedZoneIndex);
+        setZones(updated);
+        setSelectedZoneIndex(null);
+
+        // Update the blank frame to show zones on the canvas
+        if (currentFrame?.id === 'system-blank') {
+          setCurrentFrame({
+            ...currentFrame,
+            zones: updated,
+          });
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeSidebarTab, selectedZoneIndex, zones, copiedZone, currentFrame, setCopiedZone, setCurrentFrame]);
+
   // Add a new zone
   const addZone = () => {
     const newZone: FrameZone = {
-      id: `zone-${zones.length + 1}`,
+      id: getNextZoneId(),
       x: 100 + (zones.length % 3) * 350,
       y: 100 + Math.floor(zones.length / 3) * 400,
       width: 300,
@@ -82,22 +396,6 @@ export default function FrameCreator() {
     }
   };
 
-  // Update selected zone
-  const updateZone = (updates: Partial<FrameZone>) => {
-    if (selectedZoneIndex === null) return;
-    const updated = [...zones];
-    updated[selectedZoneIndex] = { ...updated[selectedZoneIndex], ...updates };
-    setZones(updated);
-
-    // Update the blank frame to show zones on the canvas
-    if (currentFrame?.id === 'system-blank') {
-      setCurrentFrame({
-        ...currentFrame,
-        zones: updated,
-      });
-    }
-  };
-
   // Save frame
   const saveFrame = async () => {
     if (!newFrameName.trim()) {
@@ -110,13 +408,32 @@ export default function FrameCreator() {
       return;
     }
 
+    // Calculate canvas dimensions based on zone positions
+    const maxX = Math.max(...zones.map(z => z.x + z.width));
+    const maxY = Math.max(...zones.map(z => z.y + z.height));
+
+    // Add some padding (10px) around the edges
+    const padding = 10;
+    const width = Math.max(maxX + padding, 100); // Minimum 100px width
+    const height = Math.max(maxY + padding, 100); // Minimum 100px height
+
+    // Round all zone coordinates to integers before saving
+    const roundedZones = zones.map(zone => ({
+      ...zone,
+      x: Math.round(zone.x),
+      y: Math.round(zone.y),
+      width: Math.round(zone.width),
+      height: Math.round(zone.height),
+      rotation: Math.round(zone.rotation),
+    }));
+
     const frame: Frame = {
       id: generateFrameId(),
       name: newFrameName.trim(),
       description: `Custom frame with ${zones.length} zone${zones.length > 1 ? 's' : ''}`,
-      width: 1200,
-      height: 1800,
-      zones,
+      width: Math.round(width),
+      height: Math.round(height),
+      zones: roundedZones,
       is_default: false,
       created_at: new Date().toISOString(),
     };
@@ -127,6 +444,7 @@ export default function FrameCreator() {
       setNewFrameName('');
       setZones([]);
       setSelectedZoneIndex(null);
+      setShowSaveDialog(false);
       alert('Frame saved successfully!');
     } catch (error) {
       console.error('Failed to save frame:', error);
@@ -134,32 +452,37 @@ export default function FrameCreator() {
     }
   };
 
+  // Clear all zones
+  const clearZones = () => {
+    if (zones.length === 0) return;
+    if (confirm('Are you sure you want to clear all zones?')) {
+      setZones([]);
+      setSelectedZoneIndex(null);
+      if (currentFrame?.id === 'system-blank') {
+        setCurrentFrame({ ...currentFrame, zones: [] });
+      }
+    }
+  };
+
   return (
     <div className="frame-creator">
+      {/* Copy Notification */}
+      {showCopyNotification && (
+        <div className="copy-notification">
+          Zone copied! Press Ctrl+V to paste
+        </div>
+      )}
+
       {/* Header */}
       <div className="working-folder-header">
         <h3>Layout Creator</h3>
-      </div>
-
-      {/* Frame Name & Save */}
-      <div className="frame-save-section">
-        <input
-          type="text"
-          placeholder="Frame name..."
-          value={newFrameName}
-          onChange={(e) => setNewFrameName(e.target.value)}
-          className="frame-name-input"
-        />
-        <button className="save-frame-btn" onClick={saveFrame}>
-          Save Frame
-        </button>
       </div>
 
       {/* Shape Selection */}
       <div className="shape-selector">
         <h4>Zone Shape</h4>
         <div className="shape-buttons">
-          {(['rectangle', 'square', 'circle', 'ellipse', 'rounded_rect', 'rounded_rect_large', 'pill'] as FrameShape[]).map((shape) => {
+          {(['rectangle', 'circle', 'ellipse', 'rounded_rect', 'rounded_rect_large', 'pill'] as FrameShape[]).map((shape) => {
             const getShapeStyle = () => {
               switch (shape) {
                 case 'circle':
@@ -172,8 +495,6 @@ export default function FrameCreator() {
                   return '16px';
                 case 'pill':
                   return '999px';
-                case 'square':
-                  return '2px';
                 default:
                   return '2px';
               }
@@ -185,7 +506,6 @@ export default function FrameCreator() {
                 case 'circle': return 'Circle';
                 case 'ellipse': return 'Ellipse';
                 case 'rounded_rect_large': return 'Rounded LG';
-                case 'square': return 'Square';
                 case 'pill': return 'Pill';
                 default: return 'Rectangle';
               }
@@ -218,7 +538,6 @@ export default function FrameCreator() {
             case 'circle': return '+ Add Circle Zone';
             case 'ellipse': return '+ Add Ellipse Zone';
             case 'rounded_rect_large': return '+ Add Rounded LG Zone';
-            case 'square': return '+ Add Square Zone';
             case 'pill': return '+ Add Pill Zone';
             default: return '+ Add Rectangle Zone';
           }
@@ -228,32 +547,18 @@ export default function FrameCreator() {
       {/* Zones List */}
       {zones.length > 0 && (
         <div className="zones-list">
-          <h4>Zones ({zones.length})</h4>
+          <h4 data-count={zones.length}>Zones</h4>
           <div className="zones-grid">
-            {zones.map((zone, index) => (
-              <div
-                key={zone.id}
-                className={`zone-item ${selectedZoneIndex === index ? 'selected' : ''}`}
-                onClick={() => setSelectedZoneIndex(index)}
-              >
-                <div className="zone-item-info">
-                  <span className="zone-item-number">{index + 1}</span>
-                  <span className="zone-item-shape">
-                    {zone.shape === 'rounded_rect' ? '🔲' :
-                     zone.shape === 'circle' ? '⚪' :
-                     zone.shape === 'ellipse' ? '⬭' :
-                     zone.shape === 'rounded_rect_large' ? '▭' :
-                     zone.shape === 'square' ? '⬛' :
-                     zone.shape === 'pill' ? '💊' : '⬜'}
-                  </span>
-                  <span className="zone-item-size">
-                    {zone.width}×{zone.height}
-                  </span>
-                </div>
-                <button
-                  className="zone-item-delete"
-                  onClick={(e) => {
-                    e.stopPropagation();
+            {zones.map((zone, index) => {
+              const isSelected = selectedZoneIndex === index;
+              return (
+                <ZoneItem
+                  key={zone.id}
+                  zone={zone}
+                  index={index}
+                  isSelected={isSelected}
+                  onToggle={() => setSelectedZoneIndex(isSelected ? null : index)}
+                  onDelete={() => {
                     const updated = zones.filter((_, i) => i !== index);
                     setZones(updated);
                     if (selectedZoneIndex === index) {
@@ -261,64 +566,65 @@ export default function FrameCreator() {
                     } else if (selectedZoneIndex !== null && selectedZoneIndex > index) {
                       setSelectedZoneIndex(selectedZoneIndex - 1);
                     }
+                    // Update the blank frame to show zones on the canvas
+                    if (currentFrame?.id === 'system-blank') {
+                      setCurrentFrame({
+                        ...currentFrame,
+                        zones: updated,
+                      });
+                    }
                   }}
-                >
-                  ×
-                </button>
-              </div>
-            ))}
+                  onMove={moveZone}
+                  onSelect={setSelectedZone}
+                />
+              );
+            })}
           </div>
         </div>
       )}
 
-      {/* Selected Zone Controls */}
-      {selectedZone && (
-        <div className="zone-controls">
-          <h4>Zone {selectedZoneIndex! + 1} Settings</h4>
-          <div className="control-row">
-            <label>X:</label>
-            <input
-              type="number"
-              value={selectedZone.x}
-              onChange={(e) => updateZone({ x: Number(e.target.value) })}
-            />
-            <label>Y:</label>
-            <input
-              type="number"
-              value={selectedZone.y}
-              onChange={(e) => updateZone({ y: Number(e.target.value) })}
-            />
-          </div>
-          <div className="control-row">
-            <label>Width:</label>
-            <input
-              type="number"
-              value={selectedZone.width}
-              onChange={(e) => updateZone({ width: Number(e.target.value) })}
-            />
-            <label>Height:</label>
-            <input
-              type="number"
-              value={selectedZone.height}
-              onChange={(e) => updateZone({ height: Number(e.target.value) })}
-            />
-          </div>
-          <div className="control-row">
-            <label>Shape:</label>
-            <select
-              value={selectedZone.shape}
-              onChange={(e) => updateZone({ shape: e.target.value as FrameShape })}
-            >
-              <option value="rectangle">Rectangle</option>
-              <option value="square">Square</option>
-              <option value="circle">Circle</option>
-              <option value="ellipse">Ellipse</option>
-              <option value="rounded_rect">Rounded</option>
-              <option value="rounded_rect_large">Rounded LG</option>
-              <option value="pill">Pill</option>
-            </select>
-          </div>
-        </div>
+      {/* Save & Clear Buttons - Bottom */}
+      <div className="frame-actions">
+        <button className="clear-zones-btn" onClick={clearZones}>
+          Clear All
+        </button>
+        <button className="save-frame-btn" onClick={() => setShowSaveDialog(true)}>
+          Save Layout
+        </button>
+      </div>
+
+      {/* Save Dialog Modal */}
+      {showSaveDialog && document.getElementById('modal-portal-root') && (
+        createPortal(
+          <div className="modal-overlay" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-content">
+              <h3>Save Layout</h3>
+              <input
+                type="text"
+                placeholder="Enter layout name..."
+                value={newFrameName}
+                onChange={(e) => setNewFrameName(e.target.value)}
+                className="frame-name-input"
+                autoFocus
+              />
+              <div className="modal-actions">
+                <button
+                  className="modal-btn cancel-btn"
+                  onClick={() => setShowSaveDialog(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="modal-btn save-btn"
+                  onClick={saveFrame}
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.getElementById('modal-portal-root')!
+        )
       )}
     </div>
   );

@@ -1710,6 +1710,14 @@ button {
   }
 }
 
+/* When sidebar is visible on smaller screens, prevent canvas overlap */
+@media (max-width: 1024px) {
+  .main-panel {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+}
+
 /* Upload Progress Display */
 .upload-progress-container {
   margin-top: 16px;

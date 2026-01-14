@@ -1217,20 +1217,16 @@ async fn generate_thumbnail_cached(image_path: &str, app: &tauri::AppHandle, _ta
         let jpeg_data = fs::read(image_path)
             .map_err(|e| format!("Failed to read JPEG file: {}", e))?;
 
-        // OPTIMIZATION 2: Get dimensions from mozjpeg with 1/8 scale (FAST)
-        let mut decompress_dims = mozjpeg::Decompress::new_mem(&jpeg_data)
+        // OPTIMIZATION 2: Get dimensions from mozjpeg header (no decoding needed)
+        let decompress_dims = mozjpeg::Decompress::new_mem(&jpeg_data)
             .map_err(|e| format!("Failed to create mozjpeg decompressor: {}", e))?;
-        decompress_dims.scale(8); // 1/8 scale for super fast dimension extraction
 
-        let dims_image = decompress_dims.rgb()
-            .map_err(|e| format!("Failed to get JPEG dimensions: {}", e))?;
+        // Get original dimensions directly from JPEG header (stored dimensions)
+        let stored_width = decompress_dims.width() as u32;
+        let stored_height = decompress_dims.height() as u32;
 
-        let img_width = (dims_image.width() * 8) as u32;
-        let img_height = (dims_image.height() * 8) as u32;
-
-        // OPTIMIZATION 3: Read EXIF orientation from JPEG headers (no decoding!)
-        // NOTE: mozjpeg dimensions are already in display orientation (EXIF-aware)
-        // We read EXIF here for thumbnail rotation purposes only, not dimension swapping
+        // OPTIMIZATION 3: Read EXIF orientation from JPEG headers
+        // We need this to determine if width/height should be swapped for display
         let exif_orientation_value = rexif::parse_file(image_path)
             .ok()
             .and_then(|exif_data| {
@@ -1244,8 +1240,16 @@ async fn generate_thumbnail_cached(image_path: &str, app: &tauri::AppHandle, _ta
                 None
             });
 
-        // mozjpeg returns dimensions in display orientation (already EXIF-aware)
-        // No need to swap - use dimensions as-is
+        // EXIF orientations 5, 6, 7, 8 require swapping width/height for display dimensions
+        // 5 = transpose, 6 = rotate 90 CW, 7 = transverse, 8 = rotate 270 CW
+        let needs_dimension_swap = matches!(exif_orientation_value, Some(5) | Some(6) | Some(7) | Some(8));
+
+        let (img_width, img_height) = if needs_dimension_swap {
+            (stored_height, stored_width) // Swap for display
+        } else {
+            (stored_width, stored_height) // Use as-is
+        };
+
         let dimensions = ImageDimensions {
             width: img_width,
             height: img_height,
@@ -1403,158 +1407,8 @@ fn get_frames_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 }
 
 /// Initialize default frames on first run
-fn initialize_default_frames(app: &tauri::AppHandle) -> Result<(), String> {
-    let frames_dir = get_frames_dir(app)?;
-
-    // Check if frames already exist
-    if let Ok(entries) = fs::read_dir(&frames_dir) {
-        if entries.count() > 0 {
-            // Frames already exist, skip initialization
-            return Ok(());
-        }
-    }
-
-    // Create 4 default frames with fixed pixel positioning (including blank)
-    let default_frames = vec![
-        // Blank frame - no zones, for frame creator mode
-        Frame {
-            id: "system-blank".to_string(),
-            name: "Blank".to_string(),
-            description: "Blank canvas with no zones".to_string(),
-            width: 1200,
-            height: 1800,
-            zones: vec![],
-            thumbnail: None,
-            is_default: true,
-            created_at: chrono::Utc::now().to_rfc3339(),
-        },
-        // Single Photo - centered rectangle with fixed margins
-        Frame {
-            id: "default-single".to_string(),
-            name: "Single Photo".to_string(),
-            description: "Classic single photo layout".to_string(),
-            width: 1200,
-            height: 1800,
-            zones: vec![
-                FrameZone {
-                    id: "zone-1".to_string(),
-                    x: 100,      // 100px from left
-                    y: 100,      // 100px from top
-                    width: 1000, // 1000px wide (1200 - 100 - 100)
-                    height: 1600, // 1600px tall (1800 - 100 - 100)
-                    rotation: 0.0,
-                    shape: "rectangle".to_string(),
-                    margin_right: None,
-                    margin_bottom: None,
-                }
-            ],
-            thumbnail: None,
-            is_default: true,
-            created_at: chrono::Utc::now().to_rfc3339(),
-        },
-        // Side by Side - two equal zones with 50px gap and 100px margins
-        Frame {
-            id: "default-double".to_string(),
-            name: "Side by Side".to_string(),
-            description: "Two photos side by side".to_string(),
-            width: 1200,
-            height: 1800,
-            zones: vec![
-                FrameZone {
-                    id: "zone-1".to_string(),
-                    x: 100,      // 100px from left
-                    y: 200,      // 200px from top
-                    width: 475,  // (1200 - 100 - 100 - 50) / 2
-                    height: 1400, // 1800 - 200 - 200
-                    rotation: 0.0,
-                    shape: "rectangle".to_string(),
-                    margin_right: Some(50), // 50px gap to next zone
-                    margin_bottom: None,
-                },
-                FrameZone {
-                    id: "zone-2".to_string(),
-                    x: 625,      // 100 + 475 + 50 (previous + gap)
-                    y: 200,      // Same top as zone-1
-                    width: 475,  // Same width as zone-1
-                    height: 1400, // Same height as zone-1
-                    rotation: 0.0,
-                    shape: "rectangle".to_string(),
-                    margin_right: None,
-                    margin_bottom: None,
-                }
-            ],
-            thumbnail: None,
-            is_default: true,
-            created_at: chrono::Utc::now().to_rfc3339(),
-        },
-        // Photo Grid - 2x2 grid with 50px gaps and 100px margins
-        Frame {
-            id: "default-grid".to_string(),
-            name: "Photo Grid".to_string(),
-            description: "Four photos in a grid".to_string(),
-            width: 1200,
-            height: 1800,
-            zones: vec![
-                FrameZone {
-                    id: "zone-1".to_string(),
-                    x: 100,      // 100px from left
-                    y: 100,      // 100px from top
-                    width: 475,  // (1200 - 100 - 100 - 50) / 2
-                    height: 775, // (1800 - 100 - 100 - 50) / 2
-                    rotation: 0.0,
-                    shape: "rectangle".to_string(),
-                    margin_right: Some(50), // 50px gap to zone-2
-                    margin_bottom: Some(50), // 50px gap to zone-3
-                },
-                FrameZone {
-                    id: "zone-2".to_string(),
-                    x: 625,      // 100 + 475 + 50
-                    y: 100,      // Same top as zone-1
-                    width: 475,  // Same as zone-1
-                    height: 775, // Same as zone-1
-                    rotation: 0.0,
-                    shape: "rectangle".to_string(),
-                    margin_right: None,
-                    margin_bottom: Some(50), // 50px gap to zone-4
-                },
-                FrameZone {
-                    id: "zone-3".to_string(),
-                    x: 100,      // Same left as zone-1
-                    y: 925,      // 100 + 775 + 50
-                    width: 475,  // Same as zone-1
-                    height: 775, // Same as zone-1
-                    rotation: 0.0,
-                    shape: "rectangle".to_string(),
-                    margin_right: Some(50), // 50px gap to zone-4
-                    margin_bottom: None,
-                },
-                FrameZone {
-                    id: "zone-4".to_string(),
-                    x: 625,      // Same left as zone-2
-                    y: 925,      // Same top as zone-3
-                    width: 475,  // Same as zone-1
-                    height: 775, // Same as zone-1
-                    rotation: 0.0,
-                    shape: "rectangle".to_string(),
-                    margin_right: None,
-                    margin_bottom: None,
-                }
-            ],
-            thumbnail: None,
-            is_default: true,
-            created_at: chrono::Utc::now().to_rfc3339(),
-        }
-    ];
-
-    // Save default frames
-    for frame in default_frames {
-        let frame_path = frames_dir.join(format!("{}.json", frame.id));
-        let json = serde_json::to_string_pretty(&frame)
-            .map_err(|e| format!("Failed to serialize frame: {}", e))?;
-        fs::write(frame_path, json)
-            .map_err(|e| format!("Failed to write frame file: {}", e))?;
-    }
-
+fn initialize_default_frames(_app: &tauri::AppHandle) -> Result<(), String> {
+    // No default frames - user creates their own
     Ok(())
 }
 
@@ -1630,16 +1484,6 @@ async fn delete_frame(app: tauri::AppHandle, frame_id: String) -> Result<(), Str
 
     if !frame_path.exists() {
         return Err(format!("Frame not found: {}", frame_id));
-    }
-
-    // Prevent deleting default frames
-    let frame_content = fs::read_to_string(&frame_path)
-        .map_err(|e| format!("Failed to read frame file: {}", e))?;
-    let frame_to_delete: Frame = serde_json::from_str(&frame_content)
-        .map_err(|e| format!("Failed to parse frame JSON: {}", e))?;
-
-    if frame_to_delete.is_default {
-        return Err("Cannot delete default frames".to_string());
     }
 
     fs::remove_file(frame_path)

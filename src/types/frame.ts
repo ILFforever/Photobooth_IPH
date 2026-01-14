@@ -1,6 +1,6 @@
 // Frame system types matching Rust backend
 
-export type FrameShape = 'rectangle' | 'circle' | 'rounded_rect' | 'ellipse' | 'rounded_rect_large' | 'square' | 'pill';
+export type FrameShape = 'rectangle' | 'circle' | 'rounded_rect' | 'ellipse' | 'rounded_rect_large' | 'pill';
 
 export interface FrameZone {
   id: string;

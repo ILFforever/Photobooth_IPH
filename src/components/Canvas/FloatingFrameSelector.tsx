@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { createPortal } from "react-dom";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { useDrop } from "react-dnd";
 import { useCollage, CANVAS_SIZES, CanvasSize } from "../../contexts/CollageContext";
@@ -98,6 +99,10 @@ const FloatingFrameSelector = () => {
     customCanvasSizes,
     setCustomCanvasSizes,
     activeSidebarTab,
+    autoMatchBackground,
+    setAutoMatchBackground,
+    backgroundDimensions,
+    setBackgroundDimensions,
   } = useCollage();
   const [openPanel, setOpenPanel] = useState<PanelType>(null);
   const [frames, setFrames] = useState<Frame[]>([]);
@@ -108,6 +113,7 @@ const FloatingFrameSelector = () => {
   const [pillBarStyle, setPillBarStyle] = useState({});
   const [deleteMode, setDeleteMode] = useState<'frame' | 'background' | 'canvas' | null>(null);
   const [showCustomCanvasDialog, setShowCustomCanvasDialog] = useState(false);
+  const [showAutoInfoModal, setShowAutoInfoModal] = useState(false);
 
   // Check if frame selector should be disabled (when creating custom frame)
   const isFrameDisabled = activeSidebarTab === 'frames';
@@ -119,6 +125,13 @@ const FloatingFrameSelector = () => {
     }
   }, [isFrameDisabled, openPanel]);
 
+  // Auto-match canvas when background changes and auto mode is enabled
+  useEffect(() => {
+    if (autoMatchBackground && background) {
+      handleMatchBackground();
+    }
+  }, [background]);
+
   // Update pill bar position on mount and window resize
   useEffect(() => {
     const updatePillBarPosition = () => {
@@ -127,12 +140,15 @@ const FloatingFrameSelector = () => {
 
       const mainPanelRect = mainPanel.getBoundingClientRect();
       const mainPanelCenter = mainPanelRect.left + mainPanelRect.width / 2;
+      const mainPanelWidth = mainPanelRect.width;
 
       setPillBarStyle({
         position: "fixed" as const,
         left: `${mainPanelCenter}px`,
         transform: "translateX(-50%)",
         bottom: "1rem",
+        // @ts-ignore - CSS custom property
+        "--main-panel-width": `${mainPanelWidth}px`,
       });
     };
 
@@ -260,9 +276,9 @@ const FloatingFrameSelector = () => {
       const updatedCanvases = customCanvasSizes.filter(c => c.name !== canvasToDelete.name);
       setCustomCanvasSizes(updatedCanvases);
 
-      // If the deleted canvas was selected, switch to default
-      if (canvasSize.name === canvasToDelete.name) {
-        setCanvasSize(CANVAS_SIZES[0]);
+      // If the deleted canvas was selected, switch to null
+      if (canvasSize?.name === canvasToDelete.name) {
+        setCanvasSize(null);
       }
 
       console.log('Custom canvas deleted:', canvasToDelete.name);
@@ -297,6 +313,7 @@ const FloatingFrameSelector = () => {
     console.log('Selected background:', bg);
     console.log('Background value type:', typeof bg.value);
     console.log('Background value:', bg.value);
+    console.log('canvasSize:', canvasSize);
 
     let finalValue = bg.value;
 
@@ -307,9 +324,18 @@ const FloatingFrameSelector = () => {
       finalValue = convertedSrc;
     }
 
+    // If no canvas is selected, enable auto-match
+    if (!canvasSize && !autoMatchBackground) {
+      console.log('No canvas size selected, enabling autoMatchBackground');
+      setAutoMatchBackground(true);
+    }
+
     console.log('Setting background to:', finalValue);
     setBackground(finalValue);
-    console.log('Background set successfully');
+
+    if (autoMatchBackground) {
+      handleMatchBackground();
+    }
     console.log('=========================');
   };
 
@@ -337,11 +363,97 @@ const FloatingFrameSelector = () => {
 
         // Set the new background
         setBackground(newBg.value);
+
+        // If auto-match is enabled, trigger matching after a short delay
+        if (autoMatchBackground) {
+          console.log('Auto-match enabled, triggering handleMatchBackground for import');
+          setTimeout(() => {
+            handleMatchBackground();
+          }, 100);
+        }
       }
     } catch (error) {
       console.error("Failed to import background:", error);
     } finally {
       setImportingBg(false);
+    }
+  };
+
+  const handleMatchBackground = async () => {
+    console.log('=== handleMatchBackground called ===');
+    console.log('Background:', background);
+    console.log('autoMatchBackground:', autoMatchBackground);
+
+    if (!background) {
+      console.log('No background, returning');
+      return;
+    }
+
+    try {
+      // Create an image element to get the background dimensions
+      const img = new Image();
+      img.src = background.startsWith('asset://')
+        ? convertFileSrc(background.replace('asset://', ''))
+        : background;
+
+      console.log('Loading image to get dimensions:', img.src);
+
+      img.onload = () => {
+        console.log('Image loaded, dimensions:', img.width, 'x', img.height);
+
+        // Store the background dimensions
+        setBackgroundDimensions({ width: img.width, height: img.height });
+        console.log('Set backgroundDimensions to:', { width: img.width, height: img.height });
+
+        // Calculate a canvas size that matches the background aspect ratio
+        // with a reasonable base dimension
+        const aspectRatio = img.width / img.height;
+        const baseDimension = 1200;
+
+        let newWidth: number;
+        let newHeight: number;
+
+        if (aspectRatio >= 1) {
+          // Landscape or square
+          newWidth = baseDimension;
+          newHeight = Math.round(baseDimension / aspectRatio);
+        } else {
+          // Portrait
+          newHeight = baseDimension;
+          newWidth = Math.round(baseDimension * aspectRatio);
+        }
+
+        // Create a custom canvas size
+        const customSize: CanvasSize = {
+          width: newWidth,
+          height: newHeight,
+          name: `${img.width}×${img.height}`,
+          isCustom: true,
+          createdAt: new Date().toISOString(),
+        };
+
+        // Check if this size already exists
+        const existing = customCanvasSizes.find(
+          c => c.width === newWidth && c.height === newHeight
+        );
+
+        if (existing) {
+          console.log('Using existing canvas size:', existing);
+          setCanvasSize(existing);
+        } else {
+          console.log('Setting new canvas size:', customSize);
+          setCanvasSize(customSize);
+        }
+
+        console.log('Matched canvas to background:', customSize);
+        console.log('=====================================');
+      };
+
+      img.onerror = () => {
+        console.error('Failed to load background image for dimensions');
+      };
+    } catch (error) {
+      console.error('Failed to match background:', error);
     }
   };
 
@@ -358,6 +470,14 @@ const FloatingFrameSelector = () => {
       const convertedSrc = convertFileSrc(item.path.replace('asset://', ''));
       console.log('Setting background directly:', convertedSrc);
       setBackground(convertedSrc);
+
+      // If auto-match is enabled, trigger matching after a short delay
+      if (autoMatchBackground) {
+        console.log('Auto-match enabled, triggering handleMatchBackground for drag-drop');
+        setTimeout(() => {
+          handleMatchBackground();
+        }, 100);
+      }
 
       // Add to importing set to show skeleton
       setImportingBackgrounds(prev => new Set(prev).add(tempId));
@@ -488,7 +608,12 @@ const FloatingFrameSelector = () => {
         >
           <span className="pill-icon">📐</span>
           <span className="pill-text">
-            {canvasSize.name} ({canvasSize.width}×{canvasSize.height})
+            {autoMatchBackground && backgroundDimensions
+              ? `Automatic (${backgroundDimensions.width}×${backgroundDimensions.height})`
+              : canvasSize
+                ? `${canvasSize.name} (${canvasSize.width}×${canvasSize.height})`
+                : "Select Size"
+            }
           </span>
           <span className="pill-indicator">
             {openPanel === "canvas" ? "▼" : "▲"}
@@ -518,6 +643,67 @@ const FloatingFrameSelector = () => {
                 {openPanel === "background" && "Backgrounds"}
               </h3>
               <div className="panel-header-actions">
+                {/* Auto-match toggle - always show for canvas panel */}
+                {openPanel === "canvas" && (
+                  <>
+                    <button
+                      onClick={() => {
+                        const newValue = !autoMatchBackground;
+                        setAutoMatchBackground(newValue);
+                        if (newValue && background) {
+                          // If enabling and background exists, match immediately
+                          handleMatchBackground();
+                        } else if (!newValue) {
+                          // If disabling, clear dimensions
+                          setBackgroundDimensions(null);
+                        }
+                      }}
+                      className={`delete-toggle-btn ${autoMatchBackground ? 'active' : ''}`}
+                      title={autoMatchBackground ? "Auto: On" : "Auto: Off"}
+                      style={{
+                        fontSize: '0.85rem',
+                        fontWeight: '600',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                      }}
+                    >
+                      <span>Auto</span>
+                      <div style={{
+                        position: 'relative',
+                        width: '32px',
+                        height: '18px',
+                        background: autoMatchBackground ? 'var(--accent-blue)' : 'rgba(255,255,255,0.2)',
+                        borderRadius: '9px',
+                        transition: 'background 0.2s',
+                      }}>
+                        <div style={{
+                          position: 'absolute',
+                          top: '2px',
+                          left: autoMatchBackground ? '14px' : '2px',
+                          width: '14px',
+                          height: '14px',
+                          background: 'white',
+                          borderRadius: '50%',
+                          transition: 'left 0.2s',
+                        }} />
+                      </div>
+                    </button>
+                    {/* Info icon button */}
+                    <button
+                      onClick={() => setShowAutoInfoModal(true)}
+                      className="info-icon-btn"
+                      title="What is Auto-Match?"
+                      aria-label="Learn about Auto-Match feature"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                        <line x1="12" x2="12.01" y1="17" y2="17"/>
+                      </svg>
+                    </button>
+                  </>
+                )}
                 {/* Delete mode toggle button - for frame, background, and canvas panels */}
                 {(openPanel === "frame" || openPanel === "background" || openPanel === "canvas") && (
                   <button
@@ -658,13 +844,47 @@ const FloatingFrameSelector = () => {
                       padding: "0.5rem 0.75rem",
                     }}
                   >
+                    {/* Auto-match overlay */}
+                    {autoMatchBackground && (
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        style={{
+                          position: 'absolute',
+                          inset: 0,
+                          background: 'rgba(0, 0, 0, 0.85)',
+                          backdropFilter: 'blur(4px)',
+                          zIndex: 10,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          borderRadius: '8px',
+                          padding: '1rem',
+                          textAlign: 'center',
+                        }}
+                      >
+                        <div style={{ fontSize: '32px', marginBottom: '0.5rem' }}>🖼️</div>
+                        <div style={{ color: 'white', fontWeight: '600', marginBottom: '0.25rem' }}>
+                          Auto-matching Background
+                        </div>
+                        <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.85rem' }}>
+                          Canvas size matches background image
+                        </div>
+                      </motion.div>
+                    )}
+
                     {/* Custom Canvas Button */}
                     <motion.div
                       key="custom-canvas-btn"
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
-                      onClick={() => setShowCustomCanvasDialog(true)}
+                      whileHover={{ scale: autoMatchBackground ? 1 : 1.02 }}
+                      whileTap={{ scale: autoMatchBackground ? 1 : 0.98 }}
+                      onClick={() => !autoMatchBackground && setShowCustomCanvasDialog(true)}
                       className="frame-option import-bg-button"
+                      style={{
+                        opacity: autoMatchBackground ? 0.3 : 1,
+                        pointerEvents: autoMatchBackground ? 'none' : 'auto',
+                      }}
                     >
                       <div className="frame-option-content">
                         <div className="frame-preview-container">
@@ -691,14 +911,16 @@ const FloatingFrameSelector = () => {
                     {customCanvasSizes.map((size) => (
                       <motion.div
                         key={size.name}
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                        onClick={() => deleteMode !== 'canvas' && handleSelectCanvasSize(size)}
+                        whileHover={{ scale: autoMatchBackground ? 1 : 1.02 }}
+                        whileTap={{ scale: autoMatchBackground ? 1 : 0.98 }}
+                        onClick={() => !autoMatchBackground && deleteMode !== 'canvas' && handleSelectCanvasSize(size)}
                         className={`frame-option ${
-                          canvasSize.name === size.name ? "selected" : ""
+                          canvasSize?.name === size.name ? "selected" : ""
                         } ${deleteMode === 'canvas' ? 'delete-mode' : ''}`}
                         style={{
                           position: 'relative',
+                          opacity: autoMatchBackground ? 0.3 : 1,
+                          pointerEvents: autoMatchBackground ? 'none' : 'auto',
                         }}
                       >
                         <div className="frame-option-content">
@@ -743,15 +965,15 @@ const FloatingFrameSelector = () => {
                     {CANVAS_SIZES.map((size) => (
                       <motion.div
                         key={size.name}
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                        onClick={() => handleSelectCanvasSize(size)}
+                        whileHover={{ scale: autoMatchBackground ? 1 : 1.02 }}
+                        whileTap={{ scale: autoMatchBackground ? 1 : 0.98 }}
+                        onClick={() => !autoMatchBackground && handleSelectCanvasSize(size)}
                         className={`frame-option ${
-                          canvasSize.name === size.name ? "selected" : ""
+                          canvasSize?.name === size.name ? "selected" : ""
                         } ${deleteMode === 'canvas' ? 'disabled' : ''}`}
                         style={{
-                          opacity: deleteMode === 'canvas' ? 0.4 : 1,
-                          pointerEvents: deleteMode === 'canvas' ? 'none' : 'auto',
+                          opacity: deleteMode === 'canvas' || autoMatchBackground ? 0.4 : 1,
+                          pointerEvents: deleteMode === 'canvas' || autoMatchBackground ? 'none' : 'auto',
                         }}
                       >
                         <div className="frame-option-content">
@@ -958,6 +1180,105 @@ const FloatingFrameSelector = () => {
           await refreshCustomCanvases();
         }}
       />
+
+      {/* Auto Info Popup Modal - Rendered via portal to document body */}
+      {createPortal(
+        <AnimatePresence>
+          {showAutoInfoModal && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowAutoInfoModal(false)}
+              style={{
+                position: 'fixed',
+                inset: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 10000,
+                background: 'rgba(0, 0, 0, 0.7)',
+                backdropFilter: 'blur(4px)',
+              }}
+            >
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  background: 'rgba(30, 30, 30, 0.95)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: '12px',
+                  padding: '2rem',
+                  maxWidth: '450px',
+                  textAlign: 'center',
+                  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
+                }}
+              >
+                <div style={{ fontSize: '48px', marginBottom: '1rem' }}>🖼️</div>
+                <h3 style={{
+                  color: 'white',
+                  fontSize: '1.5rem',
+                  fontWeight: '600',
+                  marginBottom: '0.5rem',
+                }}>
+                  Auto-Match Canvas Size
+                </h3>
+                <p style={{
+                  color: 'rgba(255, 255, 255, 0.7)',
+                  fontSize: '0.95rem',
+                  lineHeight: '1.5',
+                  marginBottom: '1.5rem',
+                }}>
+                  When enabled, the canvas size will automatically match your background image dimensions.
+                </p>
+                <div style={{
+                  background: 'rgba(59, 130, 246, 0.1)',
+                  border: '1px solid rgba(59, 130, 246, 0.3)',
+                  borderRadius: '8px',
+                  padding: '1rem',
+                  marginBottom: '1.5rem',
+                  textAlign: 'left',
+                }}>
+                  <div style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: '0.85rem', marginBottom: '0.5rem' }}>
+                    How it works:
+                  </div>
+                  <ol style={{
+                    color: 'rgba(255, 255, 255, 0.7)',
+                    fontSize: '0.85rem',
+                    lineHeight: '1.6',
+                    paddingLeft: '1.5rem',
+                    margin: 0,
+                  }}>
+                    <li style={{ marginBottom: '0.75rem' }}>Turn on Auto toggle (or enable it before selecting a background)</li>
+                    <li style={{ marginBottom: '0.75rem' }}>Select a background image</li>
+                    <li style={{ marginBottom: '0.75rem' }}>Canvas automatically adjusts to match background dimensions</li>
+                    <li>Canvas info displays "Automatic" with background dimensions</li>
+                  </ol>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAutoInfoModal(false)}
+                  style={{
+                    background: 'var(--accent-blue)',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '0.75rem 2rem',
+                    fontSize: '0.95rem',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Got it
+                </button>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   );
 };

@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { PlacedImage } from '../types/collage';
-import { Frame } from '../types/frame';
+import { Frame, FrameZone } from '../types/frame';
 import { Background } from '../types/background';
 
 export interface CanvasSize {
@@ -28,8 +28,8 @@ export interface BackgroundTransform {
 interface CollageContextType {
   currentFrame: Frame | null;
   setCurrentFrame: (frame: Frame | null) => void;
-  canvasSize: CanvasSize;
-  setCanvasSize: (size: CanvasSize) => void;
+  canvasSize: CanvasSize | null;
+  setCanvasSize: (size: CanvasSize | null) => void;
   background: string | null;
   setBackground: (bg: string | null) => void;
   backgroundTransform: BackgroundTransform;
@@ -54,6 +54,12 @@ interface CollageContextType {
   customFrames: Frame[];
   setCustomFrames: (frames: Frame[]) => void;
   reloadFrames: () => Promise<void>;
+  autoMatchBackground: boolean;
+  setAutoMatchBackground: (enabled: boolean) => void;
+  backgroundDimensions: { width: number; height: number } | null;
+  setBackgroundDimensions: (dims: { width: number; height: number } | null) => void;
+  copiedZone: FrameZone | null;
+  setCopiedZone: (zone: FrameZone | null) => void;
 }
 
 const CollageContext = createContext<CollageContextType | undefined>(undefined);
@@ -66,7 +72,7 @@ const DEFAULT_BACKGROUND_TRANSFORM: BackgroundTransform = {
 
 export function CollageProvider({ children }: { children: ReactNode }) {
   const [currentFrame, setCurrentFrame] = useState<Frame | null>(null);
-  const [canvasSize, setCanvasSize] = useState<CanvasSize>(CANVAS_SIZES[0]);
+  const [canvasSize, setCanvasSize] = useState<CanvasSize | null>(null);
   const [background, setBackground] = useState<string | null>(null);
   const [backgroundTransform, setBackgroundTransform] = useState<BackgroundTransform>(DEFAULT_BACKGROUND_TRANSFORM);
   const [backgrounds, setBackgrounds] = useState<Background[]>([]);
@@ -77,6 +83,9 @@ export function CollageProvider({ children }: { children: ReactNode }) {
   const [customCanvasSizes, setCustomCanvasSizes] = useState<CanvasSize[]>([]);
   const [activeSidebarTab, setActiveSidebarTab] = useState<'file' | 'edit' | 'frames'>('file');
   const [customFrames, setCustomFrames] = useState<Frame[]>([]);
+  const [autoMatchBackground, setAutoMatchBackground] = useState(false);
+  const [backgroundDimensions, setBackgroundDimensions] = useState<{ width: number; height: number } | null>(null);
+  const [copiedZone, setCopiedZone] = useState<FrameZone | null>(null);
 
   // Load backgrounds and settings on mount
   useEffect(() => {
@@ -193,6 +202,12 @@ export function CollageProvider({ children }: { children: ReactNode }) {
         customFrames,
         setCustomFrames,
         reloadFrames,
+        autoMatchBackground,
+        setAutoMatchBackground,
+        backgroundDimensions,
+        setBackgroundDimensions,
+        copiedZone,
+        setCopiedZone,
       }}
     >
       {children}

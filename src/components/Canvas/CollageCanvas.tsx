@@ -3,11 +3,289 @@ import { useDrop } from "react-dnd";
 import { motion } from "framer-motion";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { useCollage } from "../../contexts/CollageContext";
-import { FrameZone } from "../../types/frame";
+import { Frame, FrameZone, FrameShape } from "../../types/frame";
 import { PlacedImage } from "../../types/collage";
 import { DEFAULT_TRANSFORM } from "../../types/collage";
 import { Background } from "../../types/background";
 import FloatingFrameSelector from "./FloatingFrameSelector";
+
+interface EditableZoneProps {
+  zone: FrameZone;
+  zIndex: number;
+  frameWidth: number;
+  frameHeight: number;
+  isSelected: boolean;
+  onSelect: () => void;
+  onUpdate: (updates: Partial<FrameZone>) => void;
+}
+
+function EditableZone({ zone, zIndex, frameWidth, frameHeight, isSelected, onSelect, onUpdate }: EditableZoneProps) {
+  const [isDragging, setIsDragging] = useState(false);
+  const [isResizing, setIsResizing] = useState<string | null>(null);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [zoneStart, setZoneStart] = useState({ x: zone.x, y: zone.y, width: zone.width, height: zone.height });
+  const canvasSize = { width: frameWidth, height: frameHeight };
+  const { canvasZoom } = useCollage();
+
+  // Calculate the actual display scale factor by comparing canvas element size to internal size
+  const [displayScale, setDisplayScale] = useState(1);
+
+  useEffect(() => {
+    const canvas = document.querySelector('.collage-canvas') as HTMLElement;
+    if (canvas && frameWidth) {
+      const rect = canvas.getBoundingClientRect();
+      const scale = rect.width / frameWidth;
+      setDisplayScale(scale);
+    }
+  }, [frameWidth, canvasZoom]);
+
+  // Generate consistent color based on zone ID
+  const getZoneColor = (id: string) => {
+    const colors = [
+      'rgba(239, 68, 68, 0.3)',   // red
+      'rgba(249, 115, 22, 0.3)',  // orange
+      'rgba(234, 179, 8, 0.3)',   // yellow
+      'rgba(132, 204, 22, 0.3)',  // green
+      'rgba(6, 182, 212, 0.3)',   // cyan
+      'rgba(59, 130, 246, 0.3)',  // blue
+      'rgba(139, 92, 246, 0.3)',  // purple
+      'rgba(236, 72, 153, 0.3)',  // pink
+    ];
+    let hash = 0;
+    for (let i = 0; i < id.length; i++) {
+      hash = id.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return colors[Math.abs(hash) % colors.length];
+  };
+
+  const getBorderRadius = () => {
+    switch (zone.shape) {
+      case 'circle': return '50%';
+      case 'ellipse': return '50% / 40%';
+      case 'rounded_rect': return '12px';
+      case 'rounded_rect_large': return '24px';
+      case 'pill': return '999px';
+      default: return '2px';
+    }
+  };
+
+  // Extract zone number from ID (e.g., "zone-1" -> "Zone 1")
+  const getZoneLabel = () => {
+    const match = zone.id.match(/zone-(\d+)/);
+    if (match) {
+      return `Zone ${match[1]}`;
+    }
+    return zone.id;
+  };
+
+  // Use a minimum border width in screen pixels (3px on screen)
+  const minBorderWidth = 3;
+  const borderWidthPx = Math.max(minBorderWidth / displayScale, 2);
+
+  const zoneStyle = {
+    position: 'absolute' as const,
+    left: `${zone.x}px`,
+    top: `${zone.y}px`,
+    width: `${zone.width}px`,
+    height: `${zone.height}px`,
+    border: isSelected ? `${borderWidthPx}px solid var(--accent-blue)` : `${borderWidthPx}px dashed rgba(255, 255, 255, 0.5)`,
+    borderRadius: getBorderRadius(),
+    cursor: 'move',
+    backgroundColor: getZoneColor(zone.id),
+    pointerEvents: 'auto' as const,
+    display: 'flex',
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    zIndex: zIndex as number,
+  };
+
+  const handleMouseDown = (e: React.MouseEvent, action?: string) => {
+    e.stopPropagation();
+    e.preventDefault();
+
+    if (action === 'resize-nw' || action === 'resize-ne' || action === 'resize-sw' || action === 'resize-se' ||
+        action === 'resize-n' || action === 'resize-s' || action === 'resize-e' || action === 'resize-w') {
+      setIsResizing(action);
+    } else {
+      setIsDragging(true);
+      onSelect(); // Only select when dragging the zone itself, not when resizing
+    }
+
+    setDragStart({ x: e.clientX, y: e.clientY });
+    setZoneStart({ x: zone.x, y: zone.y, width: zone.width, height: zone.height });
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDragging && !isResizing) return;
+
+      const canvas = document.querySelector('.collage-canvas') as HTMLElement;
+      if (!canvas) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvasSize.width / rect.width;
+      const scaleY = canvasSize.height / rect.height;
+
+      const deltaX = (e.clientX - dragStart.x) * scaleX;
+      const deltaY = (e.clientY - dragStart.y) * scaleY;
+
+      if (isDragging) {
+        // No boundary constraints - allow zones to move freely
+        const newX = zoneStart.x + deltaX;
+        const newY = zoneStart.y + deltaY;
+        onUpdate({ x: Math.round(newX), y: Math.round(newY) });
+      } else if (isResizing) {
+        let updates: Partial<FrameZone> = {};
+        const minSize = 50;
+
+        // Use exact match for each resize direction - removed boundary constraints
+        switch (isResizing) {
+          case 'resize-e':
+            updates.width = Math.max(minSize, zoneStart.width + deltaX);
+            break;
+          case 'resize-s':
+            updates.height = Math.max(minSize, zoneStart.height + deltaY);
+            break;
+          case 'resize-w':
+            const newWidthW = Math.max(minSize, zoneStart.width - deltaX);
+            const newXW = zoneStart.x + zoneStart.width - newWidthW;
+            updates.width = Math.round(newWidthW);
+            updates.x = Math.round(newXW);
+            break;
+          case 'resize-n':
+            const newHeightN = Math.max(minSize, zoneStart.height - deltaY);
+            const newYN = zoneStart.y + zoneStart.height - newHeightN;
+            updates.height = Math.round(newHeightN);
+            updates.y = Math.round(newYN);
+            break;
+          case 'resize-ne':
+            updates.width = Math.max(minSize, zoneStart.width + deltaX);
+            const newHeightNE = Math.max(minSize, zoneStart.height - deltaY);
+            const newYNE = zoneStart.y + zoneStart.height - newHeightNE;
+            updates.height = Math.round(newHeightNE);
+            updates.y = Math.round(newYNE);
+            break;
+          case 'resize-nw':
+            const newWidthNW = Math.max(minSize, zoneStart.width - deltaX);
+            const newXMW = zoneStart.x + zoneStart.width - newWidthNW;
+            const newHeightNW = Math.max(minSize, zoneStart.height - deltaY);
+            const newYNW = zoneStart.y + zoneStart.height - newHeightNW;
+            updates.width = Math.round(newWidthNW);
+            updates.x = Math.round(newXMW);
+            updates.height = Math.round(newHeightNW);
+            updates.y = Math.round(newYNW);
+            break;
+          case 'resize-se':
+            updates.width = Math.max(minSize, zoneStart.width + deltaX);
+            updates.height = Math.max(minSize, zoneStart.height + deltaY);
+            break;
+          case 'resize-sw':
+            const newWidthSW = Math.max(minSize, zoneStart.width - deltaX);
+            const newXSW = zoneStart.x + zoneStart.width - newWidthSW;
+            updates.width = Math.round(newWidthSW);
+            updates.x = Math.round(newXSW);
+            updates.height = Math.max(minSize, zoneStart.height + deltaY);
+            break;
+        }
+
+        if (Object.keys(updates).length > 0) {
+          onUpdate(updates);
+        }
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+      setIsResizing(null);
+    };
+
+    if (isDragging || isResizing) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+      return () => {
+        window.removeEventListener('mousemove', handleMouseMove);
+        window.removeEventListener('mouseup', handleMouseUp);
+      };
+    }
+  }, [isDragging, isResizing, dragStart, zoneStart, zone, canvasSize]);
+
+  // Use fixed screen-space sizes for handles (e.g., 12px on screen, regardless of canvas zoom)
+  const cornerHandleSize = 12 / displayScale;
+  const edgeHandleLength = 24 / displayScale;
+  const handleBorderWidth = 2 / displayScale;
+  const handleOffset = 6 / displayScale; // Half of handle size for centering
+
+  const handleStyle = {
+    position: 'absolute' as const,
+    width: `${cornerHandleSize}px`,
+    height: `${cornerHandleSize}px`,
+    backgroundColor: 'var(--accent-blue)',
+    border: `${handleBorderWidth}px solid white`,
+    borderRadius: '2px',
+    zIndex: 1000,
+  };
+
+  const edgeHandleStyle = {
+    position: 'absolute' as const,
+    width: `${edgeHandleLength}px`,
+    height: `${cornerHandleSize}px`,
+    backgroundColor: 'var(--accent-blue)',
+    border: `${handleBorderWidth}px solid white`,
+    borderRadius: '2px',
+    zIndex: 1000,
+  };
+
+  const inverseScale = 1 / displayScale;
+
+  return (
+    <div
+      style={zoneStyle}
+      onMouseDown={(e) => handleMouseDown(e)}
+      onClick={(e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        onSelect();
+      }}
+    >
+      {/* Zone label in center - counter-scaled to maintain readable size */}
+      <span style={{
+        color: 'white',
+        fontWeight: '600',
+        fontSize: `${32 / displayScale}px`,
+        textShadow: '0 1px 3px rgba(0,0,0,0.5)',
+        pointerEvents: 'none',
+        textAlign: 'center',
+        whiteSpace: 'nowrap',
+      }}>
+        {getZoneLabel()}
+      </span>
+
+      {isSelected && (
+        <>
+          {/* Corner handles */}
+          <div style={{ ...handleStyle, top: `${-handleOffset}px`, left: `${-handleOffset}px`, cursor: 'nw-resize' }}
+               onMouseDown={(e) => handleMouseDown(e, 'resize-nw')} />
+          <div style={{ ...handleStyle, top: `${-handleOffset}px`, right: `${-handleOffset}px`, cursor: 'ne-resize' }}
+               onMouseDown={(e) => handleMouseDown(e, 'resize-ne')} />
+          <div style={{ ...handleStyle, bottom: `${-handleOffset}px`, left: `${-handleOffset}px`, cursor: 'sw-resize' }}
+               onMouseDown={(e) => handleMouseDown(e, 'resize-sw')} />
+          <div style={{ ...handleStyle, bottom: `${-handleOffset}px`, right: `${-handleOffset}px`, cursor: 'se-resize' }}
+               onMouseDown={(e) => handleMouseDown(e, 'resize-se')} />
+
+          {/* Edge handles */}
+          <div style={{ ...edgeHandleStyle, top: `${-handleOffset}px`, left: '50%', transform: 'translateX(-50%)', cursor: 'n-resize' }}
+               onMouseDown={(e) => handleMouseDown(e, 'resize-n')} />
+          <div style={{ ...edgeHandleStyle, bottom: `${-handleOffset}px`, left: '50%', transform: 'translateX(-50%)', cursor: 's-resize' }}
+               onMouseDown={(e) => handleMouseDown(e, 'resize-s')} />
+          <div style={{ ...edgeHandleStyle, left: `${-handleOffset}px`, top: '50%', transform: 'translateY(-50%)', width: `${cornerHandleSize}px`, height: `${edgeHandleLength}px`, cursor: 'w-resize' }}
+               onMouseDown={(e) => handleMouseDown(e, 'resize-w')} />
+          <div style={{ ...edgeHandleStyle, right: `${-handleOffset}px`, top: '50%', transform: 'translateY(-50%)', width: `${cornerHandleSize}px`, height: `${edgeHandleLength}px`, cursor: 'e-resize' }}
+               onMouseDown={(e) => handleMouseDown(e, 'resize-e')} />
+        </>
+      )}
+    </div>
+  );
+}
 import "./CollageCanvas.css";
 
 interface CollageCanvasProps {
@@ -21,7 +299,7 @@ interface ImageZoneProps {
 
 // Background image layer - treated as a large frame that covers the entire canvas
 function BackgroundLayer() {
-  const { background, canvasSize, backgroundTransform, setBackgroundTransform, isBackgroundSelected, setIsBackgroundSelected, selectedZone, setSelectedZone, setActiveSidebarTab } = useCollage();
+  const { background, canvasSize, backgroundTransform, setBackgroundTransform, isBackgroundSelected, setIsBackgroundSelected, selectedZone, setSelectedZone, setActiveSidebarTab, activeSidebarTab, currentFrame, setAutoMatchBackground } = useCollage();
   const bgRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
@@ -145,10 +423,15 @@ function BackgroundLayer() {
       onMouseDown={handleMouseDown}
       onClick={(e) => {
         e.stopPropagation();
+
         // If clicking on the background area, deselect zones and select background
         setSelectedZone(null); // Deselect any frame zone
         setIsBackgroundSelected(true); // Select background
-        setActiveSidebarTab('file'); // Switch to file folder tab
+
+        // Only switch to file tab if we're not in frame creation mode
+        if (activeSidebarTab !== 'frames') {
+          setActiveSidebarTab('file'); // Switch to file folder tab
+        }
       }}
     >
       <div
@@ -278,7 +561,7 @@ function BackgroundLayer() {
 
 // Individual image zone with drop target
 function ImageZone({ zone }: ImageZoneProps) {
-  const { placedImages, addPlacedImage, selectedZone, setSelectedZone, updatePlacedImage, canvasSize, setIsBackgroundSelected, setActiveSidebarTab } = useCollage();
+  const { placedImages, addPlacedImage, selectedZone, setSelectedZone, updatePlacedImage, canvasSize, setIsBackgroundSelected, setActiveSidebarTab, activeSidebarTab, canvasZoom } = useCollage();
   const placedImage = placedImages.get(zone.id);
   const dropRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
@@ -289,6 +572,18 @@ function ImageZone({ zone }: ImageZoneProps) {
   const [imageSize, setImageSize] = useState({ width: 0, height: 0, left: 0, top: 0 });
   const [snapGuides, setSnapGuides] = useState({ horizontal: false, vertical: false, centerH: false, centerV: false });
   const SNAP_THRESHOLD = 10; // pixels
+
+  // Calculate the actual display scale factor
+  const [displayScale, setDisplayScale] = useState(1);
+
+  useEffect(() => {
+    const canvas = document.querySelector('.collage-canvas') as HTMLElement;
+    if (canvas && canvasSize?.width) {
+      const rect = canvas.getBoundingClientRect();
+      const scale = rect.width / canvasSize.width;
+      setDisplayScale(scale);
+    }
+  }, [canvasSize?.width, canvasZoom]);
 
   // Convert file paths to Tauri-compatible URLs (use full sourceFile, not thumbnail)
   const imageSrc = useMemo(() => {
@@ -565,7 +860,10 @@ function ImageZone({ zone }: ImageZoneProps) {
         e.stopPropagation(); // Prevent click from bubbling to container
         setSelectedZone(zone.id);
         setIsBackgroundSelected(false);
-        setActiveSidebarTab('edit'); // Switch to edit tab when frame is selected
+        // Only switch to edit tab if we're not in frame creation mode
+        if (activeSidebarTab !== 'frames') {
+          setActiveSidebarTab('edit'); // Switch to edit tab when frame is selected
+        }
       }}
       className="image-zone"
     >
@@ -673,7 +971,7 @@ function ImageZone({ zone }: ImageZoneProps) {
             alignItems: 'center',
             justifyContent: 'center',
             color: 'rgba(255, 255, 255, 0.5)',
-            fontSize: '14px',
+            fontSize: `${20 / displayScale}px`,
             pointerEvents: 'none',
           }}
         >
@@ -959,7 +1257,7 @@ function ImageZoneOverflow({ zone, placedImage }: ImageZoneOverflowProps) {
 }
 
 export default function CollageCanvas({ width: propWidth, height: propHeight }: CollageCanvasProps) {
-  const { currentFrame, setCurrentFrame, background, canvasSize, backgroundTransform, setBackgroundTransform, isBackgroundSelected, setIsBackgroundSelected, canvasZoom, setCanvasZoom, selectedZone, setSelectedZone, placedImages, setActiveSidebarTab, activeSidebarTab } = useCollage();
+  const { currentFrame, setCurrentFrame, background, canvasSize, backgroundTransform, setBackgroundTransform, isBackgroundSelected, setIsBackgroundSelected, canvasZoom, setCanvasZoom, selectedZone, setSelectedZone, placedImages, setActiveSidebarTab, activeSidebarTab, autoMatchBackground, backgroundDimensions, copiedZone, setCopiedZone } = useCollage();
   const canvasRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [localZoom, setLocalZoom] = useState(canvasZoom);
@@ -970,6 +1268,10 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
   const setCanvasZoomRef = useRef(setCanvasZoom);
   const setLocalZoomRef = useRef(setLocalZoom);
   const setZoomCenterRef = useRef(setZoomCenter);
+
+  // Use canvas size from context, falling back to props or auto-match background dimensions
+  const width = propWidth ?? (autoMatchBackground && backgroundDimensions ? backgroundDimensions.width : canvasSize?.width);
+  const height = propHeight ?? (autoMatchBackground && backgroundDimensions ? backgroundDimensions.height : canvasSize?.height);
 
   // Handle drop for frame creation zones
   const handleCanvasDrop = useCallback((e: React.DragEvent) => {
@@ -989,8 +1291,11 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
     const dropY = e.clientY - canvasRect.top;
 
     // Convert to canvas coordinates (internal size)
-    const internalWidth = canvasSize.width;
-    const internalHeight = canvasSize.height;
+    // Use the actual canvas dimensions from the rendered canvas
+    const internalWidth = width;
+    const internalHeight = height;
+
+    if (!internalWidth || !internalHeight) return;
 
     const scaleX = internalWidth / canvasRect.width;
     const scaleY = internalHeight / canvasRect.height;
@@ -1016,7 +1321,7 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
         zones: [...currentFrame.zones, newZone],
       });
     }
-  }, [activeSidebarTab, canvasSize, currentFrame, setCurrentFrame]);
+  }, [activeSidebarTab, width, height, currentFrame, setCurrentFrame]);
 
   const handleCanvasDragOver = useCallback((e: React.DragEvent) => {
     if (activeSidebarTab === 'frames') {
@@ -1117,60 +1422,68 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
     }
   }, [currentFrame, handleWheel, handleTouchStart, handleTouchMove]);
 
-// Use canvas size from context, falling back to props
-  const width = propWidth ?? canvasSize.width;
-  const height = propHeight ?? canvasSize.height;
+  // Handle keyboard events for copy/paste zones
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only handle in frame creator mode
+      if (activeSidebarTab !== 'frames') return;
 
-  // Calculate scale to fit canvas in viewport
-  const maxContainerWidth = 600;
-  const maxContainerHeight = 900;
+      // Ctrl+C or Cmd+C to copy zone
+      if ((e.ctrlKey || e.metaKey) && e.key === 'c' && selectedZone && currentFrame) {
+        const zone = currentFrame.zones.find(z => z.id === selectedZone);
+        if (zone) {
+          setCopiedZone(zone);
+          console.log('Zone copied:', zone);
+        }
+      }
 
-  const scaleX = maxContainerWidth / width;
-  const scaleY = maxContainerHeight / height;
-  const baseScale = Math.min(scaleX, scaleY, 1);
+      // Ctrl+V or Cmd+V to paste zone
+      if ((e.ctrlKey || e.metaKey) && e.key === 'v' && copiedZone && currentFrame) {
+        // Get next sequential zone ID
+        const existingNumbers = currentFrame.zones
+          .map(zone => {
+            const match = zone.id.match(/zone-(\d+)/);
+            return match ? parseInt(match[1], 10) : 0;
+          })
+          .filter(num => num > 0);
+        const maxNumber = existingNumbers.length > 0 ? Math.max(...existingNumbers) : 0;
+        const nextZoneId = `zone-${maxNumber + 1}`;
 
-  const finalScale = baseScale * localZoom;
+        // Create new zone with slight offset
+        const newZone: FrameZone = {
+          ...copiedZone,
+          id: nextZoneId,
+          x: Math.min(copiedZone.x + 20, currentFrame.width - copiedZone.width - 10),
+          y: Math.min(copiedZone.y + 20, currentFrame.height - copiedZone.height - 10),
+        };
 
-  const scaledWidth = width * finalScale;
-  const scaledHeight = height * finalScale;
+        setCurrentFrame({
+          ...currentFrame,
+          zones: [...currentFrame.zones, newZone],
+        });
 
-  // Calculate extra spacing around canvas based on zoom level
-  // This creates invisible space around the canvas so you can scroll when zoomed
-  const zoomGrowth = Math.max(0, localZoom - 0.5);
-  const spacing = zoomGrowth * scaledHeight * 0.5; // More conservative spacing
+        // Select the newly pasted zone
+        setSelectedZone(newZone.id);
+        console.log('Zone pasted:', newZone);
+      }
 
-  const containerStyle = {
-    width: '100%',
-    display: 'flex' as const,
-    flexDirection: 'column' as const,
-    justifyContent: 'flex-start' as const,
-    alignItems: 'center' as const,
-    padding: '24px',
-    flex: '1' as const,
-    boxSizing: 'border-box' as const,
-    overflow: 'visible' as const,
-  };
+      // Delete or Backspace to delete selected zone
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedZone && currentFrame) {
+        e.preventDefault();
+        const updatedZones = currentFrame.zones.filter(z => z.id !== selectedZone);
+        setCurrentFrame({
+          ...currentFrame,
+          zones: updatedZones,
+        });
+        setSelectedZone(null);
+      }
+    };
 
-  const canvasStyle = {
-    width: `${scaledWidth}px`,
-    height: `${scaledHeight}px`,
-    position: 'relative' as const,
-    background: '#ffffff',
-    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
-    borderRadius: '4px',
-    overflow: 'visible', // Changed to visible to allow overflow to show
-    flexShrink: 0 as const,
-  };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeSidebarTab, selectedZone, copiedZone, currentFrame, canvasSize, setCopiedZone, setCurrentFrame, setSelectedZone]);
 
-  const innerCanvasStyle = {
-    width: '100%',
-    height: '100%',
-    position: 'relative' as const,
-    overflow: 'hidden', // Add clipping to inner canvas
-    borderRadius: '4px', // Match the canvas border radius
-  };
-
-  // Convert background path to Tauri-compatible URL
+  // Convert background path to Tauri-compatible URL (must be before conditional return)
   const bgSrc = useMemo(() => {
     if (!background) return null;
     if (background.startsWith('http') || background.startsWith('data:')) {
@@ -1179,7 +1492,7 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
     return convertFileSrc(background.replace('asset://', ''));
   }, [background]);
 
-  // Auto-scroll to zoom center when zooming
+  // Auto-scroll to zoom center when zooming (must be before conditional return)
   // This ensures the point under the mouse stays stable during zoom
   useEffect(() => {
     // Only run if zoom actually changed
@@ -1228,6 +1541,78 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
     }
   }, [localZoom, zoomCenter]);
 
+  // If no dimensions available, don't render canvas
+  if (!width || !height) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="collage-canvas-container"
+        style={{ flex: '1', display: 'flex', flexDirection: 'column' }}
+      >
+        <div className="canvas-placeholder">
+          <div className="placeholder-content">
+            <span className="placeholder-icon">📐</span>
+            <h3>No Canvas Size Selected</h3>
+            <p>Select a canvas size or choose a background to auto-fit</p>
+          </div>
+        </div>
+        <FloatingFrameSelector />
+      </motion.div>
+    );
+  }
+
+  // Calculate scale to fit canvas in viewport
+  const maxContainerWidth = 600;
+  const maxContainerHeight = 900;
+
+  const scaleX = maxContainerWidth / width;
+  const scaleY = maxContainerHeight / height;
+  const baseScale = Math.min(scaleX, scaleY, 1);
+
+  const finalScale = baseScale * localZoom;
+
+  const scaledWidth = width * finalScale;
+  const scaledHeight = height * finalScale;
+
+  // Calculate extra spacing around canvas based on zoom level
+  // This creates invisible space around the canvas so you can scroll when zoomed
+  const zoomGrowth = Math.max(0, localZoom - 0.5);
+  const spacing = zoomGrowth * scaledHeight * 0.5; // More conservative spacing
+
+  const containerStyle = {
+    width: '100%',
+    display: 'flex' as const,
+    flexDirection: 'column' as const,
+    justifyContent: 'flex-start' as const,
+    alignItems: 'center' as const,
+    padding: '24px',
+    flex: '1' as const,
+    boxSizing: 'border-box' as const,
+    overflow: 'visible' as const,
+  };
+
+  const canvasStyle = {
+    width: `${scaledWidth}px`,
+    height: `${scaledHeight}px`,
+    position: 'relative' as const,
+    background: '#ffffff',
+    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+    borderRadius: '4px',
+    overflow: 'hidden', // Clip content at canvas boundary
+    flexShrink: 0 as const,
+  };
+
+  const innerCanvasStyle = {
+    width: `${width}px`,
+    height: `${height}px`,
+    position: 'relative' as const,
+    overflow: 'hidden', // Add clipping to inner canvas
+    borderRadius: '4px', // Match the canvas border radius
+    transform: `scale(${finalScale})`,
+    transformOrigin: 'top left',
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -1243,15 +1628,26 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
             <p>Choose a frame template to start creating your collage</p>
           </div>
         </div>
+      ) : !background ? (
+        <div className="canvas-placeholder">
+          <div className="placeholder-content">
+            <span className="placeholder-icon">🎨</span>
+            <h3>No Background Selected</h3>
+            <p>Choose a background to start creating your collage</p>
+          </div>
+        </div>
       ) : (
         <div
           ref={containerRef}
           style={containerStyle}
           onClick={() => {
-            // Clicking outside the canvas (in the container area) deselects everything and returns to file tab
+            // Clicking outside the canvas (in the container area) deselects everything
             setSelectedZone(null);
             setIsBackgroundSelected(false);
-            setActiveSidebarTab('file');
+            // Only switch to file tab if we're not in frame creation mode
+            if (activeSidebarTab !== 'frames') {
+              setActiveSidebarTab('file');
+            }
           }}
         >
           {/* Invisible spacers to allow scrolling in all directions when zoomed */}
@@ -1304,14 +1700,37 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
               {/* Background Layer - rendered as transformable image */}
               <BackgroundLayer />
 
-              {/* Image Zones - render non-selected first, then selected */}
-              {currentFrame.zones.map((zone) => {
-                if (selectedZone === zone.id) return null;
-                return <ImageZone key={zone.id} zone={zone} />;
-              })}
+              {/* In frame creation mode, render editable zones */}
+              {activeSidebarTab === 'frames' ? (
+                currentFrame.zones.map((zone, index) => (
+                  <EditableZone
+                    key={zone.id}
+                    zone={zone}
+                    zIndex={index}
+                    frameWidth={currentFrame.width}
+                    frameHeight={currentFrame.height}
+                    isSelected={selectedZone === zone.id}
+                    onSelect={() => setSelectedZone(zone.id)}
+                    onUpdate={(updates) => {
+                      const updated = currentFrame.zones.map(z =>
+                        z.id === zone.id ? { ...z, ...updates } : z
+                      );
+                      setCurrentFrame({ ...currentFrame, zones: updated });
+                    }}
+                  />
+                ))
+              ) : (
+                <>
+                  {/* Image Zones - render non-selected first, then selected */}
+                  {currentFrame.zones.map((zone) => {
+                    if (selectedZone === zone.id) return null;
+                    return <ImageZone key={zone.id} zone={zone} />;
+                  })}
+                </>
+              )}
 
               {/* Selected zone overflow - renders on top of non-selected zones */}
-              {selectedZone && (() => {
+              {activeSidebarTab !== 'frames' && selectedZone && (() => {
                 const zone = currentFrame.zones.find(z => z.id === selectedZone);
                 const placedImage = zone ? placedImages.get(zone.id) : null;
                 if (!zone || !placedImage) return null;
@@ -1325,17 +1744,26 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
               })()}
 
               {/* Selected zone - renders on top of everything */}
-              {selectedZone && (() => {
+              {activeSidebarTab !== 'frames' && selectedZone && (() => {
                 const zone = currentFrame.zones.find(z => z.id === selectedZone);
                 if (!zone) return null;
                 return <ImageZone key={zone.id} zone={zone} />;
               })()}
+            </div>
 
-              {/* Frame Info Overlay */}
-              <div className="canvas-info">
-                <span className="canvas-frame-name">{canvasSize.name}</span>
-                <span className="canvas-dimensions">{width} × {height}px</span>
-              </div>
+            {/* Canvas Info Box - rendered outside scaled inner canvas for consistent sizing */}
+            <div className="canvas-info">
+              <span className="canvas-frame-name">
+                {autoMatchBackground && backgroundDimensions
+                  ? 'Automatic'
+                  : canvasSize?.name || currentFrame?.name || 'Custom'}
+              </span>
+              <span className="canvas-dimensions">
+                {autoMatchBackground && backgroundDimensions
+                  ? `${backgroundDimensions.width} × ${backgroundDimensions.height}px`
+                  : `${width} × ${height}px`
+                }
+              </span>
             </div>
           </div>
         </div>

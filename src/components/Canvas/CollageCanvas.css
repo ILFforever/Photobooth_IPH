@@ -109,16 +109,16 @@
 
 .canvas-info {
   position: absolute;
-  bottom: 12px;
-  left: 12px;
+  bottom: 8px;
+  left: 8px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   background: rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(8px);
-  padding: 8px 12px;
-  border-radius: 6px;
-  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 11px;
   color: white;
   z-index: 10;
   pointer-events: none;
@@ -126,11 +126,15 @@
 
 .canvas-frame-name {
   font-weight: 600;
+  font-size: 11px;
   color: var(--accent-blue);
+  line-height: 1.2;
 }
 
 .canvas-dimensions {
+  font-size: 10px;
   color: rgba(255, 255, 255, 0.7);
+  line-height: 1.1;
 }
 
 .canvas-placeholder {
