@@ -7,7 +7,7 @@ interface AboutModalProps {
 }
 
 export default function AboutModal({ show, onClose }: AboutModalProps) {
-  const [aboutTab, setAboutTab] = useState<'features' | 'contact'>('features');
+  const [aboutTab, setAboutTab] = useState<'features' | 'modes' | 'contact'>('features');
 
   if (!show) return null;
 
@@ -31,7 +31,7 @@ export default function AboutModal({ show, onClose }: AboutModalProps) {
           <div style={{ textAlign: 'center' }}>
             <div style={{ fontSize: '64px', marginBottom: '1rem' }}>📸</div>
             <h2 style={{ marginBottom: '0.5rem' }}>PhotoBooth QR Generator</h2>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Version 1.0.8</p>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Version 3.11</p>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '1.25rem' }}>Developed by ILFforever for Intania Production House</p>
           </div>
 
@@ -41,7 +41,7 @@ export default function AboutModal({ show, onClose }: AboutModalProps) {
             </p>
 
             <div style={{ background: 'var(--bg-primary)', padding: '0.75rem', borderRadius: '8px', marginTop: '0.5rem'}}>
-              <div style={{ display: 'flex', gap: '1.5rem', borderBottom: '1px solid var(--border-color)', marginBottom: '0.75rem', position: 'relative' }}>
+              <div style={{ display: 'flex', gap: '1.5rem', borderBottom: '1px solid var(--border-color)', marginBottom: '0.75rem', position: 'relative', paddingBottom: '0.5rem' }}>
                 <button
                   onClick={() => setAboutTab('features')}
                   style={{
@@ -58,6 +58,36 @@ export default function AboutModal({ show, onClose }: AboutModalProps) {
                 >
                   Features
                   {aboutTab === 'features' && (
+                    <motion.div
+                      layoutId="aboutUnderline"
+                      style={{
+                        position: 'absolute',
+                        bottom: '-1px',
+                        left: 0,
+                        right: 0,
+                        height: '2px',
+                        background: 'var(--accent-blue)',
+                        zIndex: 1
+                      }}
+                    />
+                  )}
+                </button>
+                <button
+                  onClick={() => setAboutTab('modes')}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: '0 0 0.5rem 0',
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    color: aboutTab === 'modes' ? 'var(--accent-blue)' : 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    position: 'relative',
+                    transition: 'color 0.2s ease'
+                  }}
+                >
+                  Modes
+                  {aboutTab === 'modes' && (
                     <motion.div
                       layoutId="aboutUnderline"
                       style={{
@@ -106,21 +136,55 @@ export default function AboutModal({ show, onClose }: AboutModalProps) {
 
               {aboutTab === 'features' ? (
                 <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
                   transition={{ duration: 0.2 }}
                 >
                   <ul style={{ fontSize: '13px', paddingLeft: '1.5rem', margin: 0 }}>
                     <li style={{ marginBottom: '0.5rem' }}>Drag & drop or browse to add photos (JPG, PNG, RAW)</li>
-                    <li style={{ marginBottom: '0.5rem' }}>Organize uploads in Google Drive folders</li>
+                    <li style={{ marginBottom: '0.5rem' }}>Upload directly to Google Drive with organized folders</li>
                     <li style={{ marginBottom: '0.5rem' }}>Generate shareable QR codes automatically</li>
-                    <li>Support for RAW image formats</li>
+                    <li style={{ marginBottom: '0.5rem' }}>Support for RAW image formats (CR2, NEF, ARW, etc.)</li>
+                    <li>View upload history and manage previous sessions</li>
                   </ul>
+                </motion.div>
+              ) : aboutTab === 'modes' ? (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem', background: 'var(--bg-secondary)', borderRadius: '6px' }}>
+                      <span style={{ fontSize: '20px' }}>🎞️</span>
+                      <div>
+                        <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)' }}>Photobooth</div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Watch folder and auto-place photos into strips</div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem', background: 'var(--bg-secondary)', borderRadius: '6px' }}>
+                      <span style={{ fontSize: '20px' }}>🎨</span>
+                      <div>
+                        <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)' }}>Collage Creator</div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Manual drag & drop with custom frames</div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem', background: 'var(--bg-secondary)', borderRadius: '6px' }}>
+                      <span style={{ fontSize: '20px' }}>📱</span>
+                      <div>
+                        <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)' }}>QR Generator</div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Upload photos and generate shareable QR codes</div>
+                      </div>
+                    </div>
+                  </div>
                 </motion.div>
               ) : (
                 <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
                   transition={{ duration: 0.2 }}
                 >
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>

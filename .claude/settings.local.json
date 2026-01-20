@@ -12,7 +12,8 @@
       "Bash(findstr:*)",
       "Bash(cargo add:*)",
       "Bash(cargo clean:*)",
-      "Bash(npm run tauri:*)"
+      "Bash(npm run tauri:*)",
+      "Bash(find:*)"
     ]
   }
 }

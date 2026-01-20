@@ -157,24 +157,33 @@ const FloatingFrameSelector = () => {
     return () => window.removeEventListener("resize", updatePillBarPosition);
   }, []);
 
+  // Function to load frames
+  const loadFrames = async () => {
+    try {
+      const loadedFrames = await invoke<Frame[]>("load_frames");
+      // Filter out the system blank frame from the list
+      const visibleFrames = loadedFrames.filter(f => f.id !== 'system-blank');
+      setFrames(visibleFrames);
+
+      // Auto-select first frame if none selected (skip blank frame)
+      if (!currentFrame && visibleFrames.length > 0) {
+        setCurrentFrame(visibleFrames[0]);
+      }
+    } catch (error) {
+      console.error("Failed to load frames:", error);
+    }
+  };
+
   // Auto-load frames, backgrounds, and custom canvases on mount
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
       try {
-        const [loadedFrames, loadedBackgrounds] = await Promise.all([
-          invoke<Frame[]>("load_frames"),
+        const [loadedBackgrounds] = await Promise.all([
           invoke<Background[]>("load_backgrounds"),
+          loadFrames(),
         ]);
-        // Filter out the system blank frame from the list
-        const visibleFrames = loadedFrames.filter(f => f.id !== 'system-blank');
-        setFrames(visibleFrames);
         setBackgrounds(loadedBackgrounds);
-
-        // Auto-select first frame if none selected (skip blank frame)
-        if (!currentFrame && visibleFrames.length > 0) {
-          setCurrentFrame(visibleFrames[0]);
-        }
 
         // Load custom canvas sizes
         await refreshCustomCanvases();
@@ -187,6 +196,14 @@ const FloatingFrameSelector = () => {
 
     loadData();
   }, []);
+
+  // Reload frames when activeSidebarTab changes from 'frames' to something else
+  // This ensures new frames are loaded after creating a custom layout
+  useEffect(() => {
+    if (activeSidebarTab !== 'frames') {
+      loadFrames();
+    }
+  }, [activeSidebarTab]);
 
   const panelOrder: PanelType[] = ["frame", "background", "canvas"];
 
@@ -786,7 +803,10 @@ const FloatingFrameSelector = () => {
                                       width: `${(zone.width / frame.width) * 100}%`,
                                       height: `${(zone.height / frame.height) * 100}%`,
                                       transform: `rotate(${zone.rotation}deg)`,
-                                      borderRadius: zone.shape === 'circle' ? '50%' : (zone.shape === 'rounded_rect' ? '8px' : '2px'),
+                                      borderRadius: zone.shape === 'circle' ? '50%' :
+                                                    zone.shape === 'ellipse' ? '50% / 40%' :
+                                                    zone.shape === 'rounded_rect' ? `${Math.min((zone.borderRadius || 12) / frame.width * 100, 50)}%` :
+                                                    zone.shape === 'pill' ? '999px' : '2px',
                                     }}
                                   />
                                 ))}

@@ -2,7 +2,7 @@ import { motion } from "framer-motion";
 
 interface ImageGalleryProps {
   selectedImages: string[];
-  failedImages: {filename: string, type: string, isRaw?: boolean, size?: number}[];
+  noPreviewImages: {filename: string, type: string, isRaw?: boolean, size?: number}[];
   processingImages: string[];
   loadedImages: Record<string, boolean>;
   isDragging: boolean;
@@ -12,7 +12,7 @@ interface ImageGalleryProps {
   onDrop: (e: React.DragEvent) => void;
   onImageLoaded: (path: string) => void;
   onRemoveImage: (imagePath: string) => void;
-  onRemoveFailedImage: (filename: string) => void;
+  onRemoveNoPreviewImage: (filename: string) => void;
   onClearGallery: () => void;
 }
 
@@ -26,7 +26,7 @@ const formatFileSize = (bytes?: number): string => {
 
 const ImageGallery = ({
   selectedImages,
-  failedImages,
+  noPreviewImages,
   processingImages,
   loadedImages,
   isDragging,
@@ -36,7 +36,7 @@ const ImageGallery = ({
   onDrop,
   onImageLoaded,
   onRemoveImage,
-  onRemoveFailedImage,
+  onRemoveNoPreviewImage,
   onClearGallery
 }: ImageGalleryProps) => {
   return (
@@ -47,7 +47,7 @@ const ImageGallery = ({
       exit={{ opacity: 0, y: -10 }}
       className="gallery-view"
     >
-      {selectedImages.length > 0 || failedImages.length > 0 ? (
+      {selectedImages.length > 0 || noPreviewImages.length > 0 ? (
         <div
           className={`gallery-with-images ${isDragging ? 'dragging' : ''}`}
           onDragOver={onDragOver}
@@ -85,27 +85,27 @@ const ImageGallery = ({
               );
             })}
 
-            {/* Show placeholder cards for failed images */}
-            {failedImages.map((failedImg) => (
+            {/* Show placeholder cards for images without preview (RAW files, etc.) */}
+            {noPreviewImages.map((img) => (
               <motion.div
-                key={`failed-${failedImg.filename}`}
+                key={`no-preview-${img.filename}`}
                 initial={{ opacity: 0, scale: 0.8 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.8 }}
-                className="image-card failed-card"
-                data-is-raw={failedImg.isRaw ? "true" : "false"}
+                className="image-card no-preview-card"
+                data-is-raw={img.isRaw ? "true" : "false"}
               >
-                <div className="failed-image-content">
-                  <div className="failed-icon">{failedImg.isRaw ? '📄' : '⚠️'}</div>
-                  <div className="failed-filename">{failedImg.filename}</div>
-                  <div className="failed-type">{failedImg.type}</div>
-                  {failedImg.size && <div className="failed-size">{formatFileSize(failedImg.size)}</div>}
-                  {!failedImg.isRaw && <div className="failed-message">Preview failed</div>}
+                <div className="no-preview-content">
+                  <div className="no-preview-icon">{img.isRaw ? '📄' : '⚠️'}</div>
+                  <div className="no-preview-filename">{img.filename}</div>
+                  <div className="no-preview-type">{img.type}</div>
+                  {img.size && <div className="no-preview-size">{formatFileSize(img.size)}</div>}
+                  {!img.isRaw && <div className="no-preview-message">Preview unavailable</div>}
                 </div>
                 <button
                   className="remove-image-btn"
-                  onClick={() => onRemoveFailedImage(failedImg.filename)}
-                  title="Remove failed image"
+                  onClick={() => onRemoveNoPreviewImage(img.filename)}
+                  title="Remove image"
                 >
                   ×
                 </button>
@@ -143,7 +143,7 @@ const ImageGallery = ({
               disabled={loading}
               className="btn-clear-gallery"
             >
-              🗑️ Clear All ({selectedImages.length + failedImages.length})
+              🗑️ Clear All ({selectedImages.length + noPreviewImages.length})
             </motion.button>
           </div>
         </div>

@@ -237,6 +237,12 @@
   align-items: center;
 }
 
+.zone-settings-dropdown .control-row-full {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
 .zone-settings-dropdown .control-row:last-child {
   margin-bottom: 0;
 }
@@ -281,6 +287,46 @@
 
 .zone-settings-dropdown input[type="number"] {
   -moz-appearance: textfield;
+}
+
+.zone-settings-dropdown input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  height: 6px;
+  outline: none;
+}
+
+.zone-settings-dropdown input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  background: var(--accent-blue);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.zone-settings-dropdown input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2);
+}
+
+.zone-settings-dropdown input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  background: var(--accent-blue);
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s;
+}
+
+.zone-settings-dropdown input[type="range"]::-moz-range-thumb:hover {
+  transform: scale(1.2);
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2);
 }
 
 .zone-item-info {

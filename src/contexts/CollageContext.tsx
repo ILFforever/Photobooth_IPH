@@ -49,8 +49,8 @@ interface CollageContextType {
   setCanvasZoom: (zoom: number) => void;
   customCanvasSizes: CanvasSize[];
   setCustomCanvasSizes: (sizes: CanvasSize[]) => void;
-  activeSidebarTab: 'file' | 'edit' | 'frames';
-  setActiveSidebarTab: (tab: 'file' | 'edit' | 'frames') => void;
+  activeSidebarTab: 'file' | 'edit' | 'frames' | 'custom-sets';
+  setActiveSidebarTab: (tab: 'file' | 'edit' | 'frames' | 'custom-sets') => void;
   customFrames: Frame[];
   setCustomFrames: (frames: Frame[]) => void;
   reloadFrames: () => Promise<void>;
@@ -60,6 +60,7 @@ interface CollageContextType {
   setBackgroundDimensions: (dims: { width: number; height: number } | null) => void;
   copiedZone: FrameZone | null;
   setCopiedZone: (zone: FrameZone | null) => void;
+  captureCanvasThumbnail: () => Promise<string | null>;
 }
 
 const CollageContext = createContext<CollageContextType | undefined>(undefined);
@@ -81,7 +82,7 @@ export function CollageProvider({ children }: { children: ReactNode }) {
   const [isBackgroundSelected, setIsBackgroundSelected] = useState<boolean>(false);
   const [canvasZoom, setCanvasZoom] = useState<number>(1);
   const [customCanvasSizes, setCustomCanvasSizes] = useState<CanvasSize[]>([]);
-  const [activeSidebarTab, setActiveSidebarTab] = useState<'file' | 'edit' | 'frames'>('file');
+  const [activeSidebarTab, setActiveSidebarTab] = useState<'file' | 'edit' | 'frames' | 'custom-sets'>('file');
   const [customFrames, setCustomFrames] = useState<Frame[]>([]);
   const [autoMatchBackground, setAutoMatchBackground] = useState(false);
   const [backgroundDimensions, setBackgroundDimensions] = useState<{ width: number; height: number } | null>(null);
@@ -171,6 +172,35 @@ export function CollageProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const captureCanvasThumbnail = async (): Promise<string | null> => {
+    try {
+      const canvasElement = document.querySelector('.collage-canvas') as HTMLElement;
+      if (!canvasElement) {
+        console.error('Canvas element not found');
+        return null;
+      }
+
+      // Import html2canvas dynamically
+      const html2canvas = (await import('html2canvas')).default;
+
+      // Capture the canvas at a smaller scale for thumbnail
+      const canvas = await html2canvas(canvasElement, {
+        scale: 0.3, // Reduce size for thumbnail
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: null,
+        logging: false,
+      });
+
+      // Convert to base64 data URL
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+      return dataUrl;
+    } catch (error) {
+      console.error('Failed to capture canvas thumbnail:', error);
+      return null;
+    }
+  };
+
   return (
     <CollageContext.Provider
       value={{
@@ -208,6 +238,7 @@ export function CollageProvider({ children }: { children: ReactNode }) {
         setBackgroundDimensions,
         copiedZone,
         setCopiedZone,
+        captureCanvasThumbnail,
       }}
     >
       {children}

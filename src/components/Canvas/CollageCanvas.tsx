@@ -62,8 +62,7 @@ function EditableZone({ zone, zIndex, frameWidth, frameHeight, isSelected, onSel
     switch (zone.shape) {
       case 'circle': return '50%';
       case 'ellipse': return '50% / 40%';
-      case 'rounded_rect': return '12px';
-      case 'rounded_rect_large': return '24px';
+      case 'rounded_rect': return `${zone.borderRadius || 12}px`;
       case 'pill': return '999px';
       default: return '2px';
     }
@@ -835,6 +834,16 @@ function ImageZone({ zone }: ImageZoneProps) {
     }
   }, [placedImage, imageSrc]);
 
+  const getBorderRadiusForImageZone = () => {
+    switch (zone.shape) {
+      case 'circle': return '50%';
+      case 'ellipse': return '50% / 40%';
+      case 'rounded_rect': return `${zone.borderRadius || 12}px`;
+      case 'pill': return '999px';
+      default: return '2px';
+    }
+  };
+
   const zoneStyle = {
     position: 'absolute' as const,
     left: `${zone.x}px`,
@@ -843,7 +852,7 @@ function ImageZone({ zone }: ImageZoneProps) {
     height: `${zone.height}px`,
     transform: `rotate(${zone.rotation}deg)`,
     border: selectedZone === zone.id ? '3px solid var(--accent-blue)' : '2px dashed rgba(255, 255, 255, 0.3)',
-    borderRadius: zone.shape === 'circle' ? '50%' : (zone.shape === 'rounded_rect' ? '16px' : '8px'),
+    borderRadius: getBorderRadiusForImageZone(),
     backgroundColor: isOver ? 'rgba(59, 130, 246, 0.2)' : 'rgba(0, 0, 0, 0.1)',
     cursor: 'pointer',
     overflow: 'hidden',

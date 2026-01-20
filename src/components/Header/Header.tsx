@@ -1,5 +1,8 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "../../contexts/AuthContext";
+import { useRef, useLayoutEffect, useState } from "react";
+
+type AppMode = 'photobooth' | 'collage' | 'qr';
 
 interface HeaderProps {
   showAccountMenu: boolean;
@@ -11,6 +14,8 @@ interface HeaderProps {
   onLogout: () => void;
   onLogin: () => void;
   onCancelLogin: () => void;
+  mode: AppMode;
+  setMode: (mode: AppMode) => void;
 }
 
 export default function Header({
@@ -23,8 +28,43 @@ export default function Header({
   onLogout,
   onLogin,
   onCancelLogin,
+  mode,
+  setMode,
 }: HeaderProps) {
   const { account, loggingIn } = useAuth();
+
+  // Refs for measuring button widths
+  const photoboothRef = useRef<HTMLButtonElement>(null);
+  const collageRef = useRef<HTMLButtonElement>(null);
+  const qrRef = useRef<HTMLButtonElement>(null);
+
+  const [indicatorStyle, setIndicatorStyle] = useState({ x: 0, width: 0 });
+
+  // Calculate indicator position and width based on active button
+  useLayoutEffect(() => {
+    const updateIndicator = () => {
+      let activeRef = null;
+
+      if (mode === 'photobooth') activeRef = photoboothRef.current;
+      else if (mode === 'collage') activeRef = collageRef.current;
+      else if (mode === 'qr') activeRef = qrRef.current;
+
+      if (activeRef) {
+        const rect = activeRef.getBoundingClientRect();
+        const parentRect = activeRef.parentElement?.getBoundingClientRect();
+
+        if (parentRect) {
+          const x = rect.left - parentRect.left;
+          const width = rect.width;
+          setIndicatorStyle({ x, width });
+        }
+      }
+    };
+
+    updateIndicator();
+    window.addEventListener('resize', updateIndicator);
+    return () => window.removeEventListener('resize', updateIndicator);
+  }, [mode]);
 
   return (
     <header className="app-header">
@@ -73,6 +113,46 @@ export default function Header({
               </motion.div>
             )}
           </AnimatePresence>
+        </div>
+      </div>
+
+      {/* Mode Selector - Center */}
+      <div className="header-center">
+        <div className="mode-selector">
+          {/* Sliding active indicator */}
+          <motion.div
+            className="mode-active-indicator"
+            animate={{
+              x: indicatorStyle.x,
+              width: indicatorStyle.width
+            }}
+            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+          />
+
+          <button
+            ref={photoboothRef}
+            className={`mode-segment ${mode === 'photobooth' ? 'active' : ''}`}
+            onClick={() => setMode('photobooth')}
+            title="Auto-Photobooth: Watch folder and auto-place photos"
+          >
+            <span className="mode-label">Photobooth</span>
+          </button>
+          <button
+            ref={collageRef}
+            className={`mode-segment ${mode === 'collage' ? 'active' : ''}`}
+            onClick={() => setMode('collage')}
+            title="Collage: Manual drag and drop mode"
+          >
+            <span className="mode-label">Collage Creator</span>
+          </button>
+          <button
+            ref={qrRef}
+            className={`mode-segment ${mode === 'qr' ? 'active' : ''}`}
+            onClick={() => setMode('qr')}
+            title="QR: Generate QR codes for photos"
+          >
+            <span className="mode-label">QR Generator</span>
+          </button>
         </div>
       </div>
 

@@ -1,7 +1,756 @@
 # Photobooth IPH - Collage Maker Implementation Progress
 
-**Last Updated:** 2026-01-12
-**Current Phase:** Phase 2 Enhanced - Thumbnail System Optimization (Complete)
+**Last Updated:** 2026-01-17
+**Current Phase:** Phase 14 - Tethering Auto-Capture System (Planning)
+
+---
+
+## 🚀 Phase 14: Tethering Auto-Capture System (Planning)
+
+**Objective:** Transform Photobooth IPH into a professional tethering application with automatic capture, live view, and instant collage preview capabilities.
+
+---
+
+### 📋 User Workflows & Use Cases
+
+#### **Workflow 1: Event Photography Auto-Capture**
+
+**Use Case:** Photographer shoots at events (weddings, corporate parties, graduations) and wants instant collages ready for guests. 
+
+**User Flow:**
+```
+1. Setup Phase (Before Event)
+   ├─ Connect camera via USB/Wi-Fi
+   ├─ Select working folder (auto-import destination)
+   ├─ Create custom frame (e.g., 4-photo grid for guests)
+   ├─ Set background to match event theme
+   ├─ Save as "Wedding Reception" preset
+
+2. Event Phase (Active Shooting)
+   ├─ Enable "Auto-Capture Mode"
+   ├─ Configure: "Auto-add last 4 photos to canvas"
+   ├─ Shoot photo → Auto-transfers to working folder
+   ├─ File watcher detects new image
+   ├─ Auto-generates thumbnail
+   ├─ Auto-places in next available zone
+   ├─ Live preview updates instantly
+   ├─ Guest sees their collage form in real-time
+
+3. Delivery Phase (Instant Prints/Shares)
+   ├─ Collage completes (all zones filled)
+   ├─ Auto-export to 1200x1800 JPEG
+   ├─ Optional: Auto-print to connected printer
+   ├─ Optional: Auto-generate QR for guest download
+   ├─ Optional: Auto-upload to Drive gallery
+   ├─ Canvas auto-clears for next guest
+   ├─ Cycle repeats continuously
+```
+
+**Time Savings:**
+- Manual workflow: ~3 minutes per collage (select 4 photos, arrange, export)
+- Auto workflow: ~10 seconds per collage (shoot 4x, instant preview, 1-click export)
+
+---
+
+#### **Workflow 2: Photo Booth Mode**
+
+**Use Case:** Self-service photo booth at parties with touchscreen interface.
+
+**User Flow:**
+```
+1. Booth Setup
+   ├─ Hide all controls (kiosk mode)
+   ├─ Set frame to "Photo Strip" (4 vertical photos)
+   ├─ Enable "Countdown Timer" (3 seconds)
+   ├─ Set "Auto-advance after capture"
+   ├─ Configure printer settings
+
+2. Guest Interaction
+   ├─ Guest touches "Start Photo Booth" button
+   ├─ 3-2-1 countdown displays
+   ├─ Camera triggers automatically
+   ├─ Photo appears in slot 1
+   ├─ Auto-countdown: 5 seconds for next pose
+   ├─ Repeat for slots 2, 3, 4
+   ├─ Collage auto-completes
+   ├─ Auto-prints 2 copies (guest + host)
+
+3. Continuous Mode
+   ├─ After 30 seconds: auto-clear canvas
+   ├─ Return to idle screen
+   ├─ Ready for next guest
+```
+
+**Key Features:**
+- Zero UI controls needed during operation
+- Voice prompts: "Get ready!", "3-2-1!", "Great shot!"
+- Touch-friendly interface
+- Auto-printing
+- Guest gallery (all sessions saved to Drive)
+
+---
+
+#### **Workflow 3: Product Photography tethering**
+
+**Use Case:** E-commerce seller needs consistent product photos with instant preview.
+
+**User Flow:**
+```
+1. Product Setup
+   ├─ Place product on shooting table
+   ├─ Connect camera (tethered shooting)
+   ├─ Select "Single Product" frame (1 zone)
+   ├─ Set pure white background
+   ├─ Enable "Focus Peaking" overlay
+
+2. Shooting Phase
+   ├─ Live View displays on screen
+   ├─ Adjust product, lighting, camera angle
+   ├─ Remote trigger from app
+   ├─ Image transfers immediately
+   ├─ Full-screen preview appears
+   ├─ Zoom to 100% to check sharpness
+   ├─ Rate photo: ⭐ Keep / ❌ Retake
+
+3. Batch Processing
+   ├─ Keep shooting multiple angles
+   ├─ Auto-applies same preset to all shots
+   ├─ Gallery shows all captures
+   ├─ Select best shots for export
+   ├─ Batch export to product folder
+```
+
+**Quality Control:**
+- Histogram overlay
+- Zebras for overexposure warning
+- Focus peaking for sharpness verification
+- Side-by-side comparison (last 2 shots)
+
+---
+
+#### **Workflow 4: Green Screen/Auto-Background**
+
+**Use Case:** Automatic background replacement based on image content.
+
+**User Flow:**
+```
+1. Setup
+   ├─ Shoot subject against green screen
+   ├─ Enable "Auto-Remove Background"
+   ├─ Select replacement background (e.g., beach, city)
+
+2. Auto-Capture
+   ├─ Camera captures image
+   ├─ Auto-detects green screen
+   ├─ Auto-replaces with selected background
+   ├─ Auto-places in collage
+   ├─ Subject appears in new environment
+```
+
+**Technical Implementation:**
+- Use image processing library (e.g., remove.bg API)
+- Chroma key algorithm for green screen
+- Edge detection and feathering
+- AI-based background removal (optional)
+
+---
+
+#### **Workflow 5: Time-Lapse / Burst Mode Collage**
+
+**Use Case:** Capture action sequences and auto-arrange in grid.
+
+**User Flow:**
+```
+1. Configure Burst Mode
+   ├─ Set "Burst Count: 9 photos"
+   ├─ Set "Interval: 0.5 seconds between shots"
+   ├─ Select "3x3 Grid" frame
+   ├─ Enable "Sequential fill" (top-left to bottom-right)
+
+2. Capture
+   ├─ Press "Start Burst"
+   ├─ Camera fires 9 times rapidly
+   ├─ Photos auto-import in sequence
+   ├─ Auto-place in grid positions 1-9
+   ├─ Creates action sequence collage
+
+3. Variations
+   ├─ "Smart Arrange": Auto-detect faces, group similar poses
+   ├─ "Best Shot": AI scores each photo, uses top 9
+   ├─ "Time Decay": Older photos fade out, replaced by new
+```
+
+---
+
+### 🎨 UI/UX Ideas for Tethering Mode
+
+#### **1. Live View Panel**
+```
+┌─────────────────────────────────┐
+│ 🔴 LIVE VIEW          [Fullscreen]│
+│ ┌─────────────────────────────┐ │
+│ │                             │ │
+│ │    [Camera Live Preview]    │ │
+│ │                             │ │
+│ │    5184 x 3456  ISO 100     │ │
+│ │    1/250s  f/2.8            │ │
+│ └─────────────────────────────┘ │
+│ [📷 Capture] [⏱️Timer] [⚡Burst]│
+└─────────────────────────────────┘
+```
+
+**Features:**
+- Full-res live view from camera (EDSDK / libgphoto2)
+- Real-time histogram overlay
+- Focus peaking toggle
+- Grid overlay (rule of thirds)
+- Over/underexposure zebras
+- Remote trigger from app
+- Exposure controls (ISO, aperture, shutter)
+
+---
+
+#### **2. Auto-Capture Control Panel**
+```
+┌─────────────────────────────────┐
+│ ⚙️ AUTO-CAPTURE SETTINGS        │
+├─────────────────────────────────┤
+│ ☑ Enable Auto-Capture Mode      │
+│                                 │
+│ Trigger Mode:                   │
+│ ⦿ Manual (button press)        │
+│ ○ Timer (every 30 sec)          │
+│ ○ Motion Detection              │
+│ ○ Voice Command ("Cheese!")     │
+│                                 │
+│ Auto-Placement:                 │
+│ ☑ Add to first empty zone       │
+│ ☑ Auto-advance after capture    │
+│ ☑ Auto-clear when canvas full   │
+│ ☑ Auto-export when complete     │
+│                                 │
+│ Smart Features:                 │
+│ ☑ Skip blurry photos (AI)       │
+│ ☑ Skip closed eyes (AI)         │
+│ ☑ Auto-enhance brightness       │
+│ ☑ Auto-crop to face             │
+│                                 │
+│ Export Settings:                │
+│ ☑ Auto-print after capture      │
+│ ☑ Auto-upload to Drive          │
+│ ☑ Auto-generate QR code         │
+│                                 │
+│ [Save as Preset] [Start Session]│
+└─────────────────────────────────┘
+```
+
+---
+
+#### **3. Capture Gallery with Auto-Import**
+```
+┌─────────────────────────────────┐
+│ 📸 CAPTURE GALLERY        [Import]│
+├─────────────────────────────────┤
+│ ┌─────┐ ┌─────┐ ┌─────┐ ┌─────┐│
+│ │ NEW │ │ IMG │ │ IMG │ │ IMG ││
+│ │  🎥 │ │ 002 │ │ 001 │ │ 000 ││
+│ └─────┘ └─────┘ └─────┘ └─────┘│
+│                                 │
+│ ┌─────┐ ┌─────┐ ┌─────┐ ┌─────┐│
+│ │ IMG │ │ IMG │ │ IMG │ │ IMG ││
+│ │ 003 │ │ 004 │ │ 005 │ │ 006 ││
+│ └─────┘ └─────┘ └─────┘ └─────┘│
+│                                 │
+│ [Select All] [Clear] [Export]   │
+│                                 │
+│ Last Import: 5 seconds ago       │
+│ Session Total: 47 photos         │
+└─────────────────────────────────┘
+```
+
+**Features:**
+- "NEW" badge on recently imported photos (auto-dismiss after 5 sec)
+- Flash animation on new photo arrival
+- Auto-scroll to newest
+- Keyboard shortcuts (arrow keys navigate, Enter to place)
+- Rating system (⭐⭐⭐⭐⭐)
+- Color labels (red = reject, green = keep)
+- Bulk actions
+
+---
+
+#### **4. Session Progress Tracker**
+```
+┌─────────────────────────────────┐
+│ 📊 SESSION STATUS                │
+├─────────────────────────────────┤
+│ Event: Wedding Reception        │
+│ Started: 2:34 PM  Duration: 47m │
+│                                 │
+│ Photos Captured: ████████ 234   │
+│ Collages Created: █████  58     │
+│ Guests Served:   ████    58     │
+│                                 │
+│ Storage Used: 2.4 GB / 10 GB    │
+│ Battery: 87% (2h 14m remaining) │
+│                                 │
+│ Recent Activity:                │
+│ • 2:34 PM - Session started     │
+│ • 2:36 PM - Collage #1 exported │
+│ • 2:38 PM - Collage #2 exported │
+│ • 2:40 PM - Collage #3 exported │
+│                                 │
+│ [Pause Session] [End Session]   │
+└─────────────────────────────────┘
+```
+
+---
+
+#### **5. Quick-Action Toolbar (Bottom)**
+```
+┌───────────────────────────────────────────────────────────┐
+│ [📷 Capture] [⏱️ Timer] [⚡ Burst] [🔄 Reset] [💾 Export] │
+└───────────────────────────────────────────────────────────┘
+```
+
+**Floating Actions:**
+- **Capture**: Trigger camera shutter
+- **Timer**: 3-2-1 countdown, then auto-capture
+- **Burst**: Capture 4 photos rapidly (fill all zones)
+- **Reset**: Clear canvas, start fresh
+- **Export**: Export collage (with auto-print/upload)
+
+---
+
+### 🔧 Technical Implementation Ideas
+
+#### **Backend (Rust/Tauri) Commands Needed:**
+
+```rust
+// Camera Control
+tauri::command! async fn start_camera tethering_mode: TetheringMode) -> Result<CameraSession>
+tauri::command! async fn stop_camera(session_id: String) -> Result<()>
+tauri::command! async fn trigger_capture(session_id: String) -> Result<CaptureResult>
+tauri::command! async fn get_live_view_frame(session_id: String) -> Result<Vec<u8>>
+tauri::command! async fn get_camera_settings(session_id: String) -> Result<CameraSettings>
+tauri::command! async fn set_camera_settings(session_id: String, settings: CameraSettings) -> Result<()>
+
+// File Watcher (using `notify` crate)
+tauri::command! async fn start_file_watcher(folder_path: String) -> Result<WatcherSession>
+tauri::command! async fn stop_file_watcher(session_id: String) -> Result<()>
+
+// Auto-Capture Logic
+tauri::command! async fn get_latest_photo(folder_path: String) -> Option<WorkingImage>
+tauri::command! async fn auto_place_in_collage(photo: WorkingImage, zone_id: String) -> Result<()>
+
+// Session Management
+tauri::command! async fn start_session(config: SessionConfig) -> Result<Session>
+tauri::command! async fn end_session(session_id: String) -> Result<SessionSummary>
+tauri::command! async fn get_session_stats(session_id: String) -> Result<SessionStats>
+
+// Printer Integration (optional)
+tauri::command! async fn print_collage(image_path: String, settings: PrintSettings) -> Result<()>
+```
+
+---
+
+#### **Camera Library Options:**
+
+**Option 1: libgphoto2 (Recommended)**
+- Cross-platform camera control library
+- Supports Canon, Nikon, Sony, Fuji, etc.
+- Tethering, live view, remote capture
+- Rust bindings: `gphoto2-rs`
+
+**Option 2: EDSDK (Canon Only)**
+- Official Canon SDK
+- Best support for Canon cameras
+- Limited to Canon ecosystem
+
+**Option 3: Platform-Specific APIs**
+- macOS: ImageCaptureKit
+- Windows: WIA (Windows Image Acquisition)
+- Linux: libgphoto2
+
+**Option 4: File-Based Tethering (Easiest, No Direct Camera Control)**
+- Camera writes to folder via Canon EOS Utility / Sony Remote
+- App watches folder for new images
+- No direct camera control (user triggers via camera button)
+- **Pro:** Simple, works with any camera software
+- **Con:** No live view, no remote trigger
+
+---
+
+#### **File Watcher Implementation:**
+
+```rust
+use notify::{Watcher, RecursiveMode, watcher};
+use std::sync::mpsc::channel;
+
+tauri::command! async fn start_file_watcher(folder_path: String, window: Window) -> Result<String> {
+    let (tx, rx) = channel();
+
+    let mut watcher = watcher(tx, Duration::from_millis(200))?;
+
+    watcher.watch(&folder_path, RecursiveMode::NonRecursive)?;
+
+    let session_id = Uuid::new_v4().to_string();
+
+    // Spawn async task to handle file events
+    tokio::spawn(async move {
+        loop {
+            match rx.recv() {
+                Ok(event) => {
+                    match event {
+                        notify::DebouncedEvent::Create(path) => {
+                            // Check if it's an image
+                            if is_image_file(&path) {
+                                // Emit event to frontend
+                                window.emit("new-image-detected", path.to_string_lossy()).unwrap();
+                            }
+                        },
+                        _ => {}
+                    }
+                },
+                Err(e) => {
+                    eprintln!("Watch error: {:?}", e);
+                    break;
+                }
+            }
+        }
+    });
+
+    Ok(session_id)
+}
+```
+
+---
+
+#### **Frontend Components Needed:**
+
+1. **LiveView.tsx** (300 lines)
+   - MJPEG stream from camera
+   - Overlay controls (histogram, focus peaking)
+   - Capture button integration
+
+2. **AutoCaptureControls.tsx** (250 lines)
+   - Settings panel for auto-capture
+   - Timer configuration
+   - Smart feature toggles
+
+3. **CaptureGallery.tsx** (200 lines)
+   - Auto-importing thumbnail grid
+   - "NEW" badge animations
+   - Quick-place buttons
+
+4. **SessionMonitor.tsx** (150 lines)
+   - Real-time session stats
+   - Progress bars
+   - Activity log
+
+5. **TetheringSidebar.tsx** (180 lines)
+   - Integrates all tethering controls
+   - Replaces CollageSidebar during tethering mode
+
+---
+
+#### **Data Structures:**
+
+```typescript
+// Camera Control
+interface CameraSession {
+  sessionId: string;
+  cameraModel: string;
+  isConnected: boolean;
+  liveViewEnabled: boolean;
+  batteryLevel: number;
+  storageRemaining: number;
+}
+
+interface CaptureResult {
+  imagePath: string;
+  thumbnail: string;
+  metadata: PhotoMetadata;
+  timestamp: number;
+}
+
+interface PhotoMetadata {
+  iso: number;
+  shutterSpeed: string;
+  aperture: string;
+  focalLength: string;
+  width: number;
+  height: number;
+}
+
+// Auto-Capture Config
+interface AutoCaptureConfig {
+  enabled: boolean;
+  triggerMode: 'manual' | 'timer' | 'motion' | 'voice';
+  timerInterval?: number; // seconds
+  autoAdvance: boolean;
+  autoClearOnFull: boolean;
+  autoExportOnComplete: boolean;
+  skipBlurry: boolean;
+  skipClosedEyes: boolean;
+  autoEnhance: boolean;
+  smartCrop: boolean;
+  autoPrint?: boolean;
+  autoUpload?: boolean;
+  autoGenerateQR?: boolean;
+}
+
+// Session Tracking
+interface SessionConfig {
+  eventName: string;
+  frameId: string;
+  backgroundId: string;
+  autoCaptureConfig: AutoCaptureConfig;
+  exportSettings: ExportSettings;
+  startTime: number;
+}
+
+interface SessionStats {
+  photosCaptured: number;
+  collagesCreated: number;
+  guestsServed: number;
+  storageUsed: number;
+  duration: number;
+  activityLog: ActivityEntry[];
+}
+
+interface ActivityEntry {
+  timestamp: number;
+  action: string;
+  details: string;
+}
+```
+
+---
+
+#### **State Management Extensions:**
+
+```typescript
+// Add to CollageContext
+interface TetheringContextType {
+  // Camera
+  cameraSession: CameraSession | null;
+  startCamera: () => Promise<void>;
+  stopCamera: () => Promise<void>;
+  triggerCapture: () => Promise<void>;
+  liveViewFrame: string | null;
+
+  // File Watcher
+  watcherSession: string | null;
+  startFileWatcher: (folder: string) => Promise<void>;
+  stopFileWatcher: () => Promise<void>;
+
+  // Auto-Capture
+  autoCaptureConfig: AutoCaptureConfig;
+  setAutoCaptureConfig: (config: AutoCaptureConfig) => void;
+
+  // Session
+  currentSession: Session | null;
+  sessionStats: SessionStats | null;
+  startSession: (config: SessionConfig) => Promise<void>;
+  endSession: () => Promise<SessionSummary>;
+}
+```
+
+---
+
+### 📊 Feature Prioritization Matrix
+
+| Feature | Complexity | Value | Priority |
+|---------|-----------|-------|----------|
+| **File-Based Tethering** (folder watcher) | Low | High | 🔴 P0 |
+| **Auto-Place in Zones** | Low | High | 🔴 P0 |
+| **Auto-Export on Complete** | Low | High | 🔴 P0 |
+| **Live View (via EOS Utility)** | Medium | High | 🔴 P0 |
+| **Timer Capture** | Low | Medium | 🟡 P1 |
+| **Burst Mode** | Low | Medium | 🟡 P1 |
+| **Session Stats** | Medium | Medium | 🟡 P1 |
+| **Direct Camera Control (libgphoto2)** | High | High | 🟡 P1 |
+| **Auto-Print** | Medium | Low | 🟢 P2 |
+| **Voice Trigger** | High | Low | 🟢 P2 |
+| **Motion Detection** | High | Low | 🟢 P2 |
+| **AI Quality Filter** | High | Medium | 🟢 P2 |
+| **Green Screen Auto-Remove** | High | Medium | 🟢 P2 |
+
+---
+
+### 🎯 MVP Definition (Minimum Viable Product)
+
+**What's needed for basic tethering auto-capture:**
+
+**Phase 14A: File-Based Tethering (2-3 days)**
+- ✅ Add `notify` crate to Cargo.toml
+- ✅ Implement `start_file_watcher` command
+- ✅ Emit "new-image-detected" events to frontend
+- ✅ Frontend auto-adds new images to gallery
+- ✅ Frontend auto-places in first empty zone
+- ✅ Test with Canon EOS Utility (camera writes to folder)
+
+**Phase 14B: Auto-Capture Logic (1-2 days)**
+- ✅ Auto-advance after placement
+- ✅ Auto-clear when canvas is full
+- ✅ Auto-export when complete
+- ✅ Cycle repeats for continuous operation
+
+**Phase 14C: Timer & Burst (1 day)**
+- ✅ Timer capture (countdown UI)
+- ✅ Burst mode (4 rapid captures)
+- ✅ Configurable intervals
+
+**Phase 14D: Session Tracking (1 day)**
+- ✅ Session start/end
+- ✅ Stats tracking (photos, collages, time)
+- ✅ Activity log
+
+**Total Time: 5-7 days for MVP**
+
+---
+
+### 💰 Business Model Implications
+
+**New Revenue Opportunities:**
+
+1. **Photo Booth Service**
+   - Rent out software with tablet + camera + printer
+   - $200/event for unlimited collages
+   - Auto-uploads to client's Google Drive
+   - Guests download via QR code
+
+2. **Event Photography Package**
+   - Real-time collage gallery at events
+   - Host TV displays live feed of all collages
+   - Instant social media sharing
+   - Premium: $500/event
+
+3. **Product Photography Tool**
+   - Sell to e-commerce businesses
+   - Batch processing for product catalogs
+   - Consistent lighting/quality
+   - $99/month subscription
+
+4. **Studio Workflow Integration**
+   - Professional photography studios
+   - Tethering during portrait sessions
+   - Client sees real-time proofs
+   - $299 one-time license
+
+---
+
+### 🐛 Potential Issues & Solutions
+
+| Issue | Solution |
+|-------|----------|
+| **Camera disconnects mid-session** | Auto-reconnect logic, buffer recent photos, show warning |
+| **Storage runs out** | Monitor free space, warn at 10%, auto-archive old sessions |
+| **Battery dies** | Monitor battery %, warn at 20%, optional AC power requirement |
+| **Network fails (auto-upload)** | Queue uploads locally, retry when connection restored |
+| **Printer jams** | Show error, queue reprint, continue capturing |
+| **Duplicate filenames** | Add timestamp suffix, detect duplicates via hash |
+| **Corrupted images** | Validate image headers, auto-delete corrupted files |
+| **Slow import (RAW files)** | Generate preview from embedded JPEG, process RAW in background |
+| **Multiple cameras** | Support multi-camera sessions, auto-tag by camera ID |
+
+---
+
+### 🧪 Testing Checklist
+
+**Manual Testing Required:**
+- [ ] Camera connects/disconnects reliably
+- [ ] Live view updates smoothly (<100ms latency)
+- [ ] Capture triggers within 200ms of button press
+- [ ] File watcher detects new files within 1 second
+- [ ] Thumbnails generate in <2 seconds
+- [ ] Auto-placement works in correct zone order
+- [ ] Auto-export produces valid 1200x1800 JPEG
+- [ ] Session stats update accurately
+- [ ] Memory usage stable after 100+ captures
+- [ ] No memory leaks during 1-hour sessions
+- [ ] Recovery from crash (session state persists)
+
+**Stress Testing:**
+- [ ] 500 photos in continuous burst mode
+- [ ] 8-hour continuous session (wedding simulation)
+- [ ] Multiple rapid start/stop cycles
+- [ ] Folder with 10,000+ existing images
+- [ ] Network interruption during upload
+- [ ] Camera battery drain simulation
+
+---
+
+### 📈 Success Metrics
+
+**Performance Targets:**
+- Capture-to-collage: <5 seconds
+- Live view latency: <100ms
+- File detection: <1 second
+- Thumbnail generation: <2 seconds per image
+- Export time: <3 seconds for 1200x1800 JPEG
+- Memory usage: <500MB after 100 photos
+- Session startup: <3 seconds
+
+**User Experience Targets:**
+- Zero manual photo placement (100% auto)
+- Zero manual export (100% auto)
+- Zero UI interactions during operation (optional)
+- Guest sees collage in <10 seconds from first shot
+
+---
+
+### 🔮 Future Enhancements (Post-MVP)
+
+1. **Multi-Camera Support**
+   - 2+ cameras, different angles
+   - Auto-select best shot from each camera
+   - 3D stereoscopic collages
+
+2. **AI-Assisted Composition**
+   - Face detection auto-centering
+   - Smile detection (capture on smile)
+   - Blink detection (auto-retake if eyes closed)
+   - Pose matching (suggest similar poses)
+
+3. **Real-Time Filters**
+   - Instagram-style filters during capture
+   - VSCO-style presets
+   - Custom LUT support
+
+4. **Social Integration**
+   - Auto-post to Instagram
+   - Auto-tweet with event hashtag
+   - Email to guest (enter email on screen)
+
+5. **Advanced Printing**
+   - Print templates (borders, logos)
+   - Green screen replacement on print
+   - Double-sided printing
+   - Sticker printing
+
+6. **Cloud Galleries**
+   - Real-time gallery website
+   - Guests view/download on phones
+   - Slide show mode
+   - Album password protection
+
+7. **Hardware Integration**
+   - DSLR remote trigger support
+   - Studio strobe control
+   - Lighting automation
+   - Green screen lighting calibration
+
+8. **Analytics**
+   - Peak usage times
+   - Most-used frames/backgrounds
+   - Guest engagement metrics
+   - Storage optimization suggestions
+
+---
+
+**Status:** 📋 Planning complete, ready for implementation
 
 ---
 
@@ -752,6 +1501,154 @@ results.sort_by_key(|(index, _)| *index);
 
 ---
 
+### Phase 13: Custom Sets/Preset System ✓
+
+**Objective:** Create custom sets/presets system for saving and restoring canvas configurations.
+
+**Completed Tasks:**
+
+**Backend Implementation:**
+- ✅ Created CustomSet data structures in Rust
+  - `CustomSet` struct with canvas configuration, background, transform, and frame
+  - `CustomSetPreview` struct for list display
+  - `CanvasSize` struct for canvas dimensions with custom size support
+  - All fields use camelCase serialization with backward compatibility aliases
+
+- ✅ Implemented custom sets storage system
+  - `get_custom_sets_dir()`: Helper to manage custom sets directory in app data
+  - Custom sets stored as JSON files in `{app_data_dir}/custom_sets/`
+  - Automatic directory creation on first use
+  - Resource subdirectory for backgrounds and thumbnails
+
+- ✅ Implemented custom sets CRUD commands
+  - `save_custom_set`: Save or update custom set with automatic timestamping
+  - `load_custom_sets`: Load all custom sets with preview data
+  - `get_custom_set`: Load specific custom set by ID
+  - `delete_custom_set`: Delete custom set by ID
+  - `duplicate_custom_set`: Create copy of existing set
+  - `copy_background_resource`: Copy background images to set directory
+  - Proper JSON serialization/deserialization with error handling
+
+**Frontend Implementation:**
+- ✅ **CustomSetsSidebar Component** (411 lines)
+  - Floating panel UI for managing custom sets
+  - "Save Current Setup" button to create new presets
+  - Custom set cards with thumbnail previews
+  - Load and Delete buttons for each set
+  - Creation dialog with name and description fields
+  - Current configuration preview (canvas, frame, background)
+  - Animated card list with Framer Motion
+  - Empty state and loading states
+
+- ✅ **Type System Updates:**
+  - `src/types/customSet.ts` - CustomSet and CustomSetPreview interfaces
+  - CanvasSize interface with custom canvas support
+  - BackgroundTransform interface for pan/zoom state
+  - Proper TypeScript typing throughout
+
+- ✅ **Context Integration:**
+  - Added custom set loading/saving to CollageContext
+  - `captureCanvasThumbnail()` function for generating previews
+  - Automatic thumbnail generation from canvas element
+  - Base64 encoding for thumbnail storage
+
+- ✅ **State Persistence:**
+  - Saves canvas size (including custom sizes)
+  - Saves background image with transform (scale, offset X/Y)
+  - Saves frame configuration
+  - Saves auto-match background toggle state
+  - All settings restored when loading a preset
+
+**Path Handling Fixes:**
+- ✅ Fixed Windows backslash paths in asset:// URLs
+  - Converted `\` to `/` in thumbnail paths
+  - Converted `\` to `/` in background image paths
+  - Used `convertFileSrc()` for Tauri custom protocol
+  - Thumbnails now display correctly in custom set cards
+
+**Backward Compatibility:**
+- ✅ Added serde aliases for old snake_case field names
+  - Supports loading old `canvas_size`, `created_at`, `modified_at`, `is_default`
+  - New files use camelCase `canvasSize`, `createdAt`, `modifiedAt`, `isDefault`
+  - Seamless migration from old to new format
+
+**Files Created:**
+- `src/types/customSet.ts` (47 lines)
+- `src/components/Sidebar/CustomSetsSidebar.tsx` (411 lines)
+- `src/components/Sidebar/CustomSetsSidebar.css` (268 lines)
+
+**Files Modified:**
+- `src-tauri/src/lib.rs` - Added CustomSet structs, CRUD commands (~280 lines)
+- `src/contexts/CollageContext.tsx` - Added captureCanvasThumbnail function
+- `src/components/Sidebar/CollageSidebar.tsx` - Integrated CustomSetsSidebar tab
+
+**Build Stats:**
+- Backend: ~280 lines of Rust code
+- Frontend: ~726 lines of TypeScript/React code
+- CSS: 268 lines
+- TypeScript: ✅ Zero errors
+- Total: ~1,274 lines of new code
+
+**Status:** ✅ Complete - Custom sets save and restore all canvas configuration
+
+**Custom Sets UI:**
+```
+┌─────────────────────────────────┐
+│ Save Current Setup              │
+├─────────────────────────────────┤
+│ ┌─────────────────────────────┐ │
+│ │ [Thumbnail]    Job Fair  ✓   │ │
+│ │               1200x1800      │ │
+│ │ Sunset Gradient              │ │
+│ │ 1/15/2026    [Load] [Delete] │ │
+│ └─────────────────────────────┘ │
+│ ┌─────────────────────────────┐ │
+│ │ [Thumbnail]    Wedding      │ │
+│ │               1200x1800      │ │
+│ │ Pure White                   │ │
+│ │ 1/14/2026    [Load] [Delete] │ │
+│ └─────────────────────────────┘ │
+└─────────────────────────────────┘
+
+┌─────────────────────────────────┐
+│ Create Custom Set               │
+├─────────────────────────────────┤
+│ Name *                          │
+│ [My Custom Set            ]     │
+│                                 │
+│ Description                    │
+│ [Optional description... ]     │
+│                                 │
+│ Current Configuration:          │
+│ Canvas: 1200x1800               │
+│ Frame: Single Photo             │
+│ Background: Sunset Gradient     │
+│                                 │
+│           [Cancel] [Save Set]   │
+└─────────────────────────────────┘
+```
+
+**User Actions Available:**
+1. Click "Save Current Setup" to create a new preset
+2. Enter name and optional description
+3. See current configuration preview
+4. View saved presets as cards with thumbnails
+5. Load any preset to restore full canvas configuration
+6. Delete unwanted presets
+7. Duplicate existing presets (backend support)
+
+**Features:**
+- ✅ Thumbnail capture from canvas
+- ✅ Saves canvas size, frame, background, transforms
+- ✅ Saves auto-match background toggle state
+- ✅ Restores all settings when loading preset
+- ✅ Visual card-based UI with animations
+- ✅ Delete and duplicate support
+- ✅ Backward compatibility with old saved sets
+- ✅ Proper Windows path handling for images
+
+---
+
 ## 🔄 Current Phase: App.tsx Refactoring
 
 **Refactoring Phase:** Extract components from 2326-line App.tsx
@@ -954,7 +1851,7 @@ User → WorkingFolder (select) → Images (thumbnails)
 
 ## 📊 Progress Metrics
 
-**Overall Progress:** 58% (7/12 phases complete + Phase 2 Enhanced)
+**Overall Progress:** 63% (8/13 phases complete + Phase 2 Enhanced)
 
 **Lines of Code Added:**
 - Contexts: ~500 lines (TypeScript)
@@ -968,6 +1865,7 @@ User → WorkingFolder (select) → Images (thumbnails)
 - Other Components: ~350 lines (Header, HistoryModal, AboutModal, ConfirmDialog, WorkingFolderGallery)
 - Refactoring: Reduced App.tsx by ~1,084 lines (47% reduction, 2326→1242 lines)
 - **NEW:** Thumbnail optimization: ~250 lines (concurrent processing, EXIF handling, logging)
+- **NEW:** Custom Sets System: ~1,274 lines (backend CRUD, frontend UI, type definitions)
 
 **Bundle Size:**
 - JavaScript: 411.20KB (126.17KB gzipped)
@@ -984,6 +1882,7 @@ User → WorkingFolder (select) → Images (thumbnails)
 - ✅ Phase 4.5: Drag-to-Frame Fixes & Auto-Scaling ✓
 - ✅ Phase 5: Image Manipulation ✓
 - ✅ Phase 6: Background System ✓
+- ✅ Phase 13: Custom Sets/Preset System ✓ (2026-01-15)
 - ⬜ Phases 7-12: Pending
 
 **What You Can See Now:**
@@ -1005,6 +1904,10 @@ User → WorkingFolder (select) → Images (thumbnails)
 - **NEW:** Portrait photos display in correct orientation (EXIF support)
 - **NEW:** Images sorted newest first in gallery
 - **NEW:** Cached thumbnails for instant folder rescans
+- **NEW:** Custom sets/presets for saving canvas configurations
+- **NEW:** Save and restore canvas size, frame, background, transforms
+- **NEW:** Save and restore auto-match background toggle state
+- **NEW:** Visual card-based UI for managing saved presets
 
 ---
 

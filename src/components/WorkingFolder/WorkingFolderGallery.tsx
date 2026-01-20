@@ -10,11 +10,52 @@ interface DraggableImageProps {
   img: WorkingImage;
   isSelected: boolean;
   onSelect: () => void;
+  refreshTrigger: number;
 }
 
-function DraggableImage({ img, isSelected, onSelect }: DraggableImageProps) {
+// URL cache for converted file paths - module level cache
+let globalRefreshTrigger = 0;
+const urlCache = new Map<string, string>();
+
+function getCachedUrl(path: string, currentRefreshTrigger: number): string {
+  const cacheKey = `${path}-${currentRefreshTrigger}`;
+  if (!urlCache.has(cacheKey)) {
+    urlCache.set(cacheKey, convertFileSrc(path.replace('asset://', '')));
+  }
+  return urlCache.get(cacheKey)!;
+}
+
+// Clear old cache entries when refresh trigger changes
+function cleanupOldCache(currentRefreshTrigger: number) {
+  if (currentRefreshTrigger > globalRefreshTrigger) {
+    for (const [key] of urlCache.entries()) {
+      if (!key.endsWith(`-${currentRefreshTrigger}`)) {
+        urlCache.delete(key);
+      }
+    }
+    globalRefreshTrigger = currentRefreshTrigger;
+  }
+}
+
+function DraggableImage({ img, isSelected, onSelect, refreshTrigger }: DraggableImageProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [imageLoaded, setImageLoaded] = useState(false);
+
+  const imageUrl = getCachedUrl(img.thumbnail || img.path, refreshTrigger);
+
+  useEffect(() => {
+    cleanupOldCache(refreshTrigger);
+  }, [refreshTrigger]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        setImageLoaded(false);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
 
   const dragItem = { path: img.path, thumbnail: img.thumbnail || img.path, dimensions: img.dimensions };
 
@@ -25,14 +66,6 @@ function DraggableImage({ img, isSelected, onSelect }: DraggableImageProps) {
       isDragging: monitor.isDragging(),
     }),
   });
-
-  // Debug drag start
-  if (isDragging) {
-    console.log('=== DRAG START ===');
-    console.log('Image filename:', img.filename);
-    console.log('Drag item:', dragItem);
-    console.log('==================');
-  }
 
   drag(ref);
 
@@ -58,7 +91,8 @@ function DraggableImage({ img, isSelected, onSelect }: DraggableImageProps) {
     >
       {img.thumbnail ? (
         <img
-          src={convertFileSrc(img.thumbnail.replace('asset://', ''))}
+          key={`img-${refreshTrigger}`}
+          src={imageUrl}
           alt={img.filename}
           className="thumbnail"
           loading="lazy"
@@ -103,40 +137,114 @@ function SkeletonImageCard() {
 }
 
 export function WorkingFolderGallery() {
-  const { folderPath, setFolderPath, setImages, loading, setLoading, selectedImage, setSelectedImage } = useWorkingFolder();
+  const {
+    folderPath,
+    setFolderPath,
+    setImages,
+    loading,
+    setLoading,
+    selectedImage,
+    setSelectedImage,
+    loadedImagesMap,
+    setLoadedImagesMap,
+    skeletonCount,
+    setSkeletonCount,
+    refreshTrigger,
+    setRefreshTrigger
+  } = useWorkingFolder();
+
   const [searchTerm, setSearchTerm] = useState('');
-  const [skeletonCount, setSkeletonCount] = useState(0);
-  const [loadedImagesMap, setLoadedImagesMap] = useState<Map<number, WorkingImage>>(new Map());
+
+  const hasLoadedRef = useRef(false);
+  const lastActiveTimeRef = useRef(Date.now());
+  const rafIdRef = useRef<number | undefined>(undefined);
+
+  // Time-based sleep detection
+  useEffect(() => {
+    const updateActiveTime = () => {
+      const now = Date.now();
+      const elapsed = now - lastActiveTimeRef.current;
+
+      if (elapsed > 2000 && loadedImagesMap.size > 0) {
+        setRefreshTrigger(refreshTrigger + 1);
+      }
+
+      lastActiveTimeRef.current = now;
+      rafIdRef.current = requestAnimationFrame(updateActiveTime);
+    };
+
+    rafIdRef.current = requestAnimationFrame(updateActiveTime);
+
+    return () => {
+      if (rafIdRef.current) {
+        cancelAnimationFrame(rafIdRef.current);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadedImagesMap.size, refreshTrigger]);
+
+  // Force refresh when component mounts
+  useEffect(() => {
+    if (loadedImagesMap.size > 0) {
+      setRefreshTrigger(refreshTrigger + 1);
+    }
+    lastActiveTimeRef.current = Date.now();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadedImagesMap.size]);
+
+  // Visibility change handler
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && loadedImagesMap.size > 0) {
+        setRefreshTrigger(refreshTrigger + 1);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Window focus handler
+  useEffect(() => {
+    const handleFocus = () => {
+      if (loadedImagesMap.size > 0) {
+        setRefreshTrigger(refreshTrigger + 1);
+      }
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Set up event listeners for progressive loading
   useEffect(() => {
     const unlistenPromises = [
-      // Listen for total count to set skeleton count
       listen<number>('thumbnail-total-count', (event) => {
-        console.log('Total thumbnail count:', event.payload);
         setSkeletonCount(event.payload);
-        setLoadedImagesMap(new Map()); // Clear previous images
+        if (!hasLoadedRef.current || loadedImagesMap.size === 0) {
+          setLoadedImagesMap(new Map());
+          hasLoadedRef.current = false;
+        }
       }),
 
-      // Listen for each loaded image - use current as the position index
       listen<{ current: number; total: number; image: WorkingImage }>('thumbnail-loaded', (event) => {
-        console.log(`Thumbnail loaded: ${event.payload.current}/${event.payload.total} - ${event.payload.image.filename}`);
         setLoadedImagesMap(prev => {
           const newMap = new Map(prev);
-          // Use current (1-based) as 0-based index
           newMap.set(event.payload.current - 1, event.payload.image);
+          if (event.payload.current === event.payload.total) {
+            hasLoadedRef.current = true;
+          }
           return newMap;
         });
       }),
     ];
 
-    // Cleanup listeners on unmount
     return () => {
       unlistenPromises.forEach(promise => {
         promise.then(unlisten => unlisten());
       });
     };
-  }, []);
+  }, [loadedImagesMap.size]);
 
   const handleSelectFolder = async () => {
     try {
@@ -228,10 +336,11 @@ export function WorkingFolderGallery() {
             {sortedDisplayItems.map((item, index) =>
               item.type === 'image' && item.data ? (
                 <DraggableImage
-                  key={item.data.path}
+                  key={`${item.data.path}-${refreshTrigger}`}
                   img={item.data}
                   isSelected={selectedImage === item.data.path}
                   onSelect={() => setSelectedImage(item.data.path)}
+                  refreshTrigger={refreshTrigger}
                 />
               ) : (
                 <SkeletonImageCard key={`skeleton-${index}`} />

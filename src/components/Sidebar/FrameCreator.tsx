@@ -85,7 +85,6 @@ function ZoneItem({
               {zone.shape === 'rounded_rect' ? '🔲' :
                zone.shape === 'circle' ? '⚪' :
                zone.shape === 'ellipse' ? '⬭' :
-               zone.shape === 'rounded_rect_large' ? '▭' :
                zone.shape === 'pill' ? '💊' : '⬜'}
             </span>
             <span className="zone-item-size">
@@ -160,6 +159,28 @@ function ZoneItem({
               }}
             />
           </div>
+          {zone.shape === 'rounded_rect' && (
+            <div className="control-row control-row-full">
+              <label>Roundness:</label>
+              <input
+                type="range"
+                min="0"
+                max="50"
+                step="1"
+                value={zone.borderRadius || 12}
+                onChange={(e) => {
+                  const event = new CustomEvent('zoneUpdate', {
+                    detail: { index, updates: { borderRadius: Number(e.target.value) } }
+                  });
+                  window.dispatchEvent(event);
+                }}
+                style={{ flex: 1 }}
+              />
+              <span style={{ minWidth: '40px', textAlign: 'right' }}>
+                {zone.borderRadius || 12}px
+              </span>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -382,6 +403,7 @@ export default function FrameCreator() {
       height: 300,
       rotation: 0,
       shape: selectedShape,
+      ...(selectedShape === 'rounded_rect' ? { borderRadius: 12 } : {}),
     };
     const updatedZones = [...zones, newZone];
     setZones(updatedZones);
@@ -482,7 +504,7 @@ export default function FrameCreator() {
       <div className="shape-selector">
         <h4>Zone Shape</h4>
         <div className="shape-buttons">
-          {(['rectangle', 'circle', 'ellipse', 'rounded_rect', 'rounded_rect_large', 'pill'] as FrameShape[]).map((shape) => {
+          {(['rectangle', 'circle', 'ellipse', 'rounded_rect', 'pill'] as FrameShape[]).map((shape) => {
             const getShapeStyle = () => {
               switch (shape) {
                 case 'circle':
@@ -490,9 +512,7 @@ export default function FrameCreator() {
                 case 'ellipse':
                   return '50% / 40%';
                 case 'rounded_rect':
-                  return '8px';
-                case 'rounded_rect_large':
-                  return '16px';
+                  return '12px';
                 case 'pill':
                   return '999px';
                 default:
@@ -505,7 +525,6 @@ export default function FrameCreator() {
                 case 'rounded_rect': return 'Rounded';
                 case 'circle': return 'Circle';
                 case 'ellipse': return 'Ellipse';
-                case 'rounded_rect_large': return 'Rounded LG';
                 case 'pill': return 'Pill';
                 default: return 'Rectangle';
               }
@@ -537,7 +556,6 @@ export default function FrameCreator() {
             case 'rounded_rect': return '+ Add Rounded Zone';
             case 'circle': return '+ Add Circle Zone';
             case 'ellipse': return '+ Add Ellipse Zone';
-            case 'rounded_rect_large': return '+ Add Rounded LG Zone';
             case 'pill': return '+ Add Pill Zone';
             default: return '+ Add Rectangle Zone';
           }

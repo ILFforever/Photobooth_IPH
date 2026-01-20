@@ -7,7 +7,7 @@ use google_drive3::{DriveHub, api::File};
 use yup_oauth2::{InstalledFlowAuthenticator, InstalledFlowReturnMethod};
 use hyper;
 use hyper_rustls;
-use std::sync::Mutex;
+use std::sync::{Mutex, Arc, atomic::{AtomicBool, Ordering}};
 use tauri::{State, Manager, Emitter};
 use base64::{Engine as _, engine::general_purpose};
 use std::io::Cursor;
@@ -60,7 +60,9 @@ struct FrameZone {
     height: u32,    // Height in pixels (fixed size)
     rotation: f32,  // Rotation in degrees
     // Shape type for the zone
-    shape: String,  // "rectangle", "circle", "rounded_rect"
+    shape: String,  // "rectangle", "circle", "rounded_rect", "ellipse", "pill"
+    #[serde(rename = "borderRadius")]
+    border_radius: Option<u32>, // Border radius in pixels (for rounded_rect shape)
     // Optional spacing properties for distance calculations
     margin_right: Option<u32>,  // Distance to next zone on right (in pixels)
     margin_bottom: Option<u32>, // Distance to next zone below (in pixels)
@@ -85,6 +87,7 @@ struct AppState {
     auth: Mutex<Option<Auth>>,
     account: Mutex<Option<GoogleAccount>>,
     root_folder: Mutex<Option<DriveFolder>>,
+    upload_cancelled: Arc<AtomicBool>,
 }
 
 async fn load_client_secret(_app: &tauri::AppHandle) -> Result<yup_oauth2::ApplicationSecret, String> {
@@ -479,6 +482,12 @@ fn generate_random_name() -> String {
 }
 
 #[tauri::command]
+fn cancel_upload(state: State<'_, AppState>) {
+    state.upload_cancelled.store(true, Ordering::SeqCst);
+    println!("❌ Upload cancelled by user");
+}
+
+#[tauri::command]
 async fn process_photos(
     _photos_path: String,
     file_list: Option<Vec<String>>,
@@ -488,6 +497,12 @@ async fn process_photos(
     println!("\n========================================");
     println!("🎬 PROCESS_PHOTOS CALLED");
     println!("========================================");
+
+    // Reset cancelled flag at start
+    state.upload_cancelled.store(false, Ordering::SeqCst);
+
+    // Clone the Arc for use in async closures
+    let cancelled_flag = state.upload_cancelled.clone();
 
     println!("🔐 Checking authentication...");
     let auth = {
@@ -636,6 +651,12 @@ async fn process_photos(
         println!("⚠️  WARNING: No files to upload!");
     }
 
+    // Check for cancellation before starting uploads
+    if cancelled_flag.load(Ordering::SeqCst) {
+        println!("❌ Upload cancelled before starting");
+        return Err("Upload cancelled".to_string());
+    }
+
     println!("\n========================================");
     println!("📤 STARTING FILE UPLOADS");
     println!("========================================");
@@ -648,7 +669,13 @@ async fn process_photos(
             let hub = hub.clone();
             let folder_id = folder_id.clone();
             let app = app.clone();
+            let cancelled = cancelled_flag.clone();
             async move {
+                // Check for cancellation at start of each file upload
+                if cancelled.load(Ordering::SeqCst) {
+                    println!("❌ Upload cancelled during upload [{}]", index + 1);
+                    return Err("Upload cancelled".to_string());
+                }
                 let name = path.file_name().unwrap().to_string_lossy().to_string();
                 println!("\n📤 [{}/{}] Starting upload: {}", index + 1, total_files, name);
                 println!("   Path: {}", path.display());
@@ -875,6 +902,303 @@ async fn save_dropped_image(image_data: String, filename: String, app: tauri::Ap
     let path = dir.join(&filename);
     fs::write(&path, bytes).map_err(|e| e.to_string())?;
     Ok(path.to_string_lossy().to_string())
+}
+
+/// Generate cached thumbnail for a single image (used by QR view and Working Folder)
+#[tauri::command]
+async fn generate_cached_thumbnail(image_path: String, app: tauri::AppHandle) -> Result<String, String> {
+    println!("=== CACHED THUMBNAIL GENERATION ===");
+    println!("Mode: HIGH RESOLUTION");
+    println!("Settings: 400px max, 1/2 JPEG scale, Lanczos3 filter");
+    println!("Input: {}", image_path);
+
+    // Use the high-res thumbnail function (400px, 1/2 scale, Lanczos3 filter)
+    let result = generate_cached_thumbnail_high_res(&image_path, &app).await?;
+
+    println!("✓ Cached thumbnail generated: {}", result.thumbnail);
+    println!("===================================");
+    Ok(result.thumbnail)
+}
+
+#[derive(Serialize, Deserialize)]
+struct CachedThumbnailResult {
+    original_path: String,
+    thumbnail_url: String,
+}
+
+/// Generate cached thumbnails for multiple images in parallel (used by QR view and Working Folder)
+#[tauri::command]
+async fn generate_cached_thumbnails_batch(image_paths: Vec<String>, app: tauri::AppHandle) -> Result<Vec<CachedThumbnailResult>, String> {
+    println!("Generating {} cached thumbnails in batch...", image_paths.len());
+
+    let total_files = image_paths.len();
+
+    // Limit concurrent thumbnail generation
+    let max_concurrent_tasks = std::cmp::min(8, total_files);
+    let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(max_concurrent_tasks));
+
+    // Use JoinSet for concurrent processing
+    let mut join_set = tokio::task::JoinSet::new();
+
+    // Spawn tasks for thumbnail generation
+    for (index, image_path) in image_paths.into_iter().enumerate() {
+        let app_clone = app.clone();
+        let semaphore_clone = semaphore.clone();
+        let path_clone = image_path.clone();
+
+        join_set.spawn_blocking(move || {
+            tokio::runtime::Handle::current().block_on(async {
+                // Acquire semaphore permit to limit concurrency
+                let _permit = semaphore_clone.acquire().await.unwrap();
+
+                let result = generate_thumbnail_cached(&path_clone, &app_clone, index).await;
+                (path_clone, result)
+            })
+        });
+    }
+
+    // Collect results as they complete
+    let mut results = Vec::new();
+    while let Some(result) = join_set.join_next().await {
+        match result {
+            Ok((original_path, thumb_result)) => {
+                if let Ok(thumb) = thumb_result {
+                    results.push(CachedThumbnailResult {
+                        original_path,
+                        thumbnail_url: thumb.thumbnail,
+                    });
+                } else {
+                    eprintln!("Failed to generate thumbnail for: {}", original_path);
+                }
+            }
+            Err(e) => {
+                eprintln!("Join error: {}", e);
+            }
+        }
+    }
+
+    println!("Batch thumbnail generation complete: {} thumbnails", results.len());
+    Ok(results)
+}
+
+/// Generate higher resolution cached thumbnail (400px instead of 200px)
+/// Uses the same algorithm as generate_thumbnail_cached but with higher quality settings
+async fn generate_cached_thumbnail_high_res(image_path: &str, app: &tauri::AppHandle) -> Result<ThumbnailResult, String> {
+    generate_thumbnail_with_settings(image_path, app, 400, 2, image::imageops::FilterType::Lanczos3, "cached_thumbnails", "cached_thumb").await
+}
+
+/// Internal function for thumbnail generation with configurable settings
+async fn generate_thumbnail_with_settings(
+    image_path: &str,
+    app: &tauri::AppHandle,
+    max_dimension: u32,
+    jpeg_scale: u8, // 1=full, 2=1/2, 4=1/4, 8=1/8
+    resize_filter: image::imageops::FilterType,
+    cache_dir_name: &str,
+    thumb_prefix: &str
+) -> Result<ThumbnailResult, String> {
+    // Get thumbnail path
+    let app_data_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+
+    let thumbnails_dir = app_data_dir.join(cache_dir_name);
+    fs::create_dir_all(&thumbnails_dir)
+        .map_err(|e| format!("Failed to create {} dir: {}", cache_dir_name, e))?;
+
+    let path_buf = PathBuf::from(image_path);
+    let filename = path_buf
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or("Invalid filename")?;
+
+    let thumbnail_path = thumbnails_dir.join(format!("{}_{}", thumb_prefix, filename));
+
+    // Check if thumbnail and metadata already exist and are newer than source
+    let metadata_path = thumbnails_dir.join(format!("{}_{}.meta", thumb_prefix, filename));
+
+    if thumbnail_path.exists() && metadata_path.exists() {
+        if let Ok(source_mtime) = fs::metadata(&path_buf).and_then(|m| m.modified()) {
+            if let Ok(thumb_mtime) = fs::metadata(&thumbnail_path).and_then(|m| m.modified()) {
+                if thumb_mtime > source_mtime {
+                    // Thumbnail exists and is newer, load dimensions from metadata file
+                    let path_str = thumbnail_path.to_string_lossy().replace('\\', "/");
+                    let asset_url = format!("asset://{}", path_str);
+                    let dimensions = fs::read_to_string(&metadata_path)
+                        .ok()
+                        .and_then(|meta| {
+                            let parts: Vec<&str> = meta.split('x').collect();
+                            if parts.len() == 2 {
+                                let width = parts[0].parse::<u32>().ok()?;
+                                let height = parts[1].parse::<u32>().ok()?;
+                                Some(ImageDimensions { width, height })
+                            } else {
+                                None
+                            }
+                        });
+
+                    return Ok(ThumbnailResult { thumbnail: asset_url, dimensions });
+                }
+            }
+        }
+    }
+
+    // Check if this is a JPEG file
+    let is_jpeg = path_buf
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.eq_ignore_ascii_case("jpg") || e.eq_ignore_ascii_case("jpeg"))
+        .unwrap_or(false);
+
+    if is_jpeg {
+        // Read JPEG file once
+        let jpeg_data = fs::read(image_path)
+            .map_err(|e| format!("Failed to read JPEG file: {}", e))?;
+
+        // Get dimensions from mozjpeg header
+        let decompress_dims = mozjpeg::Decompress::new_mem(&jpeg_data)
+            .map_err(|e| format!("Failed to create mozjpeg decompressor: {}", e))?;
+
+        let stored_width = decompress_dims.width() as u32;
+        let stored_height = decompress_dims.height() as u32;
+
+        // Read EXIF orientation
+        let exif_orientation_value = rexif::parse_file(image_path)
+            .ok()
+            .and_then(|exif_data| {
+                for entry in &exif_data.entries {
+                    if entry.tag == rexif::ExifTag::Orientation {
+                        if let rexif::TagValue::U16(ref shorts) = entry.value {
+                            return shorts.first().copied();
+                        }
+                    }
+                }
+                None
+            });
+
+        // Check if dimensions need to be swapped for display
+        let needs_dimension_swap = matches!(exif_orientation_value, Some(5) | Some(6) | Some(7) | Some(8));
+
+        let (img_width, img_height) = if needs_dimension_swap {
+            (stored_height, stored_width)
+        } else {
+            (stored_width, stored_height)
+        };
+
+        let dimensions = ImageDimensions {
+            width: img_width,
+            height: img_height,
+        };
+
+        // Fast decode with configurable scale
+        let mut decompress = mozjpeg::Decompress::new_mem(&jpeg_data)
+            .map_err(|e| format!("Failed to create mozjpeg decompressor: {}", e))?;
+
+        decompress.scale(jpeg_scale);
+
+        let mut image = decompress.rgb()
+            .map_err(|e| format!("Failed to decompress JPEG: {}", e))?;
+
+        let scaled_width = image.width();
+        let scaled_height = image.height();
+
+        // Convert mozjpeg data to RGB image
+        let img_data = image.read_scanlines()
+            .map_err(|e| format!("Failed to read scanlines: {}", e))?;
+
+        let rgb_img = image::RgbImage::from_raw(
+            scaled_width as u32,
+            scaled_height as u32,
+            img_data
+        ).ok_or("Failed to create image buffer")?;
+
+        let mut dynamic_img = image::DynamicImage::ImageRgb8(rgb_img);
+
+        // Apply EXIF rotation
+        if let Some(orientation) = exif_orientation_value {
+            if orientation != 1 {
+                dynamic_img = match orientation {
+                    2 => {
+                        image::DynamicImage::ImageRgb8(
+                            image::imageops::flip_horizontal(&dynamic_img.to_rgb8())
+                        )
+                    }
+                    3 => dynamic_img.rotate180(),
+                    4 => {
+                        image::DynamicImage::ImageRgb8(
+                            image::imageops::flip_vertical(&dynamic_img.to_rgb8())
+                        )
+                    }
+                    5 => {
+                        let flipped = image::imageops::flip_horizontal(&dynamic_img.to_rgb8());
+                        image::DynamicImage::ImageRgb8(flipped).rotate270()
+                    }
+                    6 => dynamic_img.rotate90(),
+                    7 => {
+                        let flipped = image::imageops::flip_horizontal(&dynamic_img.to_rgb8());
+                        image::DynamicImage::ImageRgb8(flipped).rotate90()
+                    }
+                    8 => dynamic_img.rotate270(),
+                    _ => dynamic_img
+                };
+            }
+        }
+
+        // Resize to configurable max dimension with configurable filter
+        let thumbnail = if dynamic_img.width() > max_dimension || dynamic_img.height() > max_dimension {
+            let scale = max_dimension as f32 / (dynamic_img.width().max(dynamic_img.height()) as f32);
+            let new_width = (dynamic_img.width() as f32 * scale).round() as u32;
+            let new_height = (dynamic_img.height() as f32 * scale).round() as u32;
+            dynamic_img.resize(new_width, new_height, resize_filter)
+        } else {
+            dynamic_img
+        };
+
+        // Save thumbnail with higher quality
+        thumbnail.save_with_format(&thumbnail_path, image::ImageFormat::Jpeg)
+            .map_err(|e| format!("Failed to save thumbnail: {}", e))?;
+
+        // Save dimensions to metadata
+        let metadata_content = format!("{}x{}", dimensions.width, dimensions.height);
+        let _ = fs::write(&metadata_path, metadata_content);
+
+        let path_str = thumbnail_path.to_string_lossy().replace('\\', "/");
+        let asset_url = format!("asset://{}", path_str);
+        return Ok(ThumbnailResult { thumbnail: asset_url, dimensions: Some(dimensions) });
+    }
+
+    // Fallback for non-JPEG images (PNG, etc.)
+    let img = image::ImageReader::open(image_path)
+        .map_err(|e| format!("Failed to open image: {}", e))?
+        .with_guessed_format()
+        .map_err(|e| format!("Failed to guess format: {}", e))?
+        .decode()
+        .map_err(|e| format!("Failed to decode image: {}", e))?;
+
+    let dimensions = ImageDimensions {
+        width: img.width(),
+        height: img.height(),
+    };
+
+    // Resize to configurable max dimension with configurable filter
+    let thumbnail = if dimensions.width > max_dimension || dimensions.height > max_dimension {
+        let scale = max_dimension as f32 / dimensions.width.max(dimensions.height) as f32;
+        let new_width = (dimensions.width as f32 * scale).round() as u32;
+        let new_height = (dimensions.height as f32 * scale).round() as u32;
+        img.resize(new_width, new_height, resize_filter)
+    } else {
+        img
+    };
+
+    thumbnail.save_with_format(&thumbnail_path, image::ImageFormat::Jpeg)
+        .map_err(|e| format!("Failed to save thumbnail: {}", e))?;
+
+    // Save dimensions to metadata
+    let metadata_content = format!("{}x{}", dimensions.width, dimensions.height);
+    let _ = fs::write(&metadata_path, metadata_content);
+
+    let path_str = thumbnail_path.to_string_lossy().replace('\\', "/");
+    let asset_url = format!("asset://{}", path_str);
+    Ok(ThumbnailResult { thumbnail: asset_url, dimensions: Some(dimensions) })
 }
 
 #[tauri::command]
@@ -1153,7 +1477,8 @@ async fn generate_thumbnail_cached(image_path: &str, app: &tauri::AppHandle, _ta
             if let Ok(thumb_mtime) = fs::metadata(&thumbnail_path).and_then(|m| m.modified()) {
                 if thumb_mtime > source_mtime {
                     // Thumbnail exists and is newer, load dimensions from metadata file
-                    let asset_url = format!("asset://{}", thumbnail_path.to_string_lossy());
+                    let path_str = thumbnail_path.to_string_lossy().replace('\\', "/");
+                    let asset_url = format!("asset://{}", path_str);
                     let dimensions = fs::read_to_string(&metadata_path)
                         .ok()
                         .and_then(|meta| {
@@ -1352,7 +1677,8 @@ async fn generate_thumbnail_cached(image_path: &str, app: &tauri::AppHandle, _ta
             let _ = fs::write(&datetime_path, datetime.clone());
         }
 
-        let asset_url = format!("asset://{}", thumbnail_path.to_string_lossy());
+        let path_str = thumbnail_path.to_string_lossy().replace('\\', "/");
+        let asset_url = format!("asset://{}", path_str);
         return Ok(ThumbnailResult { thumbnail: asset_url, dimensions: Some(dimensions) });
     }
 
@@ -1388,7 +1714,8 @@ async fn generate_thumbnail_cached(image_path: &str, app: &tauri::AppHandle, _ta
     let metadata_content = format!("{}x{}", dimensions.width, dimensions.height);
     let _ = fs::write(&metadata_path, metadata_content);
 
-    let asset_url = format!("asset://{}", thumbnail_path.to_string_lossy());
+    let path_str = thumbnail_path.to_string_lossy().replace('\\', "/");
+    let asset_url = format!("asset://{}", path_str);
     Ok(ThumbnailResult { thumbnail: asset_url, dimensions: Some(dimensions) })
 }
 
@@ -1781,8 +2108,10 @@ async fn import_background(app: tauri::AppHandle, file_path: String, name: Strin
             .ok();
     }
 
-    let asset_url = format!("asset://{}", dest_path.to_string_lossy());
-    let thumbnail_url = format!("asset://{}", thumbnail_path.to_string_lossy());
+    let path_str = dest_path.to_string_lossy().replace('\\', "/");
+    let thumb_str = thumbnail_path.to_string_lossy().replace('\\', "/");
+    let asset_url = format!("asset://{}", path_str);
+    let thumbnail_url = format!("asset://{}", thumb_str);
 
     let background = Background {
         id: id.clone(),
@@ -1910,6 +2239,326 @@ async fn delete_custom_canvas_size(app: tauri::AppHandle, name: String) -> Resul
 
 // ==================== END CUSTOM CANVAS SIZE SYSTEM ====================
 
+// ==================== CUSTOM SETS SYSTEM ====================
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct BackgroundTransform {
+    pub scale: f64,
+    #[serde(alias = "offset_x")]
+    pub offsetX: f64,
+    #[serde(alias = "offset_y")]
+    pub offsetY: f64,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CanvasSize {
+    pub width: u32,
+    pub height: u32,
+    pub name: String,
+    #[serde(alias = "is_custom")]
+    pub isCustom: Option<bool>,
+    #[serde(alias = "created_at")]
+    pub createdAt: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomSet {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+
+    // Canvas configuration
+    #[serde(alias = "canvas_size")]
+    pub canvasSize: CanvasSize,
+    #[serde(alias = "auto_match_background")]
+    pub autoMatchBackground: bool,
+
+    // Background configuration
+    pub background: Background,
+    #[serde(alias = "background_transform")]
+    pub backgroundTransform: BackgroundTransform,
+
+    // Layout/Frame
+    pub frame: Frame,
+
+    // Metadata
+    pub thumbnail: Option<String>,
+    #[serde(alias = "created_at")]
+    pub createdAt: String,
+    #[serde(alias = "modified_at")]
+    pub modifiedAt: String,
+    #[serde(alias = "is_default")]
+    pub isDefault: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomSetPreview {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub thumbnail: Option<String>,
+    #[serde(alias = "created_at")]
+    pub createdAt: String,
+}
+
+/// Get custom sets directory in app data
+fn get_custom_sets_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let app_data_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+    let sets_dir = app_data_dir.join("custom_sets");
+    fs::create_dir_all(&sets_dir)
+        .map_err(|e| format!("Failed to create custom sets dir: {}", e))?;
+    Ok(sets_dir)
+}
+
+/// Copy background image resource to custom set directory
+fn copy_background_resource(
+    app: &tauri::AppHandle,
+    set_id: &str,
+    background: &Background,
+) -> Result<Background, String> {
+    if background.background_type != "image" {
+        // No need to copy colors or gradients
+        return Ok(background.clone());
+    }
+
+    let sets_dir = get_custom_sets_dir(app)?;
+    let set_resources_dir = sets_dir.join(&set_id);
+    fs::create_dir_all(&set_resources_dir)
+        .map_err(|e| format!("Failed to create set resources dir: {}", e))?;
+
+    // Check if value starts with "asset://" protocol
+    let source_path = if background.value.starts_with("asset://") {
+        PathBuf::from(&background.value.trim_start_matches("asset://"))
+    } else {
+        PathBuf::from(&background.value)
+    };
+
+    if !source_path.exists() {
+        return Err(format!("Background source file not found: {:?}", source_path));
+    }
+
+    let file_name = source_path
+        .file_name()
+        .ok_or("Invalid background file path")?
+        .to_string_lossy()
+        .to_string();
+
+    let dest_path = set_resources_dir.join(&file_name);
+    fs::copy(&source_path, &dest_path)
+        .map_err(|e| format!("Failed to copy background resource: {}", e))?;
+
+    // Copy thumbnail if it exists
+    let thumbnail_result = if let Some(thumb) = &background.thumbnail {
+        let thumb_path = if thumb.starts_with("asset://") {
+            PathBuf::from(thumb.trim_start_matches("asset://"))
+        } else {
+            PathBuf::from(thumb)
+        };
+
+        if thumb_path.exists() {
+            let thumb_name = thumb_path
+                .file_name()
+                .ok_or("Invalid thumbnail path")?
+                .to_string_lossy()
+                .to_string();
+            let thumb_dest = set_resources_dir.join(&thumb_name);
+            fs::copy(&thumb_path, &thumb_dest).ok();
+            // Convert backslashes to forward slashes for asset:// protocol
+            let thumb_path_str = thumb_dest.to_string_lossy().replace('\\', "/");
+            Some(format!("asset://{}", thumb_path_str))
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    // Convert backslashes to forward slashes for asset:// protocol
+    let dest_path_str = dest_path.to_string_lossy().replace('\\', "/");
+    Ok(Background {
+        value: format!("asset://{}", dest_path_str),
+        thumbnail: thumbnail_result,
+        ..background.clone()
+    })
+}
+
+/// Save a custom set to disk
+#[tauri::command]
+async fn save_custom_set(app: tauri::AppHandle, mut custom_set: CustomSet) -> Result<CustomSet, String> {
+    let sets_dir = get_custom_sets_dir(&app)?;
+
+    // Generate ID if not provided
+    if custom_set.id.is_empty() {
+        custom_set.id = format!("set-{}", uuid::Uuid::new_v4());
+    }
+
+    // Set timestamps
+    let now = chrono::Utc::now().to_rfc3339();
+    if custom_set.createdAt.is_empty() {
+        custom_set.createdAt = now.clone();
+    }
+    custom_set.modifiedAt = now;
+
+    // Copy background resource to appdata if it's an image
+    custom_set.background = copy_background_resource(&app, &custom_set.id, &custom_set.background)?;
+
+    // Save frame to set directory (copy it so it's preserved)
+    let set_resources_dir = sets_dir.join(&custom_set.id);
+    fs::create_dir_all(&set_resources_dir)
+        .map_err(|e| format!("Failed to create set resources dir: {}", e))?;
+
+    let frame_path = set_resources_dir.join("frame.json");
+    let frame_json = serde_json::to_string_pretty(&custom_set.frame)
+        .map_err(|e| format!("Failed to serialize frame: {}", e))?;
+    fs::write(frame_path, frame_json)
+        .map_err(|e| format!("Failed to write frame file: {}", e))?;
+
+    // Save thumbnail if provided (convert data URL to file)
+    if let Some(thumbnail_data) = &custom_set.thumbnail {
+        if thumbnail_data.starts_with("data:image") {
+            // Extract base64 data from data URL
+            if let Some(comma_pos) = thumbnail_data.find(',') {
+                let base64_data = &thumbnail_data[comma_pos + 1..];
+
+                // Decode base64
+                if let Ok(image_data) = general_purpose::STANDARD.decode(base64_data) {
+                    let thumbnail_path = set_resources_dir.join("thumbnail.jpg");
+                    if fs::write(&thumbnail_path, image_data).is_ok() {
+                        // Update thumbnail to point to file path (convert backslashes to forward slashes)
+                        let path_str = thumbnail_path.to_string_lossy().replace('\\', "/");
+                        custom_set.thumbnail = Some(format!("asset://{}", path_str));
+                    }
+                }
+            }
+        }
+    }
+
+    // Save custom set metadata
+    let set_path = sets_dir.join(format!("{}.json", custom_set.id));
+    let json = serde_json::to_string_pretty(&custom_set)
+        .map_err(|e| format!("Failed to serialize custom set: {}", e))?;
+
+    fs::write(set_path, json)
+        .map_err(|e| format!("Failed to write custom set file: {}", e))?;
+
+    Ok(custom_set)
+}
+
+/// Load all custom sets from disk (preview only)
+#[tauri::command]
+async fn load_custom_sets(app: tauri::AppHandle) -> Result<Vec<CustomSetPreview>, String> {
+    let sets_dir = get_custom_sets_dir(&app)?;
+    let mut sets = Vec::new();
+
+    if !sets_dir.exists() {
+        return Ok(sets);
+    }
+
+    let entries = fs::read_dir(&sets_dir)
+        .map_err(|e| format!("Failed to read custom sets directory: {}", e))?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
+        let path = entry.path();
+
+        if path.extension().and_then(|s| s.to_str()) != Some("json") {
+            continue;
+        }
+
+        let json = fs::read_to_string(&path)
+            .map_err(|e| format!("Failed to read custom set file: {}", e))?;
+
+        let custom_set: CustomSet = serde_json::from_str(&json)
+            .map_err(|e| format!("Failed to parse custom set file: {}", e))?;
+
+        sets.push(CustomSetPreview {
+            id: custom_set.id,
+            name: custom_set.name,
+            description: custom_set.description,
+            thumbnail: custom_set.thumbnail,
+            createdAt: custom_set.createdAt,
+        });
+    }
+
+    // Sort by creation date (newest first)
+    sets.sort_by(|a, b| b.createdAt.cmp(&a.createdAt));
+
+    Ok(sets)
+}
+
+/// Get a specific custom set by ID
+#[tauri::command]
+async fn get_custom_set(app: tauri::AppHandle, set_id: String) -> Result<CustomSet, String> {
+    let sets_dir = get_custom_sets_dir(&app)?;
+    let set_path = sets_dir.join(format!("{}.json", set_id));
+
+    if !set_path.exists() {
+        return Err(format!("Custom set not found: {}", set_id));
+    }
+
+    let json = fs::read_to_string(&set_path)
+        .map_err(|e| format!("Failed to read custom set file: {}", e))?;
+
+    let custom_set: CustomSet = serde_json::from_str(&json)
+        .map_err(|e| format!("Failed to parse custom set file: {}", e))?;
+
+    Ok(custom_set)
+}
+
+/// Delete a custom set from disk
+#[tauri::command]
+async fn delete_custom_set(app: tauri::AppHandle, set_id: String) -> Result<(), String> {
+    let sets_dir = get_custom_sets_dir(&app)?;
+    let set_path = sets_dir.join(format!("{}.json", set_id));
+
+    if !set_path.exists() {
+        return Err(format!("Custom set not found: {}", set_id));
+    }
+
+    // Delete the JSON file
+    fs::remove_file(&set_path)
+        .map_err(|e| format!("Failed to delete custom set file: {}", e))?;
+
+    // Delete the resources directory if it exists
+    let resources_dir = sets_dir.join(&set_id);
+    if resources_dir.exists() {
+        fs::remove_dir_all(&resources_dir)
+            .map_err(|e| format!("Failed to delete custom set resources: {}", e))?;
+    }
+
+    Ok(())
+}
+
+/// Duplicate a custom set (create a copy with a new ID)
+#[tauri::command]
+async fn duplicate_custom_set(app: tauri::AppHandle, set_id: String) -> Result<CustomSet, String> {
+    let original = get_custom_set(app.clone(), set_id).await?;
+
+    let duplicated = CustomSet {
+        id: format!("set-{}", uuid::Uuid::new_v4()),
+        name: format!("{} (Copy)", original.name),
+        description: original.description,
+        canvasSize: original.canvasSize,
+        autoMatchBackground: original.autoMatchBackground,
+        background: original.background,
+        backgroundTransform: original.backgroundTransform,
+        frame: original.frame,
+        thumbnail: original.thumbnail,
+        createdAt: chrono::Utc::now().to_rfc3339(),
+        modifiedAt: chrono::Utc::now().to_rfc3339(),
+        isDefault: false,
+    };
+
+    save_custom_set(app, duplicated).await
+}
+
+// ==================== END CUSTOM SETS SYSTEM ====================
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1920,18 +2569,20 @@ pub fn run() {
             auth: Mutex::new(None),
             account: Mutex::new(None),
             root_folder: Mutex::new(None),
+            upload_cancelled: Arc::new(AtomicBool::new(false)),
         })
         .invoke_handler(tauri::generate_handler![
             google_login, google_logout, check_cached_account, get_account,
             list_drive_folders, create_drive_folder, delete_drive_folder,
             set_root_folder, get_root_folder, select_folder, select_file,
-            get_file_info, process_photos, get_images_in_folder,
-            get_images_with_metadata, save_dropped_image, clear_temp_images,
+            get_file_info, process_photos, cancel_upload, get_images_in_folder,
+            get_images_with_metadata, save_dropped_image, generate_cached_thumbnail, generate_cached_thumbnails_batch, clear_temp_images,
             remove_temp_image, get_history, clear_history,
             select_working_folder,
             save_frame, load_frames, delete_frame, duplicate_frame,
             save_background, load_backgrounds, delete_background, import_background,
-            save_custom_canvas_size, get_custom_canvas_sizes, delete_custom_canvas_size
+            save_custom_canvas_size, get_custom_canvas_sizes, delete_custom_canvas_size,
+            save_custom_set, load_custom_sets, get_custom_set, delete_custom_set, duplicate_custom_set
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

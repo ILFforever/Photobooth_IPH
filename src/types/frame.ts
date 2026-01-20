@@ -1,6 +1,6 @@
 // Frame system types matching Rust backend
 
-export type FrameShape = 'rectangle' | 'circle' | 'rounded_rect' | 'ellipse' | 'rounded_rect_large' | 'pill';
+export type FrameShape = 'rectangle' | 'circle' | 'rounded_rect' | 'ellipse' | 'pill';
 
 export interface FrameZone {
   id: string;
@@ -11,6 +11,7 @@ export interface FrameZone {
   height: number;    // Height in pixels (fixed size)
   rotation: number;  // Rotation in degrees
   shape: FrameShape; // Shape type for the zone
+  borderRadius?: number; // Border radius in pixels (for rounded_rect shape)
   // Optional spacing properties for distance calculations
   margin_right?: number;  // Distance to next zone on right (in pixels)
   margin_bottom?: number; // Distance to next zone below (in pixels)
