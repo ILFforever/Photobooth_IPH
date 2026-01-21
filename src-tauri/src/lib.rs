@@ -2241,6 +2241,40 @@ async fn delete_custom_canvas_size(app: tauri::AppHandle, name: String) -> Resul
 
 // ==================== CUSTOM SETS SYSTEM ====================
 
+// Overlay layer types for custom sets
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct OverlayTransform {
+    pub x: f64,
+    pub y: f64,
+    pub scale: f64,
+    pub rotation: f64,
+    #[serde(alias = "flipHorizontal")]
+    pub flip_horizontal: bool,
+    #[serde(alias = "flipVertical")]
+    pub flip_vertical: bool,
+    pub opacity: f64,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct OverlayLayer {
+    pub id: String,
+    pub name: String,
+    #[serde(alias = "sourcePath")]
+    pub source_path: String,
+    pub thumbnail: Option<String>,
+    pub position: String,
+    #[serde(alias = "layerOrder")]
+    pub layer_order: i32,
+    pub transform: OverlayTransform,
+    #[serde(alias = "blendMode")]
+    pub blend_mode: String,
+    pub visible: bool,
+    #[serde(alias = "createdAt")]
+    pub created_at: String,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct BackgroundTransform {
@@ -2283,6 +2317,10 @@ pub struct CustomSet {
 
     // Layout/Frame
     pub frame: Frame,
+
+    // Overlays
+    #[serde(default, alias = "overlays")]
+    pub overlays: Vec<OverlayLayer>,
 
     // Metadata
     pub thumbnail: Option<String>,
@@ -2438,6 +2476,50 @@ async fn save_custom_set(app: tauri::AppHandle, mut custom_set: CustomSet) -> Re
         }
     }
 
+    // Copy overlay images to set directory and update paths
+    let overlays_dir = set_resources_dir.join("overlays");
+    fs::create_dir_all(&overlays_dir)
+        .map_err(|e| format!("Failed to create overlays dir: {}", e))?;
+
+    for (index, overlay) in custom_set.overlays.iter_mut().enumerate() {
+        // Skip if the overlay source is already in the set directory
+        if overlay.source_path.contains(&format!("custom_sets/{}/overlays", custom_set.id)) {
+            continue;
+        }
+
+        // Get the original file path (remove asset:// prefix if present)
+        let original_path = overlay.source_path.replace("asset://", "").replace("asset:////", "//");
+
+        // Check if it's a data URL
+        if original_path.starts_with("data:image/png;base64,") {
+            if let Some(comma_pos) = original_path.find(',') {
+                let base64_data = &original_path[comma_pos + 1..];
+                if let Ok(image_data) = general_purpose::STANDARD.decode(base64_data) {
+                    let filename = format!("overlay_{}.png", index);
+                    let overlay_path = overlays_dir.join(&filename);
+                    if fs::write(&overlay_path, image_data).is_ok() {
+                        let path_str = overlay_path.to_string_lossy().replace('\\', "/");
+                        overlay.source_path = format!("asset://{}", path_str);
+                    }
+                }
+            }
+        } else {
+            // Try to copy from file path
+            let src_path = PathBuf::from(&original_path);
+            if src_path.exists() {
+                let filename = src_path.file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("overlay.png");
+                let overlay_path = overlays_dir.join(format!("{}_{}", index, filename));
+
+                if fs::copy(&src_path, &overlay_path).is_ok() {
+                    let path_str = overlay_path.to_string_lossy().replace('\\', "/");
+                    overlay.source_path = format!("asset://{}", path_str);
+                }
+            }
+        }
+    }
+
     // Save custom set metadata
     let set_path = sets_dir.join(format!("{}.json", custom_set.id));
     let json = serde_json::to_string_pretty(&custom_set)
@@ -2548,6 +2630,7 @@ async fn duplicate_custom_set(app: tauri::AppHandle, set_id: String) -> Result<C
         background: original.background,
         backgroundTransform: original.backgroundTransform,
         frame: original.frame,
+        overlays: original.overlays,
         thumbnail: original.thumbnail,
         createdAt: chrono::Utc::now().to_rfc3339(),
         modifiedAt: chrono::Utc::now().to_rfc3339(),

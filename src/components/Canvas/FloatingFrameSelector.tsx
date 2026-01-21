@@ -727,7 +727,7 @@ const FloatingFrameSelector = () => {
                     onClick={() => {
                       setDeleteMode(deleteMode === openPanel ? null : openPanel);
                     }}
-                    className={`delete-toggle-btn ${deleteMode === openPanel ? 'active' : ''}`}
+                    className={`delete-toggle-btn is-delete-mode ${deleteMode === openPanel ? 'active' : ''}`}
                     title={deleteMode === openPanel ? "Exit delete mode" : "Enter delete mode"}
                   >
                     🗑️

@@ -8,6 +8,7 @@ import { PlacedImage } from "../../types/collage";
 import { DEFAULT_TRANSFORM } from "../../types/collage";
 import { Background } from "../../types/background";
 import FloatingFrameSelector from "./FloatingFrameSelector";
+import { OverlayLayer as OverlayLayerComponent } from "./OverlayLayer";
 
 interface EditableZoneProps {
   zone: FrameZone;
@@ -68,6 +69,29 @@ function EditableZone({ zone, zIndex, frameWidth, frameHeight, isSelected, onSel
     }
   };
 
+  const getClipPath = () => {
+    switch (zone.shape) {
+      case 'triangle':
+        return 'polygon(50% 0%, 0% 100%, 100% 100%)';
+      case 'pentagon':
+        return 'polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)';
+      case 'hexagon':
+        return 'polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)';
+      case 'octagon':
+        return 'polygon(30% 0%, 70% 0%, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0% 70%, 0% 30%)';
+      case 'star':
+        return 'polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)';
+      case 'diamond':
+        return 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)';
+      case 'heart':
+        return 'polygon(50% 15%, 65% 0%, 85% 0%, 100% 15%, 100% 35%, 85% 50%, 50% 100%, 15% 50%, 0% 35%, 0% 15%, 15% 0%, 35% 0%)';
+      case 'cross':
+        return 'polygon(20% 0%, 80% 0%, 80% 20%, 100% 20%, 100% 80%, 80% 80%, 80% 100%, 20% 100%, 20% 80%, 0% 80%, 0% 20%, 20% 20%)';
+      default:
+        return undefined;
+    }
+  };
+
   // Extract zone number from ID (e.g., "zone-1" -> "Zone 1")
   const getZoneLabel = () => {
     const match = zone.id.match(/zone-(\d+)/);
@@ -77,19 +101,24 @@ function EditableZone({ zone, zIndex, frameWidth, frameHeight, isSelected, onSel
     return zone.id;
   };
 
-  // Use a minimum border width in screen pixels (3px on screen)
-  const minBorderWidth = 3;
-  const borderWidthPx = Math.max(minBorderWidth / displayScale, 2);
+  // Use a minimum border width in screen pixels (1.5px on screen for subtler look)
+  // Clamp to reasonable range for both large and small frames
+  const minBorderWidth = 1.5;
+  const borderWidthPx = Math.min(Math.max(minBorderWidth / displayScale, 0.5), 2);
 
+  const isLocked = zone.locked || false;
+
+  const clipPath = getClipPath();
   const zoneStyle = {
     position: 'absolute' as const,
     left: `${zone.x}px`,
     top: `${zone.y}px`,
     width: `${zone.width}px`,
     height: `${zone.height}px`,
-    border: isSelected ? `${borderWidthPx}px solid var(--accent-blue)` : `${borderWidthPx}px dashed rgba(255, 255, 255, 0.5)`,
+    border: isSelected ? `${borderWidthPx}px solid var(--accent-blue)` : `${borderWidthPx}px dashed ${isLocked ? 'rgba(255, 100, 100, 0.4)' : 'rgba(0, 0, 0, 0.3)'}`,
     borderRadius: getBorderRadius(),
-    cursor: 'move',
+    clipPath: clipPath,
+    cursor: isLocked ? 'not-allowed' : 'move',
     backgroundColor: getZoneColor(zone.id),
     pointerEvents: 'auto' as const,
     display: 'flex',
@@ -99,6 +128,12 @@ function EditableZone({ zone, zIndex, frameWidth, frameHeight, isSelected, onSel
   };
 
   const handleMouseDown = (e: React.MouseEvent, action?: string) => {
+    // Prevent all interaction if locked
+    if (isLocked) {
+      e.stopPropagation();
+      return;
+    }
+
     e.stopPropagation();
     e.preventDefault();
 
@@ -209,10 +244,11 @@ function EditableZone({ zone, zIndex, frameWidth, frameHeight, isSelected, onSel
   }, [isDragging, isResizing, dragStart, zoneStart, zone, canvasSize]);
 
   // Use fixed screen-space sizes for handles (e.g., 12px on screen, regardless of canvas zoom)
-  const cornerHandleSize = 12 / displayScale;
-  const edgeHandleLength = 24 / displayScale;
-  const handleBorderWidth = 2 / displayScale;
-  const handleOffset = 6 / displayScale; // Half of handle size for centering
+  // Clamp to reasonable range for both large and small frames
+  const cornerHandleSize = Math.min(12 / displayScale, 12);
+  const edgeHandleLength = Math.min(24 / displayScale, 24);
+  const handleBorderWidth = Math.min(2 / displayScale, 2);
+  const handleOffset = Math.min(6 / displayScale, 6); // Half of handle size for centering
 
   const handleStyle = {
     position: 'absolute' as const,
@@ -243,14 +279,14 @@ function EditableZone({ zone, zIndex, frameWidth, frameHeight, isSelected, onSel
       onClick={(e) => {
         e.stopPropagation();
         e.preventDefault();
-        onSelect();
+        if (!isLocked) onSelect();
       }}
     >
       {/* Zone label in center - counter-scaled to maintain readable size */}
       <span style={{
         color: 'white',
         fontWeight: '600',
-        fontSize: `${32 / displayScale}px`,
+        fontSize: `${Math.min(32 / displayScale, 48)}px`, // Clamp max size for small frames
         textShadow: '0 1px 3px rgba(0,0,0,0.5)',
         pointerEvents: 'none',
         textAlign: 'center',
@@ -259,7 +295,24 @@ function EditableZone({ zone, zIndex, frameWidth, frameHeight, isSelected, onSel
         {getZoneLabel()}
       </span>
 
-      {isSelected && (
+      {/* Lock indicator overlay when locked */}
+      {isLocked && (
+        <div style={{
+          position: 'absolute',
+          top: '4px',
+          right: '4px',
+          fontSize: `${Math.min(14 / displayScale, 16)}px`,
+          fontWeight: '600',
+          color: 'rgba(255, 100, 100, 0.9)',
+          textShadow: '0 1px 2px rgba(0,0,0,0.5)',
+          opacity: 0.8,
+          pointerEvents: 'none',
+        }}>
+          LOCKED
+        </div>
+      )}
+
+      {isSelected && !isLocked && (
         <>
           {/* Corner handles */}
           <div style={{ ...handleStyle, top: `${-handleOffset}px`, left: `${-handleOffset}px`, cursor: 'nw-resize' }}
@@ -318,12 +371,14 @@ function BackgroundLayer() {
   // Handle mouse down on background for panning
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (!background) return;
+    // Lock background when in frame creator mode
+    if (activeSidebarTab === 'frames') return;
     e.stopPropagation();
     setIsDragging(true);
     setIsBackgroundSelected(true);
     setDragStart({ x: e.clientX, y: e.clientY });
     setTransformStart({ x: backgroundTransform.offsetX, y: backgroundTransform.offsetY });
-  }, [background, backgroundTransform, setIsBackgroundSelected]);
+  }, [background, backgroundTransform, setIsBackgroundSelected, activeSidebarTab]);
 
   // Set up global mouse event listeners for dragging
   useEffect(() => {
@@ -423,14 +478,13 @@ function BackgroundLayer() {
       onClick={(e) => {
         e.stopPropagation();
 
+        // Lock background selection when in frame creator mode
+        if (activeSidebarTab === 'frames') return;
+
         // If clicking on the background area, deselect zones and select background
         setSelectedZone(null); // Deselect any frame zone
         setIsBackgroundSelected(true); // Select background
-
-        // Only switch to file tab if we're not in frame creation mode
-        if (activeSidebarTab !== 'frames') {
-          setActiveSidebarTab('file'); // Switch to file folder tab
-        }
+        setActiveSidebarTab('file'); // Switch to file folder tab
       }}
     >
       <div
@@ -648,13 +702,19 @@ function ImageZone({ zone }: ImageZoneProps) {
           console.log('Scale needed to fill height:', scale.toFixed(4));
           console.log('Image is width-constrained, scaling to fill height');
         } else {
-          // Image is taller - already constrained by zone height, no gaps
-          // Width might have gaps, but we want to fill vertically which is already done
+          // Image is taller - constrained by zone height, leaving gaps left/right
+          // objectFit: 'contain' will scale image to fit zone height
+          // Rendered width = zoneHeight * imgAspect
           const renderedWidth = zoneHeightPx * imgAspect;
           console.log('objectFit:contain will render image at:', renderedWidth.toFixed(0), 'x', zoneHeightPx.toFixed(0));
           console.log('Empty space left/right:', (zoneWidthPx - renderedWidth).toFixed(0), 'px');
-          console.log('Image is height-constrained, no scaling needed');
-          scale = 1.0;
+
+          // We need to scale up so width fills the zone
+          // Scale needed = zoneWidth / renderedWidth
+          // Which simplifies to: zoneWidth / (zoneHeight * imgAspect) = zoneAspect / imgAspect
+          scale = zoneAspect / imgAspect;
+          console.log('Scale needed to fill width:', scale.toFixed(4));
+          console.log('Image is height-constrained, scaling to fill width');
         }
 
         console.log('Calculated scale:', scale.toFixed(4));
@@ -844,6 +904,30 @@ function ImageZone({ zone }: ImageZoneProps) {
     }
   };
 
+  const getClipPathForImageZone = () => {
+    switch (zone.shape) {
+      case 'triangle':
+        return 'polygon(50% 0%, 0% 100%, 100% 100%)';
+      case 'pentagon':
+        return 'polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)';
+      case 'hexagon':
+        return 'polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)';
+      case 'octagon':
+        return 'polygon(30% 0%, 70% 0%, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0% 70%, 0% 30%)';
+      case 'star':
+        return 'polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)';
+      case 'diamond':
+        return 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)';
+      case 'heart':
+        return 'polygon(50% 15%, 65% 0%, 85% 0%, 100% 15%, 100% 35%, 85% 50%, 50% 100%, 15% 50%, 0% 35%, 0% 15%, 15% 0%, 35% 0%)';
+      case 'cross':
+        return 'polygon(20% 0%, 80% 0%, 80% 20%, 100% 20%, 100% 80%, 80% 80%, 80% 100%, 20% 100%, 20% 80%, 0% 80%, 0% 20%, 20% 20%)';
+      default:
+        return undefined;
+    }
+  };
+
+  const clipPath = getClipPathForImageZone();
   const zoneStyle = {
     position: 'absolute' as const,
     left: `${zone.x}px`,
@@ -853,10 +937,11 @@ function ImageZone({ zone }: ImageZoneProps) {
     transform: `rotate(${zone.rotation}deg)`,
     border: selectedZone === zone.id ? '3px solid var(--accent-blue)' : '2px dashed rgba(255, 255, 255, 0.3)',
     borderRadius: getBorderRadiusForImageZone(),
+    clipPath: clipPath,
     backgroundColor: isOver ? 'rgba(59, 130, 246, 0.2)' : 'rgba(0, 0, 0, 0.1)',
     cursor: 'pointer',
     overflow: 'hidden',
-    zIndex: selectedZone === zone.id ? 10 : 0,
+    zIndex: selectedZone === zone.id ? 50 : 40,
     // Only animate border, background-color, and box-shadow - NOT transform
     transition: 'border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease',
   };
@@ -1266,11 +1351,41 @@ function ImageZoneOverflow({ zone, placedImage }: ImageZoneOverflowProps) {
 }
 
 export default function CollageCanvas({ width: propWidth, height: propHeight }: CollageCanvasProps) {
-  const { currentFrame, setCurrentFrame, background, canvasSize, backgroundTransform, setBackgroundTransform, isBackgroundSelected, setIsBackgroundSelected, canvasZoom, setCanvasZoom, selectedZone, setSelectedZone, placedImages, setActiveSidebarTab, activeSidebarTab, autoMatchBackground, backgroundDimensions, copiedZone, setCopiedZone } = useCollage();
+  const {
+    currentFrame,
+    setCurrentFrame,
+    background,
+    canvasSize,
+    backgroundTransform,
+    setBackgroundTransform,
+    isBackgroundSelected,
+    setIsBackgroundSelected,
+    canvasZoom,
+    setCanvasZoom,
+    selectedZone,
+    setSelectedZone,
+    placedImages,
+    setActiveSidebarTab,
+    activeSidebarTab,
+    autoMatchBackground,
+    backgroundDimensions,
+    copiedZone,
+    setCopiedZone,
+    overlays,
+    selectedOverlayId,
+    setSelectedOverlayId,
+    updateOverlay,
+    importOverlayFiles,
+    isFrameCreatorSaving,
+  } = useCollage();
   const canvasRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [localZoom, setLocalZoom] = useState(canvasZoom);
   const [zoomCenter, setZoomCenter] = useState({ x: 0, y: 0 });
+
+  // Overlay snap guides state
+  const [overlaySnapGuides, setOverlaySnapGuides] = useState({ centerH: false, centerV: false });
+  const SNAP_THRESHOLD = 10;
   const prevZoomRef = useRef(canvasZoom);
   // Use refs to store latest values for completely stable callbacks
   const localZoomRef = useRef(localZoom);
@@ -1653,8 +1768,9 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
             // Clicking outside the canvas (in the container area) deselects everything
             setSelectedZone(null);
             setIsBackgroundSelected(false);
+            setSelectedOverlayId(null);
             // Only switch to file tab if we're not in frame creation mode
-            if (activeSidebarTab !== 'frames') {
+            if (activeSidebarTab !== 'frames' && activeSidebarTab !== 'layers') {
               setActiveSidebarTab('file');
             }
           }}
@@ -1709,13 +1825,51 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
               {/* Background Layer - rendered as transformable image */}
               <BackgroundLayer />
 
+              {/* Overlay Layers - Below Frames (z-index: 10-39) */}
+              {overlays
+                .filter(o => o.position === 'below-frames' && o.visible)
+                .sort((a, b) => a.layerOrder - b.layerOrder)
+                .map((layer) => (
+                  <OverlayLayerComponent
+                    key={layer.id}
+                    layer={layer}
+                    isSelected={selectedOverlayId === layer.id}
+                    canvasWidth={width}
+                    canvasHeight={height}
+                    zIndex={10 + layer.layerOrder}
+                    interactive={activeSidebarTab === 'layers'}
+                    onSnapGuidesChange={setOverlaySnapGuides}
+                    onSelect={() => {
+                      setSelectedOverlayId(layer.id);
+                      setSelectedZone(null);
+                      setIsBackgroundSelected(false);
+                      setActiveSidebarTab('layers');
+                    }}
+                  />
+                ))
+              }
+
+              {/* Interaction blocker when save dialog is open in frame creator */}
+              {activeSidebarTab === 'frames' && isFrameCreatorSaving && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    zIndex: 9999,
+                    cursor: 'not-allowed',
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
+                />
+              )}
+
               {/* In frame creation mode, render editable zones */}
               {activeSidebarTab === 'frames' ? (
                 currentFrame.zones.map((zone, index) => (
                   <EditableZone
                     key={zone.id}
                     zone={zone}
-                    zIndex={index}
+                    zIndex={40 + index}
                     frameWidth={currentFrame.width}
                     frameHeight={currentFrame.height}
                     isSelected={selectedZone === zone.id}
@@ -1758,7 +1912,59 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
                 if (!zone) return null;
                 return <ImageZone key={zone.id} zone={zone} />;
               })()}
+
+              {/* Overlay Layers - Above Frames (z-index: 61-99) */}
+              {overlays
+                .filter(o => o.position === 'above-frames' && o.visible)
+                .sort((a, b) => a.layerOrder - b.layerOrder)
+                .map((layer) => (
+                  <OverlayLayerComponent
+                    key={layer.id}
+                    layer={layer}
+                    isSelected={selectedOverlayId === layer.id}
+                    canvasWidth={width}
+                    canvasHeight={height}
+                    zIndex={61 + layer.layerOrder}
+                    interactive={activeSidebarTab === 'layers'}
+                    onSnapGuidesChange={setOverlaySnapGuides}
+                    onSelect={() => {
+                      setSelectedOverlayId(layer.id);
+                      setSelectedZone(null);
+                      setIsBackgroundSelected(false);
+                      setActiveSidebarTab('layers');
+                    }}
+                  />
+                ))
+              }
             </div>
+
+            {/* Overlay Snap Guides - shown when dragging overlay near center */}
+            {(overlaySnapGuides.centerH || overlaySnapGuides.centerV) && selectedOverlayId && (
+              <>
+                {overlaySnapGuides.centerH && (
+                  <div className="snap-guide snap-guide-vertical" style={{
+                    position: 'absolute',
+                    left: '50%',
+                    top: 0,
+                    height: '100%',
+                    transform: 'translateX(-50%)',
+                    pointerEvents: 'none',
+                    zIndex: 200,
+                  }} />
+                )}
+                {overlaySnapGuides.centerV && (
+                  <div className="snap-guide snap-guide-horizontal" style={{
+                    position: 'absolute',
+                    top: '50%',
+                    left: 0,
+                    width: '100%',
+                    transform: 'translateY(-50%)',
+                    pointerEvents: 'none',
+                    zIndex: 200,
+                  }} />
+                )}
+              </>
+            )}
 
             {/* Canvas Info Box - rendered outside scaled inner canvas for consistent sizing */}
             <div className="canvas-info">

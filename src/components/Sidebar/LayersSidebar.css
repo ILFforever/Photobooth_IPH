@@ -1,0 +1,607 @@
+.layers-sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Header matching working folder style */
+.layers-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+}
+
+.layers-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary, #fff);
+}
+
+.layers-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.overlay-visibility-toggle {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.2));
+  background: var(--bg-secondary, rgba(255, 255, 255, 0.05));
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+  padding: 0;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.overlay-visibility-toggle:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary, #fff);
+}
+
+.overlay-visibility-toggle.active {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: var(--accent-blue, #3b82f6);
+  color: var(--accent-blue, #3b82f6);
+}
+
+.overlay-visibility-toggle svg {
+  width: 16px;
+  height: 16px;
+}
+
+.layers-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.import-overlays-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--accent-blue, #3b82f6);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+
+.import-overlays-btn:hover {
+  background: var(--accent-blue-hover, #2563eb);
+}
+
+.import-overlays-btn svg {
+  flex-shrink: 0;
+}
+
+/* Layer Section */
+.layer-section {
+  margin-bottom: 12px;
+}
+
+.layer-section.drag-over {
+  background: rgba(59, 130, 246, 0.1);
+  border-radius: 8px;
+  padding: 4px;
+}
+
+.layer-section-title {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0 0 8px 0;
+  padding: 0 4px;
+}
+
+/* Divider between layer sections */
+.layers-divider {
+  height: 1px;
+  background: var(--border-color, rgba(255, 255, 255, 0.15));
+  margin: 12px 0;
+}
+
+.layers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.empty-layers-hint {
+  padding: 16px;
+  text-align: center;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.4));
+  font-size: 11px;
+  border: 1px dashed var(--border-color, rgba(255, 255, 255, 0.2));
+  border-radius: 6px;
+  margin: 4px;
+}
+
+/* Layer Item */
+.layer-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--bg-tertiary, rgba(255, 255, 255, 0.05));
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s;
+  user-select: none;
+}
+
+.layer-item:hover {
+  background: var(--bg-hover, rgba(255, 255, 255, 0.1));
+}
+
+.layer-item.selected {
+  background: rgba(59, 130, 246, 0.25);
+  border: 1px solid var(--accent-blue, #3b82f6);
+}
+
+.layer-item.dragging {
+  opacity: 0.5;
+}
+
+/* Visibility Toggle */
+.visibility-toggle {
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+  padding: 0;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.visibility-toggle:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary, #fff);
+}
+
+.visibility-toggle svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Thumbnail */
+.layer-thumbnail {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--bg-secondary, rgba(0, 0, 0, 0.2));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.layer-thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Layer Name */
+.layer-name {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text-primary, #fff);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Blend Mode Badge */
+.blend-mode-badge {
+  font-size: 9px;
+  padding: 2px 4px;
+  background: var(--bg-secondary, rgba(0, 0, 0, 0.3));
+  border-radius: 3px;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.5));
+  min-width: 18px;
+  text-align: center;
+}
+
+/* Opacity Value */
+.opacity-value {
+  font-size: 10px;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.5));
+  min-width: 32px;
+  text-align: right;
+}
+
+/* Layer Actions */
+.layer-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.layer-item:hover .layer-actions {
+  opacity: 1;
+}
+
+.layer-action-btn {
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: all 0.2s;
+}
+
+.layer-action-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary, #fff);
+}
+
+.layer-action-btn.delete-btn:hover {
+  background: rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+}
+
+/* Drop Indicator */
+.drop-indicator {
+  height: 2px;
+  background: var(--accent-blue, #3b82f6);
+  border-radius: 1px;
+  margin: -1px 0;
+}
+
+/* Properties Panel */
+.overlay-properties-panel {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+}
+
+.overlay-properties-panel h4 {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary, #fff);
+  margin: 0 0 12px 0;
+}
+
+.property-row {
+  margin-bottom: 12px;
+}
+
+.property-row label {
+  display: block;
+  font-size: 10px;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.property-input-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.property-input {
+  flex: 1;
+  padding: 6px 8px;
+  background: var(--bg-secondary, rgba(0, 0, 0, 0.2));
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+  border-radius: 4px;
+  color: var(--text-primary, #fff);
+  font-size: 12px;
+}
+
+.property-input:focus {
+  outline: none;
+  border-color: var(--accent-blue, #3b82f6);
+}
+
+.property-unit {
+  font-size: 11px;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.5));
+  min-width: 24px;
+}
+
+.property-slider-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.property-slider {
+  flex: 1;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--bg-secondary, rgba(0, 0, 0, 0.3));
+  border-radius: 2px;
+  outline: none;
+}
+
+.property-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  background: var(--accent-blue, #3b82f6);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.property-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  background: var(--accent-blue, #3b82f6);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.property-value {
+  font-size: 11px;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+  min-width: 40px;
+  text-align: right;
+}
+
+.property-select {
+  width: 100%;
+  padding: 6px 8px;
+  background: var(--bg-secondary, rgba(0, 0, 0, 0.2));
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+  border-radius: 4px;
+  color: var(--text-primary, #fff);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.property-select:focus {
+  outline: none;
+  border-color: var(--accent-blue, #3b82f6);
+}
+
+.property-toggle-group {
+  display: flex;
+  gap: 4px;
+}
+
+.property-toggle {
+  flex: 1;
+  padding: 6px 8px;
+  background: var(--bg-secondary, rgba(0, 0, 0, 0.2));
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+  border-radius: 4px;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.property-toggle:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.property-toggle.active {
+  background: var(--accent-blue, #3b82f6);
+  border-color: var(--accent-blue, #3b82f6);
+  color: white;
+}
+
+.property-button-group {
+  display: flex;
+  gap: 4px;
+}
+
+.property-button {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-secondary, rgba(0, 0, 0, 0.2));
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+  border-radius: 4px;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.property-button:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary, #fff);
+}
+
+.property-button.active {
+  background: var(--accent-blue, #3b82f6);
+  border-color: var(--accent-blue, #3b82f6);
+  color: white;
+}
+
+.property-reset-btn {
+  width: 100%;
+  padding: 8px;
+  background: transparent;
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.2));
+  border-radius: 4px;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.property-reset-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--text-secondary, rgba(255, 255, 255, 0.4));
+  color: var(--text-primary, #fff);
+}
+
+/* Shortcuts Hint */
+.layers-shortcuts-hint {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+}
+
+.layers-shortcuts-hint p {
+  font-size: 10px;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.4));
+  margin: 2px 0;
+}
+
+/* Modal Styles for Import */
+.import-overlays-modal {
+  width: 100%;
+  max-width: 360px;
+}
+
+.import-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 16px 0;
+}
+
+.import-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  background: var(--bg-secondary, rgba(255, 255, 255, 0.05));
+  border: 2px solid var(--border-color, rgba(255, 255, 255, 0.1));
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.import-option:hover {
+  border-color: var(--accent-blue, #3b82f6);
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.import-option input[type="radio"] {
+  margin-top: 2px;
+}
+
+.import-option-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.import-option-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary, #fff);
+}
+
+.import-option-desc {
+  font-size: 11px;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.5));
+}
+
+.modal-description {
+  font-size: 12px;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+  margin: 8px 0 16px 0;
+}
+
+/* Modal base styles (assuming they exist, but adding fallback) */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background: var(--bg-primary, #1a1a2e);
+  border-radius: 12px;
+  padding: 20px;
+  margin: 16px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.modal-content h2 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary, #fff);
+  margin: 0 0 8px 0;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+
+.modal-btn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.modal-btn-cancel {
+  background: transparent;
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.2));
+  color: var(--text-primary, #fff);
+}
+
+.modal-btn-cancel:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.modal-btn-primary {
+  background: var(--accent-blue, #3b82f6);
+  border: none;
+  color: white;
+}
+
+.modal-btn-primary:hover {
+  background: var(--accent-blue-hover, #2563eb);
+}
+
+.modal-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

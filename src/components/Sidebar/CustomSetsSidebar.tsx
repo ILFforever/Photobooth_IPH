@@ -21,6 +21,7 @@ export function CustomSetsSidebar() {
   const [newSetName, setNewSetName] = useState('');
   const [newSetDescription, setNewSetDescription] = useState('');
   const [saving, setSaving] = useState(false);
+  const [deletingSetId, setDeletingSetId] = useState<string | null>(null);
 
   const {
     currentFrame,
@@ -35,6 +36,8 @@ export function CustomSetsSidebar() {
     setBackgroundTransform,
     setAutoMatchBackground,
     captureCanvasThumbnail,
+    overlays,
+    setOverlays,
   } = useCollage();
 
   useEffect(() => {
@@ -150,6 +153,7 @@ export function CustomSetsSidebar() {
             offsetY: backgroundTransform.offsetY,
           },
           frame: currentFrame,
+          overlays: overlays,
           thumbnail: thumbnailDataUrl || undefined,
           createdAt: now,
           modifiedAt: now,
@@ -198,6 +202,7 @@ export function CustomSetsSidebar() {
           offsetY: backgroundTransform.offsetY,
         },
         frame: currentFrame,
+        overlays: overlays,
         thumbnail: thumbnailDataUrl || undefined,
         createdAt: now,
         modifiedAt: now,
@@ -243,6 +248,9 @@ export function CustomSetsSidebar() {
       // Restore auto-match background state
       setAutoMatchBackground(set.autoMatchBackground);
 
+      // Restore overlays
+      setOverlays(set.overlays || []);
+
       console.log('Custom set loaded successfully');
     } catch (error) {
       console.error('Failed to load custom set:', error);
@@ -250,13 +258,10 @@ export function CustomSetsSidebar() {
     }
   };
 
-  const handleDeleteSet = async (setId: string, setName: string) => {
-    if (!confirm(`Are you sure you want to delete "${setName}"?`)) {
-      return;
-    }
-
+  const handleDeleteSet = async (setId: string) => {
     try {
       await invoke('delete_custom_set', { setId });
+      setDeletingSetId(null);
       await loadCustomSets();
     } catch (error) {
       console.error('Failed to delete custom set:', error);
@@ -264,89 +269,125 @@ export function CustomSetsSidebar() {
     }
   };
 
+  const confirmDelete = (setId: string) => {
+    setDeletingSetId(setId);
+  };
+
+  const cancelDelete = () => {
+    setDeletingSetId(null);
+  };
+
   return (
     <div className="custom-sets-sidebar">
-      <div className="custom-sets-help">
-        <p>Save combinations of canvas, background, and frame as reusable presets.</p>
+      {/* Header */}
+      <div className="custom-sets-header">
+        <h3>Custom Sets</h3>
       </div>
 
-      <button
-        className="create-set-button"
-        onClick={() => setShowCreateDialog(true)}
-        disabled={!currentFrame || !canvasSize || !background}
-      >
-        + Save Current Setup
-      </button>
+      <div className="custom-sets-content">
+        <div className="custom-sets-help">
+          <p>Save combinations of canvas, background, and frame as reusable presets.</p>
+        </div>
 
-      {loading ? (
-        <div className="custom-sets-loading">Loading sets...</div>
-      ) : customSets.length === 0 ? (
-        <div className="custom-sets-empty">
-          <p>No custom sets yet.</p>
-          <p>Create your first set to get started!</p>
-        </div>
-      ) : (
-        <div className="saved-sets-section">
-          <h4 data-count={customSets.length}>Saved Sets</h4>
-          <div className="custom-sets-list">
-            {customSets.map((set) => (
-            <motion.div
-              key={set.id}
-              className="custom-set-card"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-            >
-              <div className="custom-set-thumbnail">
-                {set.thumbnail ? (
-                  <img src={convertFileSrc(set.thumbnail.replace('asset://', ''))} alt={set.name} />
-                ) : (
-                  <div className="custom-set-preview-placeholder">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    {set.previewInfo && (
-                      <div style={{ fontSize: '0.65rem', color: 'rgba(255, 255, 255, 0.4)', lineHeight: 1.3 }}>
-                        <div>{set.previewInfo.canvasSize}</div>
-                        <div>{set.previewInfo.frameName}</div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-              <div className="custom-set-info">
-                <h3>{set.name}</h3>
-                {set.description && <p>{set.description}</p>}
-                {set.previewInfo && (
-                  <p style={{ fontSize: '0.7rem', color: 'rgba(255, 255, 255, 0.4)', margin: '0.25rem 0' }}>
-                    {set.previewInfo.backgroundName}
-                  </p>
-                )}
-                <span className="custom-set-date">
-                  {new Date(set.createdAt).toLocaleDateString()}
-                </span>
-              </div>
-              <div className="custom-set-actions">
-                <button
-                  className="load-set-button"
-                  onClick={() => handleLoadSet(set.id)}
-                  title="Load this set"
-                >
-                  Load
-                </button>
-                <button
-                  className="delete-set-button"
-                  onClick={() => handleDeleteSet(set.id, set.name)}
-                  title="Delete this set"
-                >
-                  Delete
-                </button>
-              </div>
-            </motion.div>
-            ))}
+        <button
+          className="create-set-button"
+          onClick={() => setShowCreateDialog(true)}
+          disabled={!currentFrame || !canvasSize || !background}
+        >
+          + Save Current Setup
+        </button>
+
+        {loading ? (
+          <div className="custom-sets-loading">Loading sets...</div>
+        ) : customSets.length === 0 ? (
+          <div className="custom-sets-empty">
+            <p>No custom sets yet.</p>
+            <p>Create your first set to get started!</p>
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="saved-sets-section">
+            <h4 data-count={customSets.length}>Saved Sets</h4>
+            <div className="custom-sets-list">
+              {customSets.map((set) => (
+              <motion.div
+                key={set.id}
+                className="custom-set-card"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+              >
+                <div className="custom-set-thumbnail">
+                  {set.thumbnail ? (
+                    <img src={convertFileSrc(set.thumbnail.replace('asset://', ''))} alt={set.name} />
+                  ) : (
+                    <div className="custom-set-preview-placeholder">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      {set.previewInfo && (
+                        <div style={{ fontSize: '0.65rem', color: 'rgba(255, 255, 255, 0.4)', lineHeight: 1.3 }}>
+                          <div>{set.previewInfo.canvasSize}</div>
+                          <div>{set.previewInfo.frameName}</div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <div className="custom-set-info">
+                  <h3>{set.name}</h3>
+                  {set.description && <p>{set.description}</p>}
+                  {set.previewInfo && (
+                    <p style={{ fontSize: '0.7rem', color: 'rgba(255, 255, 255, 0.4)', margin: '0.25rem 0' }}>
+                      {set.previewInfo.backgroundName}
+                    </p>
+                  )}
+                  <span className="custom-set-date">
+                    {new Date(set.createdAt).toLocaleDateString()}
+                  </span>
+                </div>
+                <div className="custom-set-actions">
+                  {deletingSetId === set.id ? (
+                    <>
+                      <button
+                        className="confirm-delete-button"
+                        onClick={() => handleDeleteSet(set.id)}
+                        title="Confirm delete"
+                      >
+                        Confirm
+                      </button>
+                      <button
+                        className="cancel-delete-button"
+                        onClick={cancelDelete}
+                        title="Cancel delete"
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        className="load-set-button"
+                        onClick={() => handleLoadSet(set.id)}
+                        title="Load this set"
+                      >
+                        Load
+                      </button>
+                      <button
+                        className="delete-set-button"
+                        onClick={() => confirmDelete(set.id)}
+                        title="Delete this set"
+                      >
+                        Delete
+                      </button>
+                    </>
+                  )}
+                </div>
+              </motion.div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
 
       <AnimatePresence>
         {showCreateDialog && (

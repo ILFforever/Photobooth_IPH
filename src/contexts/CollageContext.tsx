@@ -1,8 +1,9 @@
-import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { PlacedImage } from '../types/collage';
 import { Frame, FrameZone } from '../types/frame';
 import { Background } from '../types/background';
+import { OverlayLayer, LayerPosition, DEFAULT_OVERLAY_TRANSFORM } from '../types/overlay';
 
 export interface CanvasSize {
   width: number;
@@ -49,8 +50,8 @@ interface CollageContextType {
   setCanvasZoom: (zoom: number) => void;
   customCanvasSizes: CanvasSize[];
   setCustomCanvasSizes: (sizes: CanvasSize[]) => void;
-  activeSidebarTab: 'file' | 'edit' | 'frames' | 'custom-sets';
-  setActiveSidebarTab: (tab: 'file' | 'edit' | 'frames' | 'custom-sets') => void;
+  activeSidebarTab: 'file' | 'edit' | 'frames' | 'layers' | 'custom-sets';
+  setActiveSidebarTab: (tab: 'file' | 'edit' | 'frames' | 'layers' | 'custom-sets') => void;
   customFrames: Frame[];
   setCustomFrames: (frames: Frame[]) => void;
   reloadFrames: () => Promise<void>;
@@ -61,6 +62,32 @@ interface CollageContextType {
   copiedZone: FrameZone | null;
   setCopiedZone: (zone: FrameZone | null) => void;
   captureCanvasThumbnail: () => Promise<string | null>;
+
+  // Overlay layer state
+  overlays: OverlayLayer[];
+  setOverlays: (overlays: OverlayLayer[]) => void;
+  selectedOverlayId: string | null;
+  setSelectedOverlayId: (id: string | null) => void;
+
+  // Overlay CRUD operations
+  addOverlay: (overlay: Omit<OverlayLayer, 'id' | 'createdAt'>) => string;
+  updateOverlay: (id: string, updates: Partial<OverlayLayer>) => void;
+  deleteOverlay: (id: string) => void;
+  duplicateOverlay: (id: string) => void;
+
+  // Layer management
+  moveOverlayLayer: (id: string, newPosition: LayerPosition, newOrder: number) => void;
+  reorderOverlays: (overlays: OverlayLayer[]) => void;
+  toggleOverlayVisibility: (id: string) => void;
+  showAllOverlays: boolean;
+  setShowAllOverlays: (show: boolean) => void;
+
+  // File import
+  importOverlayFiles: (filePaths: string[], position?: LayerPosition) => Promise<void>;
+
+  // Frame creator state
+  isFrameCreatorSaving: boolean;
+  setIsFrameCreatorSaving: (saving: boolean) => void;
 }
 
 const CollageContext = createContext<CollageContextType | undefined>(undefined);
@@ -82,11 +109,19 @@ export function CollageProvider({ children }: { children: ReactNode }) {
   const [isBackgroundSelected, setIsBackgroundSelected] = useState<boolean>(false);
   const [canvasZoom, setCanvasZoom] = useState<number>(1);
   const [customCanvasSizes, setCustomCanvasSizes] = useState<CanvasSize[]>([]);
-  const [activeSidebarTab, setActiveSidebarTab] = useState<'file' | 'edit' | 'frames' | 'custom-sets'>('file');
+  const [activeSidebarTab, setActiveSidebarTab] = useState<'file' | 'edit' | 'frames' | 'layers' | 'custom-sets'>('file');
   const [customFrames, setCustomFrames] = useState<Frame[]>([]);
   const [autoMatchBackground, setAutoMatchBackground] = useState(false);
   const [backgroundDimensions, setBackgroundDimensions] = useState<{ width: number; height: number } | null>(null);
   const [copiedZone, setCopiedZone] = useState<FrameZone | null>(null);
+
+  // Overlay layer state
+  const [overlays, setOverlays] = useState<OverlayLayer[]>([]);
+  const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null);
+  const [showAllOverlays, setShowAllOverlays] = useState(true);
+
+  // Frame creator state
+  const [isFrameCreatorSaving, setIsFrameCreatorSaving] = useState(false);
 
   // Load backgrounds and settings on mount
   useEffect(() => {
@@ -201,6 +236,135 @@ export function CollageProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Overlay CRUD operations
+  const addOverlay = useCallback((overlay: Omit<OverlayLayer, 'id' | 'createdAt'>): string => {
+    const id = `overlay-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const newOverlay: OverlayLayer = {
+      ...overlay,
+      id,
+      createdAt: new Date().toISOString(),
+    };
+    setOverlays(prev => [...prev, newOverlay]);
+    return id;
+  }, []);
+
+  const updateOverlay = useCallback((id: string, updates: Partial<OverlayLayer>) => {
+    setOverlays(prev => prev.map(o =>
+      o.id === id ? { ...o, ...updates } : o
+    ));
+  }, []);
+
+  const deleteOverlay = useCallback((id: string) => {
+    setOverlays(prev => prev.filter(o => o.id !== id));
+    if (selectedOverlayId === id) {
+      setSelectedOverlayId(null);
+    }
+  }, [selectedOverlayId]);
+
+  const duplicateOverlay = useCallback((id: string) => {
+    setOverlays(prev => {
+      const original = prev.find(o => o.id === id);
+      if (!original) return prev;
+
+      const newId = `overlay-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const duplicate: OverlayLayer = {
+        ...original,
+        id: newId,
+        name: `${original.name} (copy)`,
+        layerOrder: original.layerOrder + 1,
+        transform: { ...original.transform },
+        createdAt: new Date().toISOString(),
+      };
+
+      // Reorder layers after this one
+      const updated = prev.map(o => {
+        if (o.position === original.position && o.layerOrder > original.layerOrder) {
+          return { ...o, layerOrder: o.layerOrder + 1 };
+        }
+        return o;
+      });
+
+      return [...updated, duplicate].sort((a, b) => {
+        if (a.position !== b.position) {
+          return a.position === 'below-frames' ? -1 : 1;
+        }
+        return a.layerOrder - b.layerOrder;
+      });
+    });
+  }, []);
+
+  const moveOverlayLayer = useCallback((id: string, newPosition: LayerPosition, newOrder: number) => {
+    setOverlays(prev => {
+      const layer = prev.find(o => o.id === id);
+      if (!layer) return prev;
+
+      // Remove from current position
+      const filtered = prev.filter(o => o.id !== id);
+
+      // Get layers in target position
+      const targetPositionLayers = filtered
+        .filter(o => o.position === newPosition)
+        .sort((a, b) => a.layerOrder - b.layerOrder);
+
+      // Adjust orders
+      const updated = targetPositionLayers.map((o, idx) => ({
+        ...o,
+        layerOrder: idx >= newOrder ? idx + 1 : idx
+      }));
+
+      // Insert moved layer
+      updated.push({
+        ...layer,
+        position: newPosition,
+        layerOrder: newOrder
+      });
+
+      // Reconstruct full array
+      const otherLayers = filtered.filter(o => o.position !== newPosition);
+      return [...otherLayers, ...updated].sort((a, b) => {
+        if (a.position !== b.position) {
+          return a.position === 'below-frames' ? -1 : 1;
+        }
+        return a.layerOrder - b.layerOrder;
+      });
+    });
+  }, []);
+
+  const reorderOverlays = useCallback((newOverlays: OverlayLayer[]) => {
+    setOverlays(newOverlays);
+  }, []);
+
+  const toggleOverlayVisibility = useCallback((id: string) => {
+    setOverlays(prev => prev.map(o =>
+      o.id === id ? { ...o, visible: !o.visible } : o
+    ));
+  }, []);
+
+  const importOverlayFiles = useCallback(async (filePaths: string[], position: LayerPosition = 'above-frames') => {
+    const { convertFileSrc } = await import('@tauri-apps/api/core');
+
+    for (const filePath of filePaths) {
+      // Extract filename from path
+      const fileName = filePath.split(/[/\\]/).pop() || 'overlay';
+
+      // Get next layer order for this position
+      const currentOverlaysInPosition = overlays.filter(o => o.position === position);
+      const maxOrder = currentOverlaysInPosition.length > 0
+        ? Math.max(...currentOverlaysInPosition.map(o => o.layerOrder))
+        : -1;
+
+      addOverlay({
+        name: fileName.replace(/\.(png|PNG)$/, ''),
+        sourcePath: convertFileSrc(filePath),
+        position,
+        layerOrder: maxOrder + 1,
+        transform: { ...DEFAULT_OVERLAY_TRANSFORM },
+        blendMode: 'normal',
+        visible: true,
+      });
+    }
+  }, [overlays, addOverlay]);
+
   return (
     <CollageContext.Provider
       value={{
@@ -239,6 +403,22 @@ export function CollageProvider({ children }: { children: ReactNode }) {
         copiedZone,
         setCopiedZone,
         captureCanvasThumbnail,
+        overlays,
+        setOverlays,
+        selectedOverlayId,
+        setSelectedOverlayId,
+        addOverlay,
+        updateOverlay,
+        deleteOverlay,
+        duplicateOverlay,
+        moveOverlayLayer,
+        reorderOverlays,
+        toggleOverlayVisibility,
+        showAllOverlays,
+        setShowAllOverlays,
+        importOverlayFiles,
+        isFrameCreatorSaving,
+        setIsFrameCreatorSaving,
       }}
     >
       {children}

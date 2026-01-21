@@ -3,6 +3,7 @@ import { WorkingFolderGallery } from "../WorkingFolder/WorkingFolderGallery";
 import ImageManipulator from "../Canvas/ImageManipulator";
 import FrameCreator from "./FrameCreator";
 import { CustomSetsSidebar } from "./CustomSetsSidebar";
+import { LayersSidebar } from "./LayersSidebar";
 import { useCollage } from "../../contexts/CollageContext";
 import "./CollageSidebar.css";
 
@@ -38,6 +39,14 @@ const CollageSidebar = () => {
           <span className="tab-icon">🖼️</span>
         </motion.button>
         <motion.button
+          className={`sidebar-tab ${activeSidebarTab === 'layers' ? 'active' : ''}`}
+          onClick={() => setActiveSidebarTab('layers')}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+        >
+          <span className="tab-icon">📚</span>
+        </motion.button>
+        <motion.button
           className={`sidebar-tab ${activeSidebarTab === 'custom-sets' ? 'active' : ''}`}
           onClick={() => setActiveSidebarTab('custom-sets')}
           whileHover={{ scale: 1.05 }}
@@ -57,6 +66,9 @@ const CollageSidebar = () => {
         </div>
         <div className={`sidebar-panel ${activeSidebarTab === 'frames' ? 'panel-visible' : 'panel-hidden'}`}>
           <FrameCreator />
+        </div>
+        <div className={`sidebar-panel ${activeSidebarTab === 'layers' ? 'panel-visible' : 'panel-hidden'}`}>
+          <LayersSidebar />
         </div>
         <div className={`sidebar-panel ${activeSidebarTab === 'custom-sets' ? 'panel-visible' : 'panel-hidden'}`}>
           <CustomSetsSidebar />

@@ -1,5 +1,6 @@
 import { Background } from './background';
 import { Frame } from './frame';
+import { OverlayLayer } from './overlay';
 
 export interface CanvasSize {
   width: number;
@@ -30,6 +31,9 @@ export interface CustomSet {
 
   // Layout/Frame
   frame: Frame;
+
+  // Overlay layers configuration
+  overlays: OverlayLayer[];
 
   // Metadata
   thumbnail?: string;

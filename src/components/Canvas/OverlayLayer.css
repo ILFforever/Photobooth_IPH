@@ -1,0 +1,94 @@
+.overlay-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  cursor: move;
+  user-select: none;
+  transition: outline 0.15s ease;
+}
+
+.overlay-layer img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.overlay-layer.selected {
+  outline: 2px solid var(--accent-blue, #3b82f6);
+  outline-offset: -1px;
+}
+
+.overlay-selection-border {
+  position: absolute;
+  inset: -4px;
+  border: 1px dashed var(--accent-blue, #3b82f6);
+  pointer-events: none;
+  border-radius: 2px;
+}
+
+.resize-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: var(--accent-blue, #3b82f6);
+  border: 2px solid white;
+  border-radius: 2px;
+  pointer-events: auto;
+  z-index: 10;
+}
+
+.resize-handle.nw {
+  top: -6px;
+  left: -6px;
+  cursor: nw-resize;
+}
+
+.resize-handle.ne {
+  top: -6px;
+  right: -6px;
+  cursor: ne-resize;
+}
+
+.resize-handle.sw {
+  bottom: -6px;
+  left: -6px;
+  cursor: sw-resize;
+}
+
+.resize-handle.se {
+  bottom: -6px;
+  right: -6px;
+  cursor: se-resize;
+}
+
+.rotation-handle {
+  position: absolute;
+  top: -30px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 14px;
+  height: 14px;
+  background: var(--accent-blue, #3b82f6);
+  border: 2px solid white;
+  border-radius: 50%;
+  cursor: grab;
+  pointer-events: auto;
+  z-index: 10;
+}
+
+.rotation-handle:active {
+  cursor: grabbing;
+}
+
+.rotation-handle::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 2px;
+  height: 14px;
+  background: var(--accent-blue, #3b82f6);
+}

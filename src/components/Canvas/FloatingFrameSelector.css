@@ -157,6 +157,11 @@
 }
 
 .delete-toggle-btn.active {
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.delete-toggle-btn.active.is-delete-mode {
   color: #ff6b6b;
   background: rgba(255, 107, 107, 0.15);
   border-color: rgba(255, 107, 107, 0.3);
