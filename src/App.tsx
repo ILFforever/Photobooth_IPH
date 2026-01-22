@@ -288,8 +288,8 @@ function App() {
           />
         )}
       </AnimatePresence>
-
-      {/* About Modal */}
+ 
+       {/* About Modal */}
       <AnimatePresence>
         {showAboutModal && (
           <AboutModal

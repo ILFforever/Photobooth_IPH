@@ -1744,15 +1744,7 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
       className="collage-canvas-container"
       style={{ flex: '1', display: 'flex', flexDirection: 'column' }}
     >
-      {!currentFrame ? (
-        <div className="canvas-placeholder">
-          <div className="placeholder-content">
-            <span className="placeholder-icon">🖼️</span>
-            <h3>No Frame Selected</h3>
-            <p>Choose a frame template to start creating your collage</p>
-          </div>
-        </div>
-      ) : !background ? (
+      {!background ? (
         <div className="canvas-placeholder">
           <div className="placeholder-content">
             <span className="placeholder-icon">🎨</span>
@@ -1864,7 +1856,7 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
               )}
 
               {/* In frame creation mode, render editable zones */}
-              {activeSidebarTab === 'frames' ? (
+              {activeSidebarTab === 'frames' && currentFrame ? (
                 currentFrame.zones.map((zone, index) => (
                   <EditableZone
                     key={zone.id}
@@ -1882,7 +1874,7 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
                     }}
                   />
                 ))
-              ) : (
+              ) : activeSidebarTab !== 'frames' && currentFrame ? (
                 <>
                   {/* Image Zones - render non-selected first, then selected */}
                   {currentFrame.zones.map((zone) => {
@@ -1890,10 +1882,10 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
                     return <ImageZone key={zone.id} zone={zone} />;
                   })}
                 </>
-              )}
+              ) : null}
 
               {/* Selected zone overflow - renders on top of non-selected zones */}
-              {activeSidebarTab !== 'frames' && selectedZone && (() => {
+              {activeSidebarTab !== 'frames' && selectedZone && currentFrame && (() => {
                 const zone = currentFrame.zones.find(z => z.id === selectedZone);
                 const placedImage = zone ? placedImages.get(zone.id) : null;
                 if (!zone || !placedImage) return null;
@@ -1907,7 +1899,7 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
               })()}
 
               {/* Selected zone - renders on top of everything */}
-              {activeSidebarTab !== 'frames' && selectedZone && (() => {
+              {activeSidebarTab !== 'frames' && selectedZone && currentFrame && (() => {
                 const zone = currentFrame.zones.find(z => z.id === selectedZone);
                 if (!zone) return null;
                 return <ImageZone key={zone.id} zone={zone} />;

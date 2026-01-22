@@ -265,8 +265,11 @@ export function WorkingFolderGallery() {
           setLoadedImagesMap(finalMap);
         })
         .catch(error => {
-          console.error('Failed to select working folder:', error);
-          alert(`Failed to select folder: ${error}`);
+          // Silently ignore "No folder selected" error (user cancelled the dialog)
+          if (error !== 'No folder selected') {
+            console.error('Failed to select working folder:', error);
+            alert(`Failed to select folder: ${error}`);
+          }
         })
         .finally(() => {
           setLoading(false);

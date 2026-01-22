@@ -576,6 +576,7 @@ export default function FrameCreator() {
       width: Math.round(zone.width),
       height: Math.round(zone.height),
       rotation: Math.round(zone.rotation),
+      borderRadius: zone.borderRadius !== undefined ? Math.round(zone.borderRadius) : undefined,
       locked: false, // Save as unlocked
     }));
 
