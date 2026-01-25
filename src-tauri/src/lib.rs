@@ -2277,6 +2277,56 @@ async fn delete_custom_canvas_size(app: tauri::AppHandle, name: String) -> Resul
 
 // ==================== END CUSTOM CANVAS SIZE SYSTEM ====================
 
+// ==================== APP SETTINGS SYSTEM ====================
+
+/// Get app settings directory in app data
+fn get_settings_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    let app_data_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+    Ok(app_data_dir)
+}
+
+/// Save an app setting (key-value pair stored as a JSON file)
+#[tauri::command]
+async fn save_app_setting(app: tauri::AppHandle, key: String, value: String) -> Result<(), String> {
+    let settings_dir = get_settings_dir(&app)?;
+    let setting_path = settings_dir.join(format!("setting_{}.json", key));
+
+    let setting_data = serde_json::json!({ "value": value });
+    let json = serde_json::to_string_pretty(&setting_data)
+        .map_err(|e| format!("Failed to serialize setting: {}", e))?;
+
+    fs::write(setting_path, json)
+        .map_err(|e| format!("Failed to write setting file: {}", e))?;
+
+    Ok(())
+}
+
+/// Get an app setting by key (returns null if not found)
+#[tauri::command]
+async fn get_app_setting(app: tauri::AppHandle, key: String) -> Result<Option<String>, String> {
+    let settings_dir = get_settings_dir(&app)?;
+    let setting_path = settings_dir.join(format!("setting_{}.json", key));
+
+    if !setting_path.exists() {
+        return Ok(None);
+    }
+
+    let content = fs::read_to_string(setting_path)
+        .map_err(|e| format!("Failed to read setting file: {}", e))?;
+
+    let setting_data: serde_json::Value = serde_json::from_str(&content)
+        .map_err(|e| format!("Failed to parse setting file: {}", e))?;
+
+    let value = setting_data.get("value")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    Ok(value)
+}
+
+// ==================== END APP SETTINGS SYSTEM ====================
+
 // ==================== CUSTOM SETS SYSTEM ====================
 
 // Overlay layer types for custom sets
@@ -2703,6 +2753,7 @@ pub fn run() {
             save_frame, load_frames, delete_frame, duplicate_frame,
             save_background, load_backgrounds, delete_background, import_background,
             save_custom_canvas_size, get_custom_canvas_sizes, delete_custom_canvas_size,
+            save_app_setting, get_app_setting,
             save_custom_set, load_custom_sets, get_custom_set, delete_custom_set, duplicate_custom_set
         ])
         .run(tauri::generate_context!())

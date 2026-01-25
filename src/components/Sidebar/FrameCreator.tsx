@@ -348,6 +348,24 @@ export default function FrameCreator() {
 
         setCurrentFrame(blankFrame);
         setPlacedImages(new Map());
+      } else if (!currentFrame || currentFrame.id !== 'system-blank') {
+        // No frame selected - create a fresh blank frame for editing
+        const blankFrame = {
+          id: 'system-blank',
+          name: 'Blank',
+          description: 'Blank canvas with no zones',
+          width: CANVAS_SIZE.width,
+          height: CANVAS_SIZE.height,
+          zones: [],
+          is_default: true,
+          created_at: new Date().toISOString(),
+        };
+
+        setZones([]);
+        setNewFrameName('');
+        setSelectedZoneIndex(null);
+        setCurrentFrame(blankFrame);
+        setPlacedImages(new Map());
       }
     } else if (previousFrame && currentFrame?.id === 'system-blank') {
       // Leaving frame creator mode - restore

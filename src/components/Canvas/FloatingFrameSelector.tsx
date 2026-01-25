@@ -407,7 +407,46 @@ const FloatingFrameSelector = () => {
     }
 
     try {
-      // Create an image element to get the background dimensions
+      // Check if background is a solid color (hex value)
+      const isHexColor = /^#([0-9A-F]{3}){1,2}$/i.test(background);
+
+      if (isHexColor) {
+        console.log('Background is a solid color, using default dimensions');
+
+        // Default dimensions for solid colors (standard 4:3 aspect ratio)
+        const defaultWidth = 1200;
+        const defaultHeight = 1800; // Portrait orientation common for photos
+
+        setBackgroundDimensions({ width: defaultWidth, height: defaultHeight });
+
+        // Create a custom canvas size for solid colors
+        const customSize: CanvasSize = {
+          width: defaultWidth,
+          height: defaultHeight,
+          name: `${defaultWidth}×${defaultHeight}`,
+          isCustom: true,
+          createdAt: new Date().toISOString(),
+        };
+
+        // Check if this size already exists
+        const existing = customCanvasSizes.find(
+          c => c.width === defaultWidth && c.height === defaultHeight
+        );
+
+        if (existing) {
+          console.log('Using existing canvas size:', existing);
+          setCanvasSize(existing);
+        } else {
+          console.log('Setting new canvas size for solid color:', customSize);
+          setCanvasSize(customSize);
+        }
+
+        console.log('Matched canvas to solid color background:', customSize);
+        console.log('=====================================');
+        return;
+      }
+
+      // For image backgrounds, create an image element to get dimensions
       const img = new Image();
       img.src = background.startsWith('asset://')
         ? convertFileSrc(background.replace('asset://', ''))

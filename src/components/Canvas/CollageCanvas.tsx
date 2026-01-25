@@ -359,14 +359,20 @@ function BackgroundLayer() {
   const [snapGuides, setSnapGuides] = useState({ horizontal: false, vertical: false, centerH: false, centerV: false });
   const SNAP_THRESHOLD = 10;
 
-  // Convert background path to Tauri-compatible URL
+  // Check if background is a solid color (hex value)
+  const isSolidColor = useMemo(() => {
+    if (!background) return false;
+    return /^#([0-9A-F]{3}){1,2}$/i.test(background);
+  }, [background]);
+
+  // Convert background path to Tauri-compatible URL (only for images)
   const bgSrc = useMemo(() => {
-    if (!background) return null;
+    if (!background || isSolidColor) return null;
     if (background.startsWith('http') || background.startsWith('data:')) {
       return background;
     }
     return convertFileSrc(background.replace('asset://', ''));
-  }, [background]);
+  }, [background, isSolidColor]);
 
   // Handle mouse down on background for panning
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -461,7 +467,51 @@ function BackgroundLayer() {
     }
   }, [isDragging, dragStart, transformStart, backgroundTransform, setBackgroundTransform, setSnapGuides, SNAP_THRESHOLD]);
 
-  if (!bgSrc) return null;
+  if (!background) return null;
+
+  // For solid colors, render a div with backgroundColor instead of an img
+  if (isSolidColor) {
+    return (
+      <div
+        ref={bgRef}
+        className={`canvas-background-layer ${isBackgroundSelected ? 'selected' : ''}`}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          overflow: 'hidden',
+          cursor: isDragging ? 'grabbing' : 'grab',
+          zIndex: 0,
+          backgroundColor: background,
+        }}
+        onMouseDown={handleMouseDown}
+        onClick={(e) => {
+          e.stopPropagation();
+
+          // Lock background selection when in frame creator mode
+          if (activeSidebarTab === 'frames') return;
+
+          // If clicking on the background area, deselect zones and select background
+          setSelectedZone(null); // Deselect any frame zone
+          setIsBackgroundSelected(true); // Select background
+          setActiveSidebarTab('file'); // Switch to file folder tab
+        }}
+      >
+        {/* 3x3 Grid Overlay - shown when background is selected */}
+        {isBackgroundSelected && (
+          <div className="grid-overlay" style={{
+            position: 'absolute',
+            inset: 0,
+            pointerEvents: 'none',
+          }}>
+            <div className="grid-line grid-line-vertical" style={{ left: '33.33%' }} />
+            <div className="grid-line grid-line-vertical" style={{ left: '66.67%' }} />
+            <div className="grid-line grid-line-horizontal" style={{ top: '33.33%' }} />
+            <div className="grid-line grid-line-horizontal" style={{ top: '66.67%' }} />
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -500,7 +550,7 @@ function BackgroundLayer() {
         }}
       >
         <img
-          src={bgSrc}
+          src={bgSrc ?? undefined}
           alt="Background"
           draggable={false}
           style={{
@@ -533,7 +583,7 @@ function BackgroundLayer() {
             overflow: 'hidden',
           }}>
             <img
-              src={bgSrc}
+              src={bgSrc ?? undefined}
               alt="Background Overflow"
               draggable={false}
               style={{
@@ -1607,14 +1657,20 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeSidebarTab, selectedZone, copiedZone, currentFrame, canvasSize, setCopiedZone, setCurrentFrame, setSelectedZone]);
 
+  // Check if background is a solid color (hex value)
+  const isSolidColor = useMemo(() => {
+    if (!background) return false;
+    return /^#([0-9A-F]{3}){1,2}$/i.test(background);
+  }, [background]);
+
   // Convert background path to Tauri-compatible URL (must be before conditional return)
   const bgSrc = useMemo(() => {
-    if (!background) return null;
+    if (!background || isSolidColor) return null;
     if (background.startsWith('http') || background.startsWith('data:')) {
       return background;
     }
     return convertFileSrc(background.replace('asset://', ''));
-  }, [background]);
+  }, [background, isSolidColor]);
 
   // Auto-scroll to zoom center when zooming (must be before conditional return)
   // This ensures the point under the mouse stays stable during zoom
