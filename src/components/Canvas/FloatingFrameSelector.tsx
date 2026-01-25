@@ -99,6 +99,7 @@ const FloatingFrameSelector = () => {
     customCanvasSizes,
     setCustomCanvasSizes,
     activeSidebarTab,
+    setActiveSidebarTab,
     autoMatchBackground,
     setAutoMatchBackground,
     backgroundDimensions,
@@ -272,7 +273,16 @@ const FloatingFrameSelector = () => {
       const updatedBackgrounds = await invoke<Background[]>('load_backgrounds');
       setBackgrounds(updatedBackgrounds);
       // Clear current background if it was deleted
-      if (background === bg.value) {
+      // Find the currently selected background by value and compare IDs
+      const currentBg = backgrounds.find(b => {
+        // Convert asset:// URLs for comparison
+        let bgValue = b.value;
+        if (bgValue.startsWith('asset://')) {
+          bgValue = convertFileSrc(bgValue.replace('asset://', ''));
+        }
+        return bgValue === background;
+      });
+      if (currentBg?.id === bg.id) {
         setBackground(null);
       }
     } catch (error) {
@@ -812,72 +822,105 @@ const FloatingFrameSelector = () => {
                         <div className="spinner-small"></div>
                         <span>Loading frames...</span>
                       </div>
-                    ) : frames.length > 0 ? (
-                      frames.map((frame) => (
+                    ) : (
+                      <>
+                        {/* Create Custom Frame Button */}
                         <motion.div
-                          key={frame.id}
+                          key="create-frame-btn"
                           whileHover={{ scale: 1.02 }}
                           whileTap={{ scale: 0.98 }}
-                          onClick={() => deleteMode !== 'frame' && handleSelectFrame(frame)}
-                          className={`frame-option ${
-                            currentFrame?.id === frame.id ? "selected" : ""
-                          } ${deleteMode === 'frame' ? 'delete-mode' : ''}`}
+                          onClick={() => setActiveSidebarTab('frames')}
+                          className="frame-option import-bg-button"
                         >
                           <div className="frame-option-content">
                             <div className="frame-preview-container">
                               <div
-                                className="frame-zones-preview"
+                                className="import-bg-icon"
                                 style={{
-                                  aspectRatio: `${frame.width} / ${frame.height}`,
+                                  border: '2px dashed rgba(255, 255, 255, 0.25)',
+                                  overflow: 'visible',
+                                  paddingBottom: '10px'
                                 }}
                               >
-                                {frame.zones.map((zone) => (
-                                  <div
-                                    key={zone.id}
-                                    className="frame-zone-box"
-                                    style={{
-                                      position: 'absolute',
-                                      left: `${(zone.x / frame.width) * 100}%`,
-                                      top: `${(zone.y / frame.height) * 100}%`,
-                                      width: `${(zone.width / frame.width) * 100}%`,
-                                      height: `${(zone.height / frame.height) * 100}%`,
-                                      transform: `rotate(${zone.rotation}deg)`,
-                                      borderRadius: zone.shape === 'circle' ? '50%' :
-                                                    zone.shape === 'ellipse' ? '50% / 40%' :
-                                                    zone.shape === 'rounded_rect' ? `${Math.min((zone.borderRadius || 12) / frame.width * 100, 50)}%` :
-                                                    zone.shape === 'pill' ? '999px' : '2px',
-                                    }}
-                                  />
-                                ))}
+                                +
                               </div>
                             </div>
                             <div className="frame-option-info">
                               <span className="frame-option-name">
-                                {frame.name}
-                              </span>
-                              <span className="frame-zones-count">
-                                {frame.zones.length} zones
+                                Create Frame
                               </span>
                             </div>
-                            {deleteMode === 'frame' && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDeleteFrame(frame.id);
-                                }}
-                                className="item-delete-btn"
-                                title="Delete frame"
-                              >
-                                🗑
-                              </button>
-                            )}
                           </div>
                         </motion.div>
-                      ))
-                    ) : (
-                      <div className="empty-state-small">
-                        <span>No frames available</span>
-                      </div>
+
+                        {frames.length > 0 ? (
+                          frames.map((frame) => (
+                            <motion.div
+                              key={frame.id}
+                              whileHover={{ scale: 1.02 }}
+                              whileTap={{ scale: 0.98 }}
+                              onClick={() => deleteMode !== 'frame' && handleSelectFrame(frame)}
+                              className={`frame-option ${
+                                currentFrame?.id === frame.id ? "selected" : ""
+                              } ${deleteMode === 'frame' ? 'delete-mode' : ''}`}
+                            >
+                              <div className="frame-option-content">
+                                <div className="frame-preview-container">
+                                  <div
+                                    className="frame-zones-preview"
+                                    style={{
+                                      aspectRatio: `${frame.width} / ${frame.height}`,
+                                    }}
+                                  >
+                                    {frame.zones.map((zone) => (
+                                      <div
+                                        key={zone.id}
+                                        className="frame-zone-box"
+                                        style={{
+                                          position: 'absolute',
+                                          left: `${(zone.x / frame.width) * 100}%`,
+                                          top: `${(zone.y / frame.height) * 100}%`,
+                                          width: `${(zone.width / frame.width) * 100}%`,
+                                          height: `${(zone.height / frame.height) * 100}%`,
+                                          transform: `rotate(${zone.rotation}deg)`,
+                                          borderRadius: zone.shape === 'circle' ? '50%' :
+                                                        zone.shape === 'ellipse' ? '50% / 40%' :
+                                                        zone.shape === 'rounded_rect' ? `${Math.min((zone.borderRadius || 12) / frame.width * 100, 50)}%` :
+                                                        zone.shape === 'pill' ? '999px' : '2px',
+                                        }}
+                                      />
+                                    ))}
+                                  </div>
+                                </div>
+                                <div className="frame-option-info">
+                                  <span className="frame-option-name">
+                                    {frame.name}
+                                  </span>
+                                  <span className="frame-zones-count">
+                                    {frame.zones.length} zones
+                                  </span>
+                                </div>
+                                {deleteMode === 'frame' && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteFrame(frame.id);
+                                    }}
+                                    className="item-delete-btn"
+                                    title="Delete frame"
+                                  >
+                                    🗑
+                                  </button>
+                                )}
+                              </div>
+                            </motion.div>
+                          ))
+                        ) : (
+                          <div className="empty-state-small">
+                            <span>No frames available</span>
+                          </div>
+                        )}
+                      </>
                     )}
                   </motion.div>
                 )}
@@ -1158,14 +1201,21 @@ const FloatingFrameSelector = () => {
                           // Same type - sort by name
                           return a.name.localeCompare(b.name);
                         })
-                        .map((bg) => (
+                        .map((bg) => {
+                          // Convert asset:// URLs for comparison
+                          let bgValueForCompare = bg.value;
+                          if (bg.value.startsWith('asset://')) {
+                            bgValueForCompare = convertFileSrc(bg.value.replace('asset://', ''));
+                          }
+
+                          return (
                           <motion.div
                             key={bg.id}
                             whileHover={{ scale: 1.02 }}
                             whileTap={{ scale: 0.98 }}
                             onClick={() => deleteMode !== 'background' && handleSelectBackground(bg)}
                             className={`frame-option ${
-                              background === bg.value ? "selected" : ""
+                              background === bgValueForCompare ? "selected" : ""
                             } ${deleteMode === 'background' ? 'delete-mode' : ''} ${
                               bg.background_type !== 'image' ? 'non-deletable' : ''
                             }`}
@@ -1217,7 +1267,8 @@ const FloatingFrameSelector = () => {
                               )}
                             </div>
                           </motion.div>
-                        ))
+                        );
+                        })
                     ) : (
                       <div className="empty-state-small">
                         <span>No backgrounds available</span>

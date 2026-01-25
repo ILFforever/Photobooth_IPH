@@ -18,27 +18,18 @@ interface EditableZoneProps {
   isSelected: boolean;
   onSelect: () => void;
   onUpdate: (updates: Partial<FrameZone>) => void;
+  scale?: number; // The CSS transform scale factor
 }
 
-function EditableZone({ zone, zIndex, frameWidth, frameHeight, isSelected, onSelect, onUpdate }: EditableZoneProps) {
+function EditableZone({ zone, zIndex, frameWidth, frameHeight, isSelected, onSelect, onUpdate, scale }: EditableZoneProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState<string | null>(null);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [zoneStart, setZoneStart] = useState({ x: zone.x, y: zone.y, width: zone.width, height: zone.height });
   const canvasSize = { width: frameWidth, height: frameHeight };
-  const { canvasZoom } = useCollage();
 
-  // Calculate the actual display scale factor by comparing canvas element size to internal size
-  const [displayScale, setDisplayScale] = useState(1);
-
-  useEffect(() => {
-    const canvas = document.querySelector('.collage-canvas') as HTMLElement;
-    if (canvas && frameWidth) {
-      const rect = canvas.getBoundingClientRect();
-      const scale = rect.width / frameWidth;
-      setDisplayScale(scale);
-    }
-  }, [frameWidth, canvasZoom]);
+  // Use the provided scale factor, default to 1
+  const zoomScale = scale ?? 1;
 
   // Generate consistent color based on zone ID
   const getZoneColor = (id: string) => {
@@ -104,7 +95,7 @@ function EditableZone({ zone, zIndex, frameWidth, frameHeight, isSelected, onSel
   // Use a minimum border width in screen pixels (1.5px on screen for subtler look)
   // Clamp to reasonable range for both large and small frames
   const minBorderWidth = 1.5;
-  const borderWidthPx = Math.min(Math.max(minBorderWidth / displayScale, 0.5), 2);
+  const borderWidthPx = Math.min(Math.max(minBorderWidth / zoomScale, 0.5), 2);
 
   const isLocked = zone.locked || false;
 
@@ -153,15 +144,14 @@ function EditableZone({ zone, zIndex, frameWidth, frameHeight, isSelected, onSel
     const handleMouseMove = (e: MouseEvent) => {
       if (!isDragging && !isResizing) return;
 
-      const canvas = document.querySelector('.collage-canvas') as HTMLElement;
-      if (!canvas) return;
+      // Use the provided scale factor (CSS transform scale)
+      // This is the actual zoom level applied to the inner canvas
+      const zoomScale = scale ?? 1;
 
-      const rect = canvas.getBoundingClientRect();
-      const scaleX = canvasSize.width / rect.width;
-      const scaleY = canvasSize.height / rect.height;
-
-      const deltaX = (e.clientX - dragStart.x) * scaleX;
-      const deltaY = (e.clientY - dragStart.y) * scaleY;
+      // Convert screen pixels to internal canvas coordinates
+      // Since the inner canvas is scaled by CSS, we divide by the scale
+      const deltaX = (e.clientX - dragStart.x) / zoomScale;
+      const deltaY = (e.clientY - dragStart.y) / zoomScale;
 
       if (isDragging) {
         // No boundary constraints - allow zones to move freely
@@ -241,14 +231,14 @@ function EditableZone({ zone, zIndex, frameWidth, frameHeight, isSelected, onSel
         window.removeEventListener('mouseup', handleMouseUp);
       };
     }
-  }, [isDragging, isResizing, dragStart, zoneStart, zone, canvasSize]);
+  }, [isDragging, isResizing, dragStart, zoneStart, zone, canvasSize, scale]);
 
   // Use fixed screen-space sizes for handles (e.g., 12px on screen, regardless of canvas zoom)
   // Clamp to reasonable range for both large and small frames
-  const cornerHandleSize = Math.min(12 / displayScale, 12);
-  const edgeHandleLength = Math.min(24 / displayScale, 24);
-  const handleBorderWidth = Math.min(2 / displayScale, 2);
-  const handleOffset = Math.min(6 / displayScale, 6); // Half of handle size for centering
+  const cornerHandleSize = Math.min(12 / zoomScale, 12);
+  const edgeHandleLength = Math.min(24 / zoomScale, 24);
+  const handleBorderWidth = Math.min(2 / zoomScale, 2);
+  const handleOffset = Math.min(6 / zoomScale, 6); // Half of handle size for centering
 
   const handleStyle = {
     position: 'absolute' as const,
@@ -270,7 +260,7 @@ function EditableZone({ zone, zIndex, frameWidth, frameHeight, isSelected, onSel
     zIndex: 1000,
   };
 
-  const inverseScale = 1 / displayScale;
+  const inverseScale = 1 / zoomScale;
 
   return (
     <div
@@ -286,7 +276,7 @@ function EditableZone({ zone, zIndex, frameWidth, frameHeight, isSelected, onSel
       <span style={{
         color: 'white',
         fontWeight: '600',
-        fontSize: `${Math.min(32 / displayScale, 48)}px`, // Clamp max size for small frames
+        fontSize: `${Math.min(32 / zoomScale, 48)}px`, // Clamp max size for small frames
         textShadow: '0 1px 3px rgba(0,0,0,0.5)',
         pointerEvents: 'none',
         textAlign: 'center',
@@ -301,7 +291,7 @@ function EditableZone({ zone, zIndex, frameWidth, frameHeight, isSelected, onSel
           position: 'absolute',
           top: '4px',
           right: '4px',
-          fontSize: `${Math.min(14 / displayScale, 16)}px`,
+          fontSize: `${Math.min(14 / zoomScale, 16)}px`,
           fontWeight: '600',
           color: 'rgba(255, 100, 100, 0.9)',
           textShadow: '0 1px 2px rgba(0,0,0,0.5)',
@@ -1928,6 +1918,7 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
                       );
                       setCurrentFrame({ ...currentFrame, zones: updated });
                     }}
+                    scale={finalScale}
                   />
                 ))
               ) : activeSidebarTab !== 'frames' && currentFrame ? (

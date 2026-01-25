@@ -2110,8 +2110,34 @@ async fn delete_background(app: tauri::AppHandle, background_id: String) -> Resu
         return Err("Cannot delete default backgrounds".to_string());
     }
 
+    // Delete the image file if it's an imported image
+    if background.background_type == "image" && background.value.starts_with("asset://") {
+        // Convert asset:// URL back to file path
+        let image_path_str = background.value.trim_start_matches("asset://");
+        let image_path = std::path::PathBuf::from(image_path_str);
+
+        if image_path.exists() {
+            fs::remove_file(&image_path)
+                .map_err(|e| format!("Failed to delete background image: {}", e))?;
+        }
+
+        // Delete the thumbnail if it exists
+        if let Some(thumbnail_url) = &background.thumbnail {
+            if thumbnail_url.starts_with("asset://") {
+                let thumb_path_str = thumbnail_url.trim_start_matches("asset://");
+                let thumb_path = std::path::PathBuf::from(thumb_path_str);
+
+                if thumb_path.exists() {
+                    fs::remove_file(&thumb_path)
+                        .map_err(|e| format!("Failed to delete background thumbnail: {}", e))?;
+                }
+            }
+        }
+    }
+
+    // Delete the JSON metadata file
     fs::remove_file(bg_path)
-        .map_err(|e| format!("Failed to delete background: {}", e))?;
+        .map_err(|e| format!("Failed to delete background metadata: {}", e))?;
 
     Ok(())
 }
