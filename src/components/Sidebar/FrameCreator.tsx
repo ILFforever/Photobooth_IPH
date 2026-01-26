@@ -220,7 +220,7 @@ function ZoneItem({
 }
 
 export default function FrameCreator() {
-  const { reloadFrames, currentFrame, setCurrentFrame, placedImages, setPlacedImages, activeSidebarTab, setActiveSidebarTab, copiedZone, setCopiedZone, setSelectedZone, showAllOverlays, setShowAllOverlays, customFrames, isFrameCreatorSaving, setIsFrameCreatorSaving } = useCollage();
+  const { reloadFrames, currentFrame, setCurrentFrame, placedImages, setPlacedImages, activeSidebarTab, setActiveSidebarTab, copiedZone, setCopiedZone, setSelectedZone, showAllOverlays, setShowAllOverlays, snapEnabled, setSnapEnabled, customFrames, isFrameCreatorSaving, setIsFrameCreatorSaving } = useCollage();
   const [newFrameName, setNewFrameName] = useState('');
   const [zones, setZones] = useState<FrameZone[]>([]);
   const [selectedZoneIndex, setSelectedZoneIndex] = useState<number | null>(null);
@@ -707,31 +707,45 @@ export default function FrameCreator() {
       {/* Header */}
       <div className="working-folder-header">
         <h3>Frame Creator</h3>
-        <button
-          className={`overlay-toggle-btn ${showAllOverlays ? 'active' : ''}`}
-          onClick={() => setShowAllOverlays(!showAllOverlays)}
-          title={showAllOverlays ? 'Hide overlays' : 'Show overlays'}
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
-            {showAllOverlays ? (
-              <>
-                <path d="M1 8s3-5 7-5 7 5 7 5-3 5-7 5-7-5-7-5z" strokeLinecap="round" strokeLinejoin="round"/>
-                <circle cx="8" cy="8" r="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </>
-            ) : (
-              <>
-                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M1 1l22 22" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" strokeLinecap="round" strokeLinejoin="round"/>
-              </>
-            )}
-          </svg>
-        </button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            className={`overlay-toggle-btn ${snapEnabled ? 'active' : ''}`}
+            onClick={() => setSnapEnabled(!snapEnabled)}
+            title={snapEnabled ? 'Snapping enabled' : 'Snapping disabled'}
+          >
+            <span style={{
+              fontSize: '12px',
+              fontWeight: '700',
+              color: 'inherit',
+              opacity: snapEnabled ? 1 : 0.5,
+            }}>S</span>
+          </button>
+          <button
+            className={`overlay-toggle-btn ${showAllOverlays ? 'active' : ''}`}
+            onClick={() => setShowAllOverlays(!showAllOverlays)}
+            title={showAllOverlays ? 'Hide overlays' : 'Show overlays'}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+              {showAllOverlays ? (
+                <>
+                  <path d="M1 8s3-5 7-5 7 5 7 5-3 5-7 5-7-5-7-5z" strokeLinecap="round" strokeLinejoin="round"/>
+                  <circle cx="8" cy="8" r="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </>
+              ) : (
+                <>
+                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M1 1l22 22" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" strokeLinecap="round" strokeLinejoin="round"/>
+                </>
+              )}
+            </svg>
+          </button>
+        </div>
       </div>
 
       <div className="frame-creator-content">
         {/* Shape Selection */}
         <div className="shape-selector">
-          <h4>Zone Shape</h4>
+          <h4>Zone Shape (*Some are untested*)</h4>
           <div className="shape-buttons">
             {(['rectangle', 'rounded_rect', 'circle', 'ellipse', 'pill', 'triangle', 'pentagon', 'hexagon', 'octagon', 'star', 'diamond', 'heart', 'cross'] as FrameShape[]).map((shape) => {
               const getShapeStyle = () => {

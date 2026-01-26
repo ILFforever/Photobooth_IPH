@@ -19,9 +19,10 @@ interface EditableZoneProps {
   onSelect: () => void;
   onUpdate: (updates: Partial<FrameZone>) => void;
   scale?: number; // The CSS transform scale factor
+  snapEnabled?: boolean; // Whether snapping is enabled
 }
 
-function EditableZone({ zone, zIndex, frameWidth, frameHeight, isSelected, onSelect, onUpdate, scale }: EditableZoneProps) {
+function EditableZone({ zone, zIndex, frameWidth, frameHeight, isSelected, onSelect, onUpdate, scale, snapEnabled }: EditableZoneProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState<string | null>(null);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
@@ -30,6 +31,17 @@ function EditableZone({ zone, zIndex, frameWidth, frameHeight, isSelected, onSel
 
   // Use the provided scale factor, default to 1
   const zoomScale = scale ?? 1;
+
+  // Snap guides state
+  const [snapGuides, setSnapGuides] = useState({
+    centerH: false,
+    centerV: false,
+    left: false,
+    right: false,
+    top: false,
+    bottom: false,
+  });
+  const SNAP_THRESHOLD = 15; // pixels in internal canvas coordinates
 
   // Generate consistent color based on zone ID
   const getZoneColor = (id: string) => {
@@ -140,6 +152,14 @@ function EditableZone({ zone, zIndex, frameWidth, frameHeight, isSelected, onSel
     setZoneStart({ x: zone.x, y: zone.y, width: zone.width, height: zone.height });
   };
 
+  // Snap detection function
+  const applySnap = (value: number, target: number, threshold: number = SNAP_THRESHOLD) => {
+    if (Math.abs(value - target) <= threshold) {
+      return target;
+    }
+    return value;
+  };
+
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isDragging && !isResizing) return;
@@ -154,33 +174,114 @@ function EditableZone({ zone, zIndex, frameWidth, frameHeight, isSelected, onSel
       const deltaY = (e.clientY - dragStart.y) / zoomScale;
 
       if (isDragging) {
-        // No boundary constraints - allow zones to move freely
-        const newX = zoneStart.x + deltaX;
-        const newY = zoneStart.y + deltaY;
-        onUpdate({ x: Math.round(newX), y: Math.round(newY) });
+        const rawX = zoneStart.x + deltaX;
+        const rawY = zoneStart.y + deltaY;
+
+        // Apply snapping only if enabled
+        if (snapEnabled !== false) {
+          // Calculate snap positions
+          const centerX = frameWidth / 2;
+          const centerY = frameHeight / 2;
+
+          // Check for center snap (zone center)
+          const zoneCenterX = rawX + zoneStart.width / 2;
+          const zoneCenterY = rawY + zoneStart.height / 2;
+
+          const snappedCenterX = applySnap(zoneCenterX, centerX);
+          const snappedCenterY = applySnap(zoneCenterY, centerY);
+
+          // Check for edge snaps
+          const snappedLeft = applySnap(rawX, 0);
+          const snappedRight = applySnap(rawX + zoneStart.width, frameWidth);
+          const snappedTop = applySnap(rawY, 0);
+          const snappedBottom = applySnap(rawY + zoneStart.height, frameHeight);
+
+          // Determine which snaps are active
+          const snapToCenterX = snappedCenterX === centerX;
+          const snapToCenterY = snappedCenterY === centerY;
+          const snapToLeft = snappedLeft === 0;
+          const snapToRight = snappedRight === frameWidth;
+          const snapToTop = snappedTop === 0;
+          const snapToBottom = snappedBottom === frameHeight;
+
+          // Calculate snapped position from center snap
+          let finalX = rawX;
+          let finalY = rawY;
+
+          if (snapToCenterX) {
+            finalX = snappedCenterX - zoneStart.width / 2;
+          } else if (snapToLeft) {
+            finalX = snappedLeft;
+          } else if (snapToRight) {
+            finalX = snappedRight - zoneStart.width;
+          }
+
+          if (snapToCenterY) {
+            finalY = snappedCenterY - zoneStart.height / 2;
+          } else if (snapToTop) {
+            finalY = snappedTop;
+          } else if (snapToBottom) {
+            finalY = snappedBottom - zoneStart.height;
+          }
+
+          // Update snap guides state for visual feedback
+          setSnapGuides({
+            centerH: snapToCenterX,
+            centerV: snapToCenterY,
+            left: snapToLeft,
+            right: snapToRight,
+            top: snapToTop,
+            bottom: snapToBottom,
+          });
+
+          onUpdate({ x: Math.round(finalX), y: Math.round(finalY) });
+        } else {
+          // Snap disabled - clear guides and use raw position
+          setSnapGuides({
+            centerH: false,
+            centerV: false,
+            left: false,
+            right: false,
+            top: false,
+            bottom: false,
+          });
+          onUpdate({ x: Math.round(rawX), y: Math.round(rawY) });
+        }
       } else if (isResizing) {
         let updates: Partial<FrameZone> = {};
         const minSize = 50;
 
-        // Use exact match for each resize direction - removed boundary constraints
+        // Clear snap guides during resize
+        setSnapGuides({
+          centerH: false,
+          centerV: false,
+          left: false,
+          right: false,
+          top: false,
+          bottom: false,
+        });
+
+        // Use exact match for each resize direction with snapping
         switch (isResizing) {
           case 'resize-e':
-            updates.width = Math.max(minSize, zoneStart.width + deltaX);
+            const rawWidthE = Math.max(minSize, zoneStart.width + deltaX);
+            updates.width = snapEnabled !== false ? applySnap(rawWidthE + zoneStart.x, frameWidth) + zoneStart.x - zoneStart.x : rawWidthE;
             break;
           case 'resize-s':
-            updates.height = Math.max(minSize, zoneStart.height + deltaY);
+            const rawHeightS = Math.max(minSize, zoneStart.height + deltaY);
+            updates.height = snapEnabled !== false ? applySnap(rawHeightS + zoneStart.y, frameHeight) + zoneStart.y - zoneStart.y : rawHeightS;
             break;
           case 'resize-w':
-            const newWidthW = Math.max(minSize, zoneStart.width - deltaX);
-            const newXW = zoneStart.x + zoneStart.width - newWidthW;
-            updates.width = Math.round(newWidthW);
-            updates.x = Math.round(newXW);
+            const rawWidthW = Math.max(minSize, zoneStart.width - deltaX);
+            const finalXW = snapEnabled !== false && applySnap(zoneStart.x + zoneStart.width - rawWidthW, 0) === 0 ? zoneStart.x + zoneStart.width : rawWidthW;
+            updates.width = Math.round(finalXW === 0 ? zoneStart.x + zoneStart.width : rawWidthW);
+            updates.x = Math.round(finalXW === 0 ? 0 : zoneStart.x + zoneStart.width - finalXW);
             break;
           case 'resize-n':
-            const newHeightN = Math.max(minSize, zoneStart.height - deltaY);
-            const newYN = zoneStart.y + zoneStart.height - newHeightN;
-            updates.height = Math.round(newHeightN);
-            updates.y = Math.round(newYN);
+            const rawHeightN = Math.max(minSize, zoneStart.height - deltaY);
+            const finalYN = snapEnabled !== false && applySnap(zoneStart.y + zoneStart.height - rawHeightN, 0) === 0 ? zoneStart.y + zoneStart.height : rawHeightN;
+            updates.height = Math.round(finalYN === 0 ? zoneStart.y + zoneStart.height : rawHeightN);
+            updates.y = Math.round(finalYN === 0 ? 0 : zoneStart.y + zoneStart.height - finalYN);
             break;
           case 'resize-ne':
             updates.width = Math.max(minSize, zoneStart.width + deltaX);
@@ -221,6 +322,15 @@ function EditableZone({ zone, zIndex, frameWidth, frameHeight, isSelected, onSel
     const handleMouseUp = () => {
       setIsDragging(false);
       setIsResizing(null);
+      // Clear snap guides when drag ends
+      setSnapGuides({
+        centerH: false,
+        centerV: false,
+        left: false,
+        right: false,
+        top: false,
+        bottom: false,
+      });
     };
 
     if (isDragging || isResizing) {
@@ -231,7 +341,7 @@ function EditableZone({ zone, zIndex, frameWidth, frameHeight, isSelected, onSel
         window.removeEventListener('mouseup', handleMouseUp);
       };
     }
-  }, [isDragging, isResizing, dragStart, zoneStart, zone, canvasSize, scale]);
+  }, [isDragging, isResizing, dragStart, zoneStart, zone, canvasSize, scale, snapEnabled]);
 
   // Use fixed screen-space sizes for handles (e.g., 12px on screen, regardless of canvas zoom)
   // Clamp to reasonable range for both large and small frames
@@ -300,6 +410,90 @@ function EditableZone({ zone, zIndex, frameWidth, frameHeight, isSelected, onSel
         }}>
           LOCKED
         </div>
+      )}
+
+      {/* Snap guides - shown when selected and dragging */}
+      {isSelected && (snapGuides.centerH || snapGuides.centerV || snapGuides.left || snapGuides.right || snapGuides.top || snapGuides.bottom) && (
+        <>
+          {/* Center horizontal guide */}
+          {snapGuides.centerH && (
+            <div style={{
+              position: 'absolute',
+              left: '50%',
+              top: 0,
+              bottom: 0,
+              width: '1px',
+              backgroundColor: 'rgba(59, 130, 246, 0.8)',
+              pointerEvents: 'none',
+              zIndex: 2000,
+            }} />
+          )}
+          {/* Center vertical guide */}
+          {snapGuides.centerV && (
+            <div style={{
+              position: 'absolute',
+              top: '50%',
+              left: 0,
+              right: 0,
+              height: '1px',
+              backgroundColor: 'rgba(59, 130, 246, 0.8)',
+              pointerEvents: 'none',
+              zIndex: 2000,
+            }} />
+          )}
+          {/* Left edge guide */}
+          {snapGuides.left && (
+            <div style={{
+              position: 'absolute',
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: '1px',
+              backgroundColor: 'rgba(59, 130, 246, 0.8)',
+              pointerEvents: 'none',
+              zIndex: 2000,
+            }} />
+          )}
+          {/* Right edge guide */}
+          {snapGuides.right && (
+            <div style={{
+              position: 'absolute',
+              right: 0,
+              top: 0,
+              bottom: 0,
+              width: '1px',
+              backgroundColor: 'rgba(59, 130, 246, 0.8)',
+              pointerEvents: 'none',
+              zIndex: 2000,
+            }} />
+          )}
+          {/* Top edge guide */}
+          {snapGuides.top && (
+            <div style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              height: '1px',
+              backgroundColor: 'rgba(59, 130, 246, 0.8)',
+              pointerEvents: 'none',
+              zIndex: 2000,
+            }} />
+          )}
+          {/* Bottom edge guide */}
+          {snapGuides.bottom && (
+            <div style={{
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              height: '1px',
+              backgroundColor: 'rgba(59, 130, 246, 0.8)',
+              pointerEvents: 'none',
+              zIndex: 2000,
+            }} />
+          )}
+        </>
       )}
 
       {isSelected && !isLocked && (
@@ -1417,6 +1611,7 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
     updateOverlay,
     importOverlayFiles,
     isFrameCreatorSaving,
+    snapEnabled,
   } = useCollage();
   const canvasRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -1919,6 +2114,7 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
                       setCurrentFrame({ ...currentFrame, zones: updated });
                     }}
                     scale={finalScale}
+                    snapEnabled={snapEnabled}
                   />
                 ))
               ) : activeSidebarTab !== 'frames' && currentFrame ? (

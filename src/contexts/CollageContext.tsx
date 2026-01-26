@@ -82,6 +82,10 @@ interface CollageContextType {
   showAllOverlays: boolean;
   setShowAllOverlays: (show: boolean) => void;
 
+  // Snap state for frame creator
+  snapEnabled: boolean;
+  setSnapEnabled: (enabled: boolean) => void;
+
   // File import
   importOverlayFiles: (filePaths: string[], position?: LayerPosition) => Promise<void>;
 
@@ -119,6 +123,9 @@ export function CollageProvider({ children }: { children: ReactNode }) {
   const [overlays, setOverlays] = useState<OverlayLayer[]>([]);
   const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null);
   const [showAllOverlays, setShowAllOverlays] = useState(true);
+
+  // Snap state for frame creator
+  const [snapEnabled, setSnapEnabled] = useState(true);
 
   // Frame creator state
   const [isFrameCreatorSaving, setIsFrameCreatorSaving] = useState(false);
@@ -416,6 +423,8 @@ export function CollageProvider({ children }: { children: ReactNode }) {
         toggleOverlayVisibility,
         showAllOverlays,
         setShowAllOverlays,
+        snapEnabled,
+        setSnapEnabled,
         importOverlayFiles,
         isFrameCreatorSaving,
         setIsFrameCreatorSaving,
