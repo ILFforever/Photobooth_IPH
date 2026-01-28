@@ -18,7 +18,9 @@ import DeleteFolderModal from "./components/Modals/DeleteFolderModal";
 import CollageWorkspace from "./components/Canvas/CollageWorkspace";
 import Sidebar from "./components/Sidebar/Sidebar";
 import QRSidebar from "./components/Sidebar/QRSidebar";
+import PhotoboothSidebar from "./components/Sidebar/PhotoboothSidebar";
 import QRView from "./components/QRView/QRView";
+import PhotoboothWorkspace from "./components/PhotoboothView/PhotoboothWorkspace";
 import "./App.css";
 
 type AppMode = 'photobooth' | 'collage' | 'qr';
@@ -178,6 +180,8 @@ function App() {
             onGenerate={handleGenerate}
             onCancelUpload={qrUpload.handleCancelUpload}
           />
+        ) : appMode === 'photobooth' ? (
+          <PhotoboothSidebar />
         ) : (
           <Sidebar />
         )}
@@ -207,6 +211,8 @@ function App() {
                 onDrop={gallery.handleDrop}
                 formatFileSize={formatFileSize}
               />
+            ) : appMode === 'photobooth' ? (
+              <PhotoboothWorkspace />
             ) : (
               <CollageWorkspace />
             )}
