@@ -26,3 +26,22 @@ dist-ssr
 # Google OAuth credentials and tokens
 client_secret.json
 tokencache.json
+
+# Rust / Tauri
+target/
+**/*.rs.bk
+Cargo.lock
+.pnpm-store
+
+# Tauri build output
+src-tauri/target/
+src-tauri/WixTools
+
+# MSI Installer logs
+MSI*.LOG
+
+# Build directories
+linux-build/
+
+# Claude settings
+.claude/settings.local.json
