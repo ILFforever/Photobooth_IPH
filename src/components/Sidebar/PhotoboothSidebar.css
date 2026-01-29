@@ -6,3 +6,23 @@
   border: 1px dashed #444;
   border-radius: 8px;
 }
+
+.photobooth-sidebar .sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.sidebar-spacer {
+  flex-grow: 1;
+}
+
+.sidebar-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: 0 12px 0 12px;
+}
+
+.photobooth-sidebar .camera-control-panel {
+  margin: 0 12px 12px 12px;
+}

@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import CameraControlPanel from "./CameraControlPanel";
 import "./PhotoboothSidebar.css";
 
 interface PhotoboothSidebarProps {
@@ -7,21 +8,29 @@ interface PhotoboothSidebarProps {
 
 export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
   return (
-    <div className="sidebar">
-      <motion.div
-        initial={{ opacity: 0, x: -20 }}
-        animate={{ opacity: 1, x: 0 }}
-        className="sidebar-section"
-      >
-        <h2 className="sidebar-title">Photobooth Settings</h2>
-        <p className="sidebar-description">
-          Configure your photobooth auto-capture settings.
-        </p>
+    <div className="photobooth-sidebar">
+      <div className="sidebar">
+        <motion.div
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          className="sidebar-section"
+        >
+          <h2 className="sidebar-title">Photobooth Settings</h2>
+          <p className="sidebar-description">
+            Configure your photobooth auto-capture settings.
+          </p>
 
-        <div className="placeholder-content">
-          <p>Photobooth controls coming soon.</p>
-        </div>
-      </motion.div>
+          <div className="placeholder-content">
+            <p>Photobooth controls coming soon.</p>
+          </div>
+        </motion.div>
+
+        <div className="sidebar-spacer" />
+
+        <div className="sidebar-divider" />
+
+        <CameraControlPanel />
+      </div>
     </div>
   );
 }

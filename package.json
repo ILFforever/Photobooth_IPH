@@ -17,6 +17,7 @@
     "framer-motion": "^12.23.27",
     "googleapis": "^169.0.0",
     "html2canvas": "^1.4.1",
+    "lucide-react": "^0.563.0",
     "qrcode": "^1.5.4",
     "react": "^19.1.0",
     "react-dnd": "^16.0.1",

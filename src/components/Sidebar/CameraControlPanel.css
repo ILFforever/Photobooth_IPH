@@ -1,0 +1,134 @@
+.camera-control-panel {
+  background: #141414;
+  border-radius: 12px;
+  min-height: 200px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+  justify-content: space-between;
+}
+
+.panel-divider {
+  height: 1px;
+  background: #555;
+  margin: 8px 0;
+}
+
+.top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0px;
+}
+
+.mode-indicator {
+  font-size: 20px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.right-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.percentage {
+  font-size: 14px;
+  color: #999;
+}
+
+.battery-icon {
+  color: #4ade80;
+}
+
+.camera-values {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.value-item {
+  font-size: 22px;
+  color: #ccc;
+}
+
+.value-prefix {
+  font-weight: 400;
+  font-size: 16px;
+  opacity: 0.8;
+}
+
+.value-number {
+  font-weight: 600;
+}
+
+.vertical-spacer {
+  flex-grow: 1;
+}
+
+.bottom-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.left-side {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+}
+
+.horizontal-spacer {
+  flex-grow: 1;
+}
+
+.vertical-divider {
+  width: 2px;
+  height: 60px;
+  background: #444;
+}
+
+.right-side {
+  display: flex;
+}
+
+.mock-square {
+  width: 60px;
+  height: 60px;
+  background: #222;
+  border-radius: 8px;
+}
+
+.exposure-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.exposure-scale {
+  width: 100%;
+}
+
+.scale-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  height: 12px;
+}
+
+.tick {
+  width: 2px;
+  background: #777;
+}
+
+.tick-short {
+  height: 6px;
+}
+
+.tick-tall {
+  height: 12px;
+}
