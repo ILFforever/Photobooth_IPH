@@ -321,6 +321,7 @@ static void get_config(void) {
         "imageformat",
         "imagesize",
         "flashmode",
+        "batterylevel",
         NULL
     };
 

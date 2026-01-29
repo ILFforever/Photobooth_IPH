@@ -37,6 +37,12 @@ export default function CameraControlPanel({ children, belowDivider }: CameraCon
               <div className="tick tick-short" />
               <div className="tick tick-short" />
               <div className="tick tick-tall" />
+              <div className="tick tick-short" />
+              <div className="tick tick-short" />
+              <div className="tick tick-tall" />
+              <div className="tick tick-short" />
+              <div className="tick tick-short" />
+              <div className="tick tick-tall" />
             </div>
           </div>
         </div>

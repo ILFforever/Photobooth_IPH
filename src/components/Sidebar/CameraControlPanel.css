@@ -79,7 +79,6 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding-top: 10px;
 }
 
 .horizontal-spacer {
@@ -104,31 +103,31 @@
 }
 
 .exposure-value {
-  font-size: 18px;
+  font-size: 28px;
   font-weight: 600;
   color: #fff;
 }
 
 .exposure-scale {
-  width: 100%;
+  width: 150%;
 }
 
 .scale-row {
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
-  height: 12px;
+  height: 24px;
 }
 
 .tick {
-  width: 2px;
+  width: 3px;
   background: #777;
 }
 
 .tick-short {
-  height: 6px;
+  height: 12px;
 }
 
 .tick-tall {
-  height: 12px;
+  height: 24px;
 }

@@ -5,14 +5,14 @@ This document covers how to build the custom Linux VM for the photobooth camera 
 ## Overview
 
 The photobooth VM consists of:
-- **Buildroot Linux** - Minimal Linux distribution
+- **Buildroot Linux** - Minimal x86_64 Linux distribution
 - **gphoto2-wrapper** - C wrapper around libgphoto2 for camera operations
 - **camera-daemon** - Rust HTTP server providing REST API for camera control
 
 ## Prerequisites
 
 ### Windows Setup
-1. Install WSL2 (Ubuntu recommended)
+1. Install WSL2 with Ubuntu 24.04
 2. Install VirtualBox on Windows
 
 ### WSL2 Setup
@@ -26,273 +26,131 @@ sudo apt install -y build-essential git wget rsync
 # Install Rust (for building the daemon)
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source ~/.cargo/env
+
+# Add musl target for static Rust builds
+rustup target add x86_64-unknown-linux-musl
 ```
 
 ## Project Structure
 
 ```
-photobooth-iph/
-├── photobooth-camera-daemon/     # Source code
-│   ├── src/main.rs               # Rust daemon source
-│   ├── gphoto2-wrapper/          # C wrapper source
+Photobooth_IPH/
+├── photobooth-camera-daemon/        # Source code
+│   ├── src/main.rs                  # Rust daemon source
+│   ├── gphoto2-wrapper/             # C wrapper source
 │   │   └── gphoto2-wrapper.c
-│   └── Cargo.toml                # Rust dependencies
+│   └── Cargo.toml                   # Rust dependencies
 │
-└── linux-build/                  # Build outputs
-    ├── buildroot/                # Buildroot SDK (downloaded separately)
-    ├── photobooth.iso            # Final VM image
-    └── rootfs.cpio.xz            # Compressed root filesystem
+├── scripts/                         # Build & VM scripts
+│   ├── rebuild-wrapper.sh           # Compiles gphoto2-wrapper.c
+│   ├── package-rootfs.sh            # Copies binaries to overlay, rebuilds rootfs + ISO
+│   ├── rebuild-all.sh               # Full rebuild (wrapper + daemon + rootfs + ISO)
+│   ├── start-virtualbox-headless.cmd # Start VM headless (Windows)
+│   ├── start-virtualbox-gui.cmd     # Start VM with GUI (Windows)
+│   ├── stop-virtualbox.cmd          # Stop VM (Windows)
+│   └── show-console.cmd             # Show VM console (Windows)
+│
+└── linux-build/                     # Build outputs
+    ├── gphoto2-wrapper              # Compiled C wrapper
+    ├── photobooth.iso               # Final VM image
+    └── rootfs.cpio.xz              # Compressed root filesystem
 ```
 
-## Initial Setup - Buildroot
+Buildroot lives at `~/buildroot` inside WSL.
 
-### 1. Download Buildroot
+## Initial Setup - Buildroot
 
 You only need to do this once:
 
 ```bash
-# In WSL2, navigate to linux-build
-cd /mnt/c/Users/Asus/Desktop/New\ folder/Photobooth_IPH/linux-build
+# In WSL2
+cd ~
 
-# Download Buildroot (version matching your kernel)
+# Download Buildroot
 wget https://buildroot.org/downloads/buildroot-2024.02.tar.xz
-
-# Extract
 tar xf buildroot-2024.02.tar.xz
-cd buildroot-2024.02
+mv buildroot-2024.02 buildroot
+cd buildroot
 
-# Configure for i386 (matching VirtualBox VM)
+# Configure and build the toolchain (this takes a while)
 make defconfig
-```
-
-### 2. Build Buildroot SDK
-
-This builds the cross-compiler toolchain:
-
-```bash
-# Build the toolchain (takes a while)
 make toolchain
-
-# The cross-compiler will be at:
-# ./output/host/bin/i386-linux-gcc
 ```
 
-## Building Components
+The cross-compiler will be at:
+```
+~/buildroot/output/host/bin/x86_64-photobooth-linux-gnu-gcc
+```
 
-### 1. Build gphoto2-wrapper (C)
+## Building - Quick Start
+
+The easiest way to rebuild everything is with the `rebuild-all.sh` script:
 
 ```bash
-# In WSL2, from linux-build directory
-cd /mnt/c/Users/Asus/Desktop/New\ folder/Photobooth_IPH/linux-build
-
-# Set the cross-compiler path
-export BUILDROOT=/mnt/c/Users/Asus/Desktop/New\ folder/Photobooth_IPH/linux-build/buildroot-2024.02
-export CC="$BUILDROOT/output/host/bin/i386-linux-gcc"
-export STRIP="$BUILDROOT/output/host/bin/i386-linux-strip"
-
-# Compile gphoto2-wrapper (from source in photobooth-camera-daemon)
-$CC -static \
-  ../photobooth-camera-daemon/gphoto2-wrapper/gphoto2-wrapper.c \
-  -I$BUILDROOT/output/host/include/gphoto2 \
-  -lgphoto2 \
-  -lgphoto2_port \
-  -o gphoto2-wrapper
-
-# Strip to reduce size
-$STRIP gphoto2-wrapper
+wsl.exe -d Ubuntu-24.04 -e bash '/mnt/c/Users/Asus/Desktop/New folder/Photobooth_IPH/scripts/rebuild-all.sh'
 ```
 
-### 2. Build camera-daemon (Rust)
+This runs all three steps:
+1. Compiles `gphoto2-wrapper.c` using the Buildroot cross-compiler
+2. Builds `camera-daemon` with Cargo (`--target x86_64-unknown-linux-musl`)
+3. Copies binaries to the Buildroot overlay, rebuilds rootfs, and creates the ISO
+
+After the rebuild, restart the VM and the new code will be loaded.
+
+## Building - Individual Steps
+
+### 1. Rebuild gphoto2-wrapper only
 
 ```bash
-# In WSL2, from linux-build directory
-cd /mnt/c/Users/Asus/Desktop/New\ folder/Photobooth_IPH/linux-build
-
-# Add i386 target for Rust
-rustup target add i686-unknown-linux-gnu
-
-# Create .cargo/config.toml for cross-compilation
-mkdir -p ../photobooth-camera-daemon/.cargo
-cat > ../photobooth-camera-daemon/.cargo/config.toml << 'EOF'
-[target.i686-unknown-linux-gnu]
-linker = "/mnt/c/Users/Asus/Desktop/New folder/Photobooth_IPH/linux-build/buildroot-2024.02/output/host/bin/i386-linux-gcc"
-rustflags = ["-C", "link-args=-static"]
-EOF
-
-# Build for i386
-cd ../photobooth-camera-daemon
-cargo build --release --target i686-unknown-linux-gnu
-
-# The binary will be at:
-# target/i686-unknown-linux-gnu/release/camera-daemon
+wsl.exe -d Ubuntu-24.04 -e bash '/mnt/c/Users/Asus/Desktop/New folder/Photobooth_IPH/scripts/rebuild-wrapper.sh'
 ```
 
-## Creating the Root Filesystem
+This compiles `gphoto2-wrapper.c` with the Buildroot cross-compiler, strips the binary, and copies it to `linux-build/`.
 
-### 1. Create Directory Structure
+### 2. Rebuild camera-daemon only (Rust)
 
 ```bash
-cd /mnt/c/Users/Asus/Desktop/New\ folder/Photobooth_IPH/linux-build
-
-# Create rootfs structure
-mkdir -p rootfs/opt/photobooth
-mkdir -p rootfs/dev
-mkdir -p rootfs/proc
-mkdir -p rootfs/sys
-mkdir -p rootfs/tmp
-mkdir -p rootfs/bin
-mkdir -p rootfs/lib
-mkdir -p rootfs/etc
-
-# Copy built binaries
-cp ../photobooth-camera-daemon/target/i686-unknown-linux-gnu/release/camera-daemon rootfs/opt/photobooth/
-cp gphoto2-wrapper rootfs/opt/photobooth/
-
-# Copy necessary libraries from Buildroot
-cp $BUILDROOT/output/host/lib/libgphoto2*.so* rootfs/lib/ 2>/dev/null || true
-cp $BUILDROOT/output/host/lib/libgphoto2_port*.so* rootfs/lib/ 2>/dev/null || true
-cp $BUILDROOT/output/staging/lib/libc.so.6 rootfs/lib/ 2>/dev/null || true
-cp $BUILDROOT/output/staging/lib/ld-linux*.so.* rootfs/lib/ 2>/dev/null || true
-
-# Or build static binaries to avoid library issues:
-# Use -static flag in compilation
+wsl.exe -d Ubuntu-24.04 -e bash -c "
+  export PATH=\"\$HOME/.cargo/bin:\$HOME/buildroot/output/host/bin:\$PATH\"
+  cd '/mnt/c/Users/Asus/Desktop/New folder/Photobooth_IPH/photobooth-camera-daemon'
+  cargo build --release --target x86_64-unknown-linux-musl
+"
 ```
 
-### 2. Create Init Script
+### 3. Package rootfs and rebuild ISO only
 
 ```bash
-cat > rootfs/init << 'EOF'
-#!/bin/sh
-
-# Mount filesystems
-mount -t proc none /proc
-mount -t sysfs none /sys
-mount -t devtmpfs none /dev
-
-echo "Photobooth Linux starting..."
-
-# Set up network
-/sbin/ip link set lo up
-/sbin/ip link set eth0 up
-/sbin/ip addr add 10.0.2.15/24 dev eth0
-
-echo "Network configured:"
-/sbin/ip addr show eth0
-
-# Start camera daemon
-echo "Starting camera daemon..."
-/opt/photobooth/camera-daemon &
-
-# Provide shell on console
-exec /bin/sh
-EOF
-
-chmod +x rootfs/init
+wsl.exe -d Ubuntu-24.04 -e bash '/mnt/c/Users/Asus/Desktop/New folder/Photobooth_IPH/scripts/package-rootfs.sh'
 ```
 
-### 3. Create Busybox
+This copies the built binaries into the Buildroot overlay at `~/buildroot/board/photobooth/overlay/opt/photobooth/`, runs `make` to regenerate the rootfs, then creates the bootable ISO with `grub-mkrescue`.
 
-If you need basic commands (ip, sh, etc.):
+## VirtualBox VM Management
 
-```bash
-# Build busybox in Buildroot or download static binary
-wget https://busybox.net/downloads/binaries/1.35.0-x86_64-linux-musl/busybox
-chmod +x busybox
+Use the Windows `.cmd` scripts in `scripts/`:
 
-# Create symlinks in rootfs/bin
-cd rootfs/bin
-ln -s /busybox sh
-cd ../..
+```cmd
+:: Start VM headless (no GUI window)
+scripts\start-virtualbox-headless.cmd
+
+:: Start VM with GUI
+scripts\start-virtualbox-gui.cmd
+
+:: Stop VM
+scripts\stop-virtualbox.cmd
+
+:: Show console output
+scripts\show-console.cmd
 ```
-
-## Creating the ISO
-
-### 1. Package Root Filesystem
-
-```bash
-cd /mnt/c/Users/Asus/Desktop/New\ folder/Photobooth_IPH/linux-build
-
-# Create the cpio archive
-cd rootfs
-find . | cpio -o -H newc | xz -9 --check=crc32 > ../rootfs.cpio.xz
-cd ..
-```
-
-### 2. Create ISO Structure
-
-```bash
-# Create ISO directory
-mkdir -p iso/boot
-
-# Copy kernel (reuse existing or build new in Buildroot)
-cp linux-build/kernel iso/boot/vmlinuz  # or use existing
-cp rootfs.cpio.xz iso/boot/initramfs.xz
-
-# Create ISO with xorriso or genisoimage
-genisoimage -o photobooth.iso \
-  -b boot/isolinux/isolinux.bin \
-  -c boot/isolinux/boot.cat \
-  -no-emul-boot \
-  -boot-load-size 4 \
-  -boot-info-table \
-  iso/
-
-# Or simpler: just use the kernel directly in VirtualBox
-# VirtualBox can boot kernel + initrd directly without ISO
-```
-
-## Alternative: Using Existing Kernel
-
-The project already has a working kernel. To rebuild the root filesystem only:
-
-```bash
-cd /mnt/c/Users/Asus/Desktop/New\ folder/Photobooth_IPH/linux-build
-
-# After building new binaries, recreate rootfs.cpio.xz
-cd rootfs
-find . | cpio -o -H newc | xz -9 --check=crc32 > ../rootfs.cpio.xz
-
-# Copy to VirtualBox shared folder or mount location
-```
-
-## VirtualBox Setup
 
 ### VM Configuration
 
-1. Create new VM in VirtualBox:
-   - Name: Photobooth Linux
-   - Type: Linux
-   - Version: Other Linux (32-bit)
-   - Base Memory: 512 MB
-   - Boot order: EFI disabled, enable PXE boot if needed
-
-2. Network Settings:
-   - NAT
-   - Port Forwarding: Host 3000 → Guest 3000
-
-3. USB Settings:
-   - Enable USB 2.0 (EHCI) Controller
-   - Add USB Device Filter for your camera
-
-4. Storage:
-   - Mount `photobooth.iso` as CD/DVD
-   - Or boot directly with kernel/initrd
-
-### Booting the VM
-
-```bash
-# In Windows, using VBoxManage
-"C:\Program Files\Oracle\VirtualBox\VBoxManage.exe" startvm "Photobooth Linux"
-
-# Monitor console output
-"C:\Program Files\Oracle\VirtualBox\VBoxManage.exe" controlvm "Photobooth Linux" screenshotout console.png
-```
-
-Or use the serial console logging:
-```bash
-# Redirect serial port to file
-"C:\Program Files\Oracle\VirtualBox\VBoxManage.exe" modifyvm "Photobooth Linux" --uartmode1 client vbox-console.log
-```
+- **Type:** Linux, Other Linux (64-bit)
+- **Memory:** 512 MB
+- **Network:** NAT with port forwarding (Host 3000 -> Guest 3000)
+- **USB:** USB 2.0 (EHCI) controller enabled, with device filter for your camera
+- **Storage:** `photobooth.iso` mounted as CD/DVD
+- **Serial:** Console output on ttyS0 at 115200 baud
 
 ## Testing the API
 
@@ -311,7 +169,7 @@ curl http://localhost:3000/api/camera/config
 # Capture photo
 curl -X POST http://localhost:3000/api/capture
 
-# Download photo (response includes filename)
+# Download photo
 curl http://localhost:3000/api/photo/DSCF0001.jpg --output photo.jpg
 
 # Delete photo from VM
@@ -320,21 +178,40 @@ curl -X DELETE http://localhost:3000/api/photo/DSCF0001.jpg
 
 ## Troubleshooting
 
+### VS Code Terminal (Git Bash) Path Mangling
+
+If you run WSL commands from VS Code's integrated terminal, it typically uses **Git Bash**, which automatically rewrites `/mnt/...` paths to `C:/Program Files/Git/mnt/...` before WSL ever sees them. This breaks all script invocations.
+
+```bash
+# BROKEN - Git Bash rewrites the /mnt/c/ path
+wsl -d Ubuntu-24.04 bash "/mnt/c/Users/Asus/Desktop/New folder/Photobooth_IPH/scripts/rebuild-all.sh"
+
+# WORKS - wsl.exe -e bypasses Git Bash path mangling
+wsl.exe -d Ubuntu-24.04 -e bash -c "bash '/mnt/c/Users/Asus/Desktop/New folder/Photobooth_IPH/scripts/rebuild-all.sh'"
+```
+
+The key is `wsl.exe -e`, which passes arguments directly to the Linux side. The inner single quotes handle the space in "New folder".
+
+Alternatively, run from **cmd** or **PowerShell** instead of Git Bash to avoid the issue entirely.
+
 ### Build Issues
 
 **Cross-compiler not found:**
 ```bash
 # Verify Buildroot toolchain exists
-ls $BUILDROOT/output/host/bin/i386-linux-gcc
+ls ~/buildroot/output/host/bin/x86_64-photobooth-linux-gnu-gcc
+
+# If missing, rebuild toolchain
+cd ~/buildroot && make toolchain
 ```
 
 **Rust cross-compilation fails:**
 ```bash
-# Verify target is installed
-rustup target list | grep i686
+# Verify musl target is installed
+rustup target list --installed | grep musl
 
-# Check .cargo/config.toml syntax
-cat ../photobooth-camera-daemon/.cargo/config.toml
+# If missing
+rustup target add x86_64-unknown-linux-musl
 ```
 
 ### Runtime Issues
@@ -342,36 +219,12 @@ cat ../photobooth-camera-daemon/.cargo/config.toml
 **Camera not detected:**
 - Check USB passthrough is enabled in VirtualBox
 - Verify camera USB filters are correct
-- Check VM logs: `tail -f vbox-console.log`
+- Check VM console output
 
 **Daemon not responding:**
 - Check VM is running: `curl http://localhost:3000/api/health`
-- Verify port forwarding: Host 3000 → Guest 3000
+- Verify port forwarding: Host 3000 -> Guest 3000
 - Check daemon logs in VM console
-
-### Rebuilding After Changes
-
-```bash
-# 1. Rebuild C wrapper
-$CC -static ../photobooth-camera-daemon/gphoto2-wrapper/gphoto2-wrapper.c \
-  -I$BUILDROOT/output/host/include/gphoto2 \
-  -lgphoto2 -lgphoto2_port -o gphoto2-wrapper
-
-# 2. Rebuild Rust daemon
-cd ../photobooth-camera-daemon
-cargo build --release --target i686-unknown-linux-gnu
-
-# 3. Copy to rootfs
-cd ../linux-build
-cp ../photobooth-camera-daemon/target/i686-unknown-linux-gnu/release/camera-daemon rootfs/opt/photobooth/
-cp gphoto2-wrapper rootfs/opt/photobooth/
-
-# 4. Repackage rootfs
-cd rootfs
-find . | cpio -o -H newc | xz -9 --check=crc32 > ../rootfs.cpio.xz
-
-# 5. Restart VM with new rootfs
-```
 
 ## API Endpoints Reference
 
