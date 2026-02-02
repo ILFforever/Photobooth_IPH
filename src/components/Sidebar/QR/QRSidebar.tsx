@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from "framer-motion";
 import "./QRSidebar.css";
-import type { GoogleAccount, NoPreviewImage, UploadProgress } from "../../types/qr";
+import type { GoogleAccount, NoPreviewImage, UploadProgress } from "../../../types/qr";
 
 interface QRSidebarProps {
   account: GoogleAccount | null;

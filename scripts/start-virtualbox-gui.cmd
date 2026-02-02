@@ -23,7 +23,7 @@ if not errorlevel 1 (
     echo VM "%VM_NAME%" is already running!
     echo.
     echo VM is accessible at:
-    echo   http://localhost:3000/api/health
+    echo   http://localhost:58321/api/health
     echo.
     pause
     exit /b 0
@@ -35,5 +35,5 @@ echo Starting VM with GUI...
 
 echo.
 echo VM started. You can connect to the API at:
-echo   http://localhost:3000/api/health
+echo   http://localhost:58321/api/health
 echo.

@@ -25,6 +25,16 @@ else
     echo "Run rebuild-wrapper.sh first!"
 fi
 
+# Copy gphoto2-controller from linux-build (built by rebuild-wrapper.sh)
+if [ -f "$LINUX_BUILD/gphoto2-controller" ]; then
+    echo "Copying gphoto2-controller to overlay..."
+    cp "$LINUX_BUILD/gphoto2-controller" "$BUILDROOT/board/photobooth/overlay/opt/photobooth/"
+    chmod +x "$BUILDROOT/board/photobooth/overlay/opt/photobooth/gphoto2-controller"
+else
+    echo "WARNING: gphoto2-controller not found in $LINUX_BUILD"
+    echo "Run rebuild-wrapper.sh first!"
+fi
+
 # Copy camera-daemon if it exists (built separately)
 if [ -f "$PROJECT_ROOT/photobooth-camera-daemon/target/x86_64-unknown-linux-musl/release/photobooth-camera-daemon" ]; then
     echo "Copying camera-daemon to overlay..."

@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { useDrag } from 'react-dnd';
-import { OverlayLayer as OverlayLayerType } from '../../types/overlay';
+import { OverlayLayer as OverlayLayerType } from '../../../types/overlay';
 
 interface LayerItemProps {
   layer: OverlayLayerType;

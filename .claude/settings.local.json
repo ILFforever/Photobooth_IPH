@@ -42,7 +42,15 @@
       "Bash(\"C:\\\\Program Files\\\\Oracle\\\\VirtualBox\\\\VBoxManage.exe\" storageattach PhotoboothLinux --storagectl \"SATA\" --port 0 --device 0 --type dvddrive --medium \"C:\\\\Users\\\\Asus\\\\Desktop\\\\New folder\\\\Photobooth_IPH\\\\linux-build\\\\photobooth.iso\" --forceunmount)",
       "Bash(curl:*)",
       "Bash(ping:*)",
-      "Bash(VBoxManage:*)"
+      "Bash(VBoxManage:*)",
+      "Bash(\"C:\\\\Program Files\\\\Oracle\\\\VirtualBox\\\\VBoxManage.exe\":*)",
+      "Bash(bash.exe:*)",
+      "Bash(\"C:\\\\Program Files\\\\Oracle\\\\VirtualBox\\\\VBoxManage.exe\" showvminfo \"PhotoboothLinux\")",
+      "Bash(\"C:\\\\Program Files\\\\Oracle\\\\VirtualBox\\\\VBoxManage.exe\" list runningvms)",
+      "Bash(\"C:\\\\Program Files\\\\Oracle\\\\VirtualBox\\\\VBoxManage.exe\" list vms)",
+      "Bash(\"C:\\\\Program Files\\\\Oracle\\\\VirtualBox\\\\VBoxManage.exe\" getextradata \"PhotoboothLinux\" enumerate)",
+      "Bash(scriptsstop-virtualbox.cmd)",
+      "Bash(tasklist:*)"
     ]
   }
 }

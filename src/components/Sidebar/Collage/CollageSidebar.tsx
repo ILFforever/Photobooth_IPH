@@ -1,10 +1,10 @@
 import { motion } from "framer-motion";
-import { WorkingFolderGallery } from "../WorkingFolder/WorkingFolderGallery";
-import ImageManipulator from "../Canvas/ImageManipulator";
-import FrameCreator from "./FrameCreator";
-import { CustomSetsSidebar } from "./CustomSetsSidebar";
-import { LayersSidebar } from "./LayersSidebar";
-import { useCollage } from "../../contexts/CollageContext";
+import { WorkingFolderGallery } from "../../WorkingFolder/WorkingFolderGallery";
+import ImageManipulator from "../../Canvas/ImageManipulator";
+import { FrameCreator } from "../FrameCreator";
+import { CustomSetsSidebar } from "../CustomSets";
+import { LayersSidebar } from "../Layers";
+import { useCollage } from "../../../contexts/CollageContext";
 import "./CollageSidebar.css";
 
 const CollageSidebar = () => {

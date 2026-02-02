@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { useDrop } from 'react-dnd';
-import { OverlayLayer as OverlayLayerType, LayerPosition } from '../../types/overlay';
+import { OverlayLayer as OverlayLayerType, LayerPosition } from '../../../types/overlay';
 import { LayerItem } from './LayerItem';
 
 interface LayerSectionProps {

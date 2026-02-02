@@ -3084,6 +3084,7 @@ dependencies = [
  "image",
  "kamadak-exif",
  "mozjpeg",
+ "once_cell",
  "open",
  "qrcode",
  "rand 0.8.5",

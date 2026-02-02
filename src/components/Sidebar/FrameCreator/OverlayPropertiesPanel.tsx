@@ -1,5 +1,5 @@
-import { OverlayLayer as OverlayLayerType, BlendMode, LayerPosition } from '../../types/overlay';
-import { useCollage } from '../../contexts/CollageContext';
+import { OverlayLayer as OverlayLayerType, BlendMode, LayerPosition } from '../../../types/overlay';
+import { useCollage } from '../../../contexts/CollageContext';
 
 interface OverlayPropertiesPanelProps {
   overlay: OverlayLayerType;

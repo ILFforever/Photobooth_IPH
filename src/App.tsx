@@ -17,8 +17,8 @@ import CachedAccountModal from "./components/Modals/CachedAccountModal";
 import DeleteFolderModal from "./components/Modals/DeleteFolderModal";
 import CollageWorkspace from "./components/Canvas/CollageWorkspace";
 import Sidebar from "./components/Sidebar/Sidebar";
-import QRSidebar from "./components/Sidebar/QRSidebar";
-import PhotoboothSidebar from "./components/Sidebar/PhotoboothSidebar";
+import { QRSidebar } from "./components/Sidebar/QR";
+import { PhotoboothSidebar } from "./components/Sidebar/Photobooth";
 import QRView from "./components/QRView/QRView";
 import PhotoboothWorkspace from "./components/PhotoboothView/PhotoboothWorkspace";
 import "./App.css";
@@ -163,6 +163,9 @@ function App() {
         mode={appMode}
         setMode={setAppMode}
       />
+
+      {/* Photobooth Mode Divider */}
+      {appMode === 'photobooth' && <div className="photobooth-page-divider" />}
 
       {/* Main Content */}
       <div className="app-content">

@@ -8,19 +8,22 @@ import { WorkingFolderProvider } from "./contexts/WorkingFolderContext";
 import { CollageProvider } from "./contexts/CollageContext";
 import { AssetsProvider } from "./contexts/AssetsContext";
 import { QRProvider } from "./contexts/QRContext";
+import { CameraProvider } from "./contexts/CameraContext";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <DndProvider backend={HTML5Backend}>
       <AuthProvider>
         <QRProvider>
-          <WorkingFolderProvider>
-            <AssetsProvider>
-              <CollageProvider>
-                <App />
-              </CollageProvider>
-            </AssetsProvider>
-          </WorkingFolderProvider>
+          <CameraProvider>
+            <WorkingFolderProvider>
+              <AssetsProvider>
+                <CollageProvider>
+                  <App />
+                </CollageProvider>
+              </AssetsProvider>
+            </WorkingFolderProvider>
+          </CameraProvider>
         </QRProvider>
       </AuthProvider>
     </DndProvider>

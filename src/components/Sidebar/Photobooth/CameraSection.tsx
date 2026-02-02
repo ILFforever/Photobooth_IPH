@@ -1,0 +1,830 @@
+import { ChevronDown, ChevronRight, ChevronUp, Camera, RefreshCw, Plug } from "lucide-react";
+import Icon from '@mdi/react';
+import {
+  mdiCameraMeteringMatrix,
+  mdiCameraMeteringPartial,
+  mdiCameraMeteringSpot,
+  mdiCameraMeteringCenter,
+  mdiUsb,
+  mdiBattery,
+  mdiBattery10,
+  mdiBattery20,
+  mdiBattery30,
+  mdiBattery40,
+  mdiBattery50,
+  mdiBattery60,
+  mdiBattery70,
+  mdiBattery80,
+  mdiBattery90,
+  mdiBatteryAlert
+} from '@mdi/js';
+import * as Slider from "@radix-ui/react-slider";
+import { useState, useEffect } from "react";
+import { useCamera } from "../../../contexts/CameraContext";
+import "./PhotoboothSidebar.css";
+
+const API_BASE = 'http://localhost:58321';
+
+interface CameraInfo {
+  id: string;
+  manufacturer: string;
+  model: string;
+  port: string;
+  usb_version?: string;
+}
+
+// SVG Icons for Metering Modes
+const MeteringIcons = {
+  Evaluative: (
+    <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+      <path d="M9 2v7a6 6 0 006 6h6a6 6 0 006-6H9a6 6 0 00-6 6V2a6 6 0 016-6zM3 4a6 6 0 016 6v6a6 6 0 016 6h9a6 6 0 016-6v-6a6 6 0 00-6-6z" />
+      <path d="M3 5a3 3 0 016 6v6a3 3 0 016-6h6a3 3 0 016 6V11a3 3 0 016-6h6a3 3 0 006-6v-6a3 3 0 00-6-6z" />
+      <circle cx="12" cy="12" r="2" />
+      <circle cx="12" cy="6" r="2" />
+      <circle cx="12" cy="18" r="2" />
+      <circle cx="6" cy="12" r="2" />
+      <circle cx="18" cy="12" r="2" />
+    </svg>
+  ),
+  Partial: (
+    <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+      <path d="M4 15h4v2h4v-2H4zm2-12h4v2H6V5h2v12h2zM2 4a2 2 0 014 2v12a2 2 0 01-2 2H8a2 2 0 01-2-2V6a2 2 0 012-2z" />
+      <path d="M6 7v10a2 2 0 012 2v2a2 2 0 01-2 2h12a2 2 0 002-2v-2a2 2 0 00-2-2V7a2 2 0 00-2 2z" />
+      <path d="M8 11h2v2H6v-2h2z" />
+      <path d="M6 9h4v2H4v-2h2z" />
+      <path d="M8 7h2v6H6v-6h2z" />
+      <circle cx="12" cy="14" r="1.5" />
+    </svg>
+  ),
+  Spot: (
+    <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+      <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M12 6l0 6" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M12 12l6 0" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M12 12l-4 0" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M12 12l0 4" stroke="currentColor" strokeWidth="1.5" />
+      <circle cx="12" cy="12" r="6" stroke="currentColor" strokeWidth="1.5" stroke-dasharray="4 2" />
+    </svg>
+  ),
+  CenterWeighted: (
+    <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1" />
+      <circle cx="12" cy="12" r="4" fill="currentColor" />
+      <path d="M12 2v20M12 4v16M12 8v8M2 12h20M8 12h8M12 12v-4" stroke="currentColor" strokeWidth="1" />
+    </svg>
+  ),
+  Average: (
+    <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+      <circle cx="12" cy="12" r="2" />
+      <circle cx="12" cy="6" r="2" />
+      <circle cx="12" cy="18" r="2" />
+      <circle cx="6" cy="12" r="2" />
+      <circle cx="18" cy="12" r="2" />
+      <path d="M16 8l-4 4M8 16l4-4" stroke="currentColor" strokeWidth="1" />
+    </svg>
+  ),
+};
+
+type SettingType = 'shutter' | 'aperture' | 'iso' | 'ev' | 'wb' | 'metering' | 'folder' | 'mode' | null;
+type CollapsibleSection = 'camera' | 'liveview' | 'folder' | 'photobooth';
+
+interface CameraSectionProps {
+  expandedSections: Record<CollapsibleSection, boolean>;
+  toggleSection: (section: CollapsibleSection) => void;
+  shutterSpeeds: string[];
+  apertureOptions: string[];
+  isoOptions: string[];
+  evOptions: string[];
+  shutterValue: number;
+  apertureIndex: number;
+  isoIndex: number;
+  evIndex: number;
+  wbValue: string;
+  meteringValue: string;
+  activeSetting: SettingType;
+  onToggleSetting: (setting: SettingType) => void;
+  // User interaction handlers - send API commands and set pending state
+  onSetShutterValue: (value: number) => void;
+  onSetApertureIndex: (value: number) => void;
+  onSetIsoIndex: (value: number) => void;
+  onSetEvIndex: (value: number) => void;
+  onSetWbValue: (value: string) => void;
+  onSetMeteringValue: (value: string) => void;
+  onSetActiveSetting: (setting: SettingType) => void;
+  onCameraOptionsLoaded?: (options: { iso: string[]; aperture: string[]; shutterspeed: string[]; whitebalance: string[] }) => void;
+  pendingSettings?: Record<string, string>;
+}
+
+export function CameraSection({
+  expandedSections,
+  toggleSection,
+  shutterSpeeds,
+  apertureOptions,
+  isoOptions,
+  evOptions,
+  shutterValue,
+  apertureIndex,
+  isoIndex,
+  evIndex,
+  wbValue,
+  meteringValue,
+  activeSetting,
+  onToggleSetting,
+  onSetShutterValue,
+  onSetApertureIndex,
+  onSetIsoIndex,
+  onSetEvIndex,
+  onSetWbValue,
+  onSetMeteringValue,
+  onSetActiveSetting,
+  onCameraOptionsLoaded,
+  pendingSettings,
+}: CameraSectionProps) {
+  // Camera connection state
+  const [availableCameras, setAvailableCameras] = useState<CameraInfo[]>([]);
+  const [selectedCamera, setSelectedCamera] = useState<CameraInfo | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const [isLoadingCameras, setIsLoadingCameras] = useState(false);
+  const [showCameraDropdown, setShowCameraDropdown] = useState(false);
+  const [cameraStatus, setCameraStatus] = useState<any>(null);
+  const [lensInfo, setLensInfo] = useState<string | null>(null);
+  const [cameraConfig, setCameraConfig] = useState<any>(null); // Stores config with choices
+
+  // Camera status from centralized WebSocket context
+  const { batteryLevel, shootingMode } = useCamera();
+
+  // Preview states for dragging - only send API on commit
+  const [shutterPreview, setShutterPreview] = useState<number | null>(null);
+  const [aperturePreview, setAperturePreview] = useState<number | null>(null);
+  const [isoPreview, setIsoPreview] = useState<number | null>(null);
+  const [evPreview, setEvPreview] = useState<number | null>(null);
+
+  // Use preview value if available (during drag), otherwise use committed value
+  const displayShutter = shutterPreview !== null ? shutterPreview : shutterValue;
+  const displayAperture = aperturePreview !== null ? aperturePreview : apertureIndex;
+  const displayIso = isoPreview !== null ? isoPreview : isoIndex;
+  const displayEv = evPreview !== null ? evPreview : evIndex;
+
+  // Camera setting options - populated from camera config
+  const [cameraSettingOptions, setCameraSettingOptions] = useState<{
+    iso: string[];
+    aperture: string[];
+    shutterspeed: string[];
+    shutterspeed2: string[];
+    whitebalance: string[];
+    exposurecompensation: string[];
+  }>({ iso: [], aperture: [], shutterspeed: [], shutterspeed2: [], whitebalance: [], exposurecompensation: [] });
+
+  // Fetch available cameras on mount
+  useEffect(() => {
+    fetchCameras();
+  }, []);
+
+  // Clear preview states when parent values change (e.g., from WebSocket)
+  useEffect(() => {
+    setShutterPreview(null);
+    setAperturePreview(null);
+    setIsoPreview(null);
+    setEvPreview(null);
+  }, [shutterValue, apertureIndex, isoIndex, evIndex]);
+
+  // Close control panels when switching to a mode where they're not applicable
+  useEffect(() => {
+    if (activeSetting === 'shutter' && shootingMode === 'A') {
+      onSetActiveSetting(null);
+    }
+    if (activeSetting === 'aperture' && shootingMode === 'S') {
+      onSetActiveSetting(null);
+    }
+    if (activeSetting === 'ev' && shootingMode === 'M') {
+      onSetActiveSetting(null);
+    }
+  }, [shootingMode, activeSetting, onSetActiveSetting]);
+
+  const fetchCameras = async () => {
+    setIsLoadingCameras(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/cameras`);
+
+      if (response.ok) {
+        const cameras = await response.json();
+        setAvailableCameras(cameras);
+      }
+    } catch (error) {
+      console.error('Error fetching cameras:', error);
+    } finally {
+      setIsLoadingCameras(false);
+    }
+  };
+
+  const handleConnectCamera = async (camera: CameraInfo) => {
+    setSelectedCamera(camera);
+    setIsConnected(true);
+    setShowCameraDropdown(false);
+    setLensInfo(null);
+
+    // Fetch initial status and config
+    try {
+      const [statusResponse, configResponse] = await Promise.all([
+        fetch(`${API_BASE}/api/camera/status?camera=${camera.id}`),
+        fetch(`${API_BASE}/api/camera/config?camera=${camera.id}`)
+      ]);
+
+      if (statusResponse.ok) {
+        const data = await statusResponse.json();
+        setCameraStatus(data);
+      }
+
+      if (configResponse.ok) {
+        const config = await configResponse.json();
+        console.log('Config response:', JSON.stringify(config, null, 2));
+
+        // Store full config for accessing choices
+        setCameraConfig(config);
+
+        // Extract setting choices from config
+        // Note: Some cameras use 'f-number' instead of 'aperture' for the widget name
+        const apertureConfig = config['f-number']?.choices || config.aperture?.choices || [];
+        const newOptions: typeof cameraSettingOptions = {
+          iso: config.iso?.choices || [],
+          aperture: apertureConfig,
+          shutterspeed: config.shutterspeed?.choices || [],
+          shutterspeed2: config.shutterspeed2?.choices || [],
+          whitebalance: config.whitebalance?.choices || [],
+          exposurecompensation: config.exposurecompensation?.choices || [],
+        };
+        setCameraSettingOptions(newOptions);
+        console.log('Camera setting options:', newOptions);
+
+        // Notify parent component of loaded options
+        if (onCameraOptionsLoaded) {
+          onCameraOptionsLoaded(newOptions);
+        }
+
+        // Config returns lensname as an object with label, type, value
+        if (config.lensname?.value) {
+          const cleaned = cleanLensName(config.lensname.value);
+          console.log(`Found lens info: "${config.lensname.value}" -> "${cleaned}"`);
+          setLensInfo(cleaned);
+        } else {
+          console.log('No lensname found in config');
+        }
+      } else {
+        console.error('Config response not OK:', configResponse.status, configResponse.statusText);
+      }
+    } catch (error) {
+      console.error('Error fetching camera info:', error);
+    }
+  };
+
+  const handleDisconnectCamera = () => {
+    setSelectedCamera(null);
+    setIsConnected(false);
+    setCameraStatus(null);
+  };
+
+  const getCameraDisplayName = (camera: CameraInfo) => {
+    return `${camera.manufacturer} ${camera.model}`.trim();
+  };
+
+  // Clean up lens name from format "LX202A,AF 27/1.2 XF      ,88H887AD" to "AF 27/1.2 XF"
+  const cleanLensName = (rawLensName: string): string => {
+    // Lens name format: CODE,MODEL,SERIAL - extract the middle part
+    const parts = rawLensName.split(',');
+    if (parts.length >= 2) {
+      return parts[1].trim();
+    }
+    return rawLensName.trim();
+  };
+
+  // Get battery icon based on percentage
+  const getBatteryIcon = (percentage: string | null): string => {
+    if (!percentage) return mdiBatteryAlert;
+
+    const level = parseInt(percentage, 10);
+    if (isNaN(level)) return mdiBatteryAlert;
+
+    if (level <= 10) return mdiBattery10;
+    if (level <= 20) return mdiBattery20;
+    if (level <= 30) return mdiBattery30;
+    if (level <= 40) return mdiBattery40;
+    if (level <= 50) return mdiBattery50;
+    if (level <= 60) return mdiBattery60;
+    if (level <= 70) return mdiBattery70;
+    if (level <= 80) return mdiBattery80;
+    if (level <= 90) return mdiBattery90;
+    return mdiBattery;
+  };
+
+  // Get choices for a specific setting from config
+  const getSettingChoices = (settingName: string): string[] => {
+    if (!cameraConfig?.[settingName]?.choices) return [];
+    return cameraConfig[settingName].choices;
+  };
+
+  // Get current value for a setting
+  const getSettingValue = (settingName: string): string => {
+    return cameraStatus?.[settingName] || '';
+  };
+
+  // Send setting to camera
+  const setCameraSetting = async (setting: string, value: string) => {
+    if (!selectedCamera) return;
+
+    try {
+      const response = await fetch(`${API_BASE}/api/camera/config?camera=${selectedCamera.id}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ setting, value }),
+      });
+
+      if (!response.ok) {
+        console.error(`Failed to set ${setting} to ${value}:`, response.statusText);
+      }
+    } catch (error) {
+      console.error(`Error setting ${setting}:`, error);
+    }
+  };
+
+  const createDialControl = (
+    title: string,
+    options: string[],
+    value: number,
+    onChange: (value: number) => void,
+    leftHint: string,
+    rightHint: string,
+    showArrows?: boolean,
+    onCommit?: (value: string) => void
+  ) => (
+    <div className="setting-control-panel">
+      <div className="setting-control-header">
+        <span className="setting-control-title">{title}</span>
+        <button
+          className="setting-control-close"
+          onClick={() => onSetActiveSetting(null)}
+        >
+          <ChevronDown size={14} />
+        </button>
+      </div>
+      <div className="shutter-dial-container">
+        <div className="shutter-dial-viewport">
+          {/* Fixed indicator in center */}
+          <div className="shutter-indicator-fixed">
+            <div className="shutter-indicator-triangle" />
+          </div>
+
+          {/* Tick marks overlay - moves with slider */}
+          <div
+            className="shutter-ticks-container"
+            style={{
+              transform: `translateX(${50 - (value / (options.length - 1)) * 100}%)`
+            }}
+          >
+            {options.map((_, index) => {
+              const position = (index / (options.length - 1)) * 100;
+              const isActive = Math.abs(index - value) < 0.5;
+
+              return (
+                <div
+                  key={index}
+                  className={`shutter-tick ${isActive ? 'shutter-tick-active' : ''}`}
+                  style={{ left: `${position}%` }}
+                />
+              );
+            })}
+          </div>
+
+          {/* Radix Slider (invisible interaction layer) */}
+          <Slider.Root
+            className="shutter-slider-root"
+            value={[value]}
+            onValueChange={(val) => onChange(val[0])}
+            onValueCommit={onCommit ? (val) => onCommit(options[val[0]]) : undefined}
+            min={0}
+            max={options.length - 1}
+            step={1}
+            inverted={true}
+          >
+            <Slider.Track className="shutter-slider-track">
+              <Slider.Range className="shutter-slider-range" />
+            </Slider.Track>
+            <Slider.Thumb className="shutter-slider-thumb" />
+          </Slider.Root>
+        </div>
+      </div>
+      {showArrows !== false && (
+        <>
+          <div className="shutter-dial-controls">
+            <button
+              className="shutter-dial-arrow"
+              onClick={() => onChange(Math.max(0, value - 1))}
+              disabled={value === 0}
+            >
+              <ChevronDown size={16} style={{ transform: 'rotate(90deg)' }} />
+            </button>
+            <div className="shutter-dial-label">{options[value]}</div>
+            <button
+              className="shutter-dial-arrow"
+              onClick={() => onChange(Math.min(options.length - 1, value + 1))}
+              disabled={value === options.length - 1}
+            >
+              <ChevronDown size={16} style={{ transform: 'rotate(-90deg)' }} />
+            </button>
+          </div>
+          <div className="shutter-dial-hints">
+            <span className="shutter-hint-slow">{leftHint}</span>
+            <span className="shutter-hint-fast">{rightHint}</span>
+          </div>
+        </>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="collapsible-section">
+      <button
+        className="collapsible-header"
+        onClick={() => toggleSection('camera')}
+      >
+        <div className="collapsible-header-left">
+          {expandedSections.camera ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          <span className="collapsible-title">Camera</span>
+        </div>
+      </button>
+      {expandedSections.camera && (
+        <div className="collapsible-content">
+          {/* Camera Selection / Info Row */}
+          {!isConnected ? (
+            <div className="camera-selection-row">
+              <div className="camera-selection-container">
+                <button
+                  className="connect-camera-btn"
+                  onClick={() => setShowCameraDropdown(!showCameraDropdown)}
+                  disabled={isLoadingCameras || availableCameras.length === 0}
+                >
+                  <Camera size={16} />
+                  <span className="connect-camera-text">
+                    {isLoadingCameras
+                      ? 'Detecting cameras...'
+                      : availableCameras.length === 0
+                      ? 'No cameras found'
+                      : 'Select Camera'}
+                  </span>
+                  <ChevronDown size={14} className={showCameraDropdown ? 'rotate-180' : ''} />
+                </button>
+                <button
+                  className="refresh-cameras-btn"
+                  onClick={fetchCameras}
+                  disabled={isLoadingCameras}
+                  title="Refresh camera list"
+                >
+                  <RefreshCw size={14} className={isLoadingCameras ? 'spinning' : ''} />
+                </button>
+              </div>
+              {showCameraDropdown && availableCameras.length > 0 && (
+                <div className="camera-dropdown-menu">
+                  {availableCameras.map((camera) => (
+                    <button
+                      key={camera.id}
+                      className="camera-dropdown-item"
+                      onClick={() => handleConnectCamera(camera)}
+                    >
+                      <div className="camera-dropdown-info">
+                        <div className="camera-dropdown-model">{getCameraDisplayName(camera)}</div>
+                        {camera.usb_version ? (
+                          <div className="camera-dropdown-usb">{camera.usb_version}</div>
+                        ) : (
+                          <div className="camera-dropdown-port">{camera.port}</div>
+                        )}
+                      </div>
+                      <Icon path={mdiUsb } size={0.8} className="connection-icon" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="camera-info-row">
+              <div className="camera-info-left">
+                <div className="camera-name">
+                  <Camera size={14} />
+                  <span>{selectedCamera ? getCameraDisplayName(selectedCamera) : 'Unknown Camera'}</span>
+                </div>
+                {lensInfo ? (
+                  <div className="lens-info">{lensInfo}</div>
+                ) : (
+                  <div className="lens-info">---</div>
+                )}
+              </div>
+              <button className="disconnect-btn" onClick={handleDisconnectCamera}>
+                <Plug size={14} />
+                <span>Disconnect</span>
+              </button>
+            </div>
+          )}
+
+          {/* Camera Control Panel - Only show when connected */}
+          {isConnected && (
+            <div className="camera-control-panel">
+              <div className="top-row">
+                <span
+                  className={`mode-indicator ${activeSetting === 'mode' ? 'active' : ''}`}
+                  onClick={() => onSetActiveSetting(activeSetting === 'mode' ? null : 'mode')}
+                >
+                  {shootingMode}
+                  {activeSetting === 'mode' && <ChevronUp size={10} className="mode-chevron" />}
+                </span>
+                <div className="right-group">
+                  <Icon path={getBatteryIcon(batteryLevel)} size={0.9} className="battery-icon" />
+                  {batteryLevel && (
+                    <span className="battery-level">
+                      {batteryLevel}%
+                    </span>
+                  )}
+                </div>
+              </div>
+            <div className="settings-grid">
+              <div
+                className={`setting-cell ${activeSetting === 'shutter' ? 'active' : ''} ${shootingMode === 'A' ? 'disabled' : ''}`}
+                onClick={() => shootingMode !== 'A' && onToggleSetting('shutter')}
+              >
+                <span className="setting-label">SHUTTER</span>
+                <span className="setting-value">
+                  {displayShutter === -1 ? '---' : shutterSpeeds[displayShutter]} {activeSetting === 'shutter' && shootingMode !== 'A' && <ChevronUp size={12} className="setting-chevron" />}
+                </span>
+                {pendingSettings?.['shutter'] && <span className="pending-indicator" />}
+              </div>
+              <div
+                className={`setting-cell ${activeSetting === 'aperture' ? 'active' : ''} ${shootingMode === 'S' ? 'disabled' : ''}`}
+                onClick={() => shootingMode !== 'S' && onToggleSetting('aperture')}
+              >
+                <span className="setting-label">APERTURE</span>
+                <span className="setting-value">
+                  {apertureIndex === -1 ? '---' : apertureOptions[apertureIndex]} {activeSetting === 'aperture' && shootingMode !== 'S' && <ChevronUp size={12} className="setting-chevron" />}
+                </span>
+                {pendingSettings?.['aperture'] && <span className="pending-indicator" />}
+              </div>
+              <div
+                className={`setting-cell ${activeSetting === 'iso' ? 'active' : ''}`}
+                onClick={() => onToggleSetting('iso')}
+              >
+                <span className="setting-label">ISO</span>
+                <span className="setting-value">
+                  {isoIndex === -1 ? '---' : isoOptions[isoIndex]} {activeSetting === 'iso' && <ChevronUp size={12} className="setting-chevron" />}
+                </span>
+                {pendingSettings?.['iso'] && <span className="pending-indicator" />}
+              </div>
+              <div
+                className={`setting-cell ${activeSetting === 'ev' ? 'active' : ''} ${shootingMode === 'M' ? 'disabled' : ''}`}
+                onClick={() => shootingMode !== 'M' && onToggleSetting('ev')}
+              >
+                <span className="setting-label">EV</span>
+                <span className="setting-value">
+                  {evIndex === -1 ? '---' : evOptions[evIndex]} {activeSetting === 'ev' && shootingMode !== 'M' && <ChevronUp size={12} className="setting-chevron" />}
+                </span>
+                {pendingSettings?.['ev'] && <span className="pending-indicator" />}
+              </div>
+              <div
+                className={`setting-cell ${activeSetting === 'wb' ? 'active' : ''}`}
+                onClick={() => onToggleSetting('wb')}
+              >
+                <span className="setting-label">WB</span>
+                <span className="setting-value">
+                  {!wbValue ? '---' : wbValue} {activeSetting === 'wb' && <ChevronUp size={12} className="setting-chevron" />}
+                </span>
+                {pendingSettings?.['wb'] && <span className="pending-indicator" />}
+              </div>
+              <div
+                className={`setting-cell ${activeSetting === 'metering' ? 'active' : ''}`}
+                onClick={() => onToggleSetting('metering')}
+              >
+                <span className="setting-label">METERING</span>
+                <span className="setting-value">{meteringValue} {activeSetting === 'metering' && <ChevronUp size={12} className="setting-chevron" />}</span>
+              </div>
+            </div>
+          </div>
+          )}
+
+          {/* Setting Control Panel */}
+          {activeSetting === 'shutter' && (
+            <div className="setting-control-panel">
+              <div className="setting-control-header">
+                <span className="setting-control-title">SHUTTER SPEED</span>
+                <button
+                  className="setting-control-close"
+                  onClick={() => onSetActiveSetting(null)}
+                >
+                  <ChevronDown size={14} />
+                </button>
+              </div>
+              <div className="shutter-dial-container">
+                <div className="shutter-dial-viewport">
+                  {/* Fixed indicator in center */}
+                  <div className="shutter-indicator-fixed">
+                    <div className="shutter-indicator-triangle" />
+                  </div>
+
+                  {/* Tick marks overlay - moves with slider */}
+                  <div
+                    className="shutter-ticks-container"
+                    style={{
+                      transform: `translateX(${50 - (displayShutter / (shutterSpeeds.length - 1)) * 100}%)`
+                    }}
+                  >
+                    {shutterSpeeds.map((_, index) => {
+                      const position = (index / (shutterSpeeds.length - 1)) * 100;
+                      const isActive = Math.abs(index - displayShutter) < 0.5;
+
+                      return (
+                        <div
+                          key={index}
+                          className={`shutter-tick ${isActive ? 'shutter-tick-active' : ''}`}
+                          style={{ left: `${position}%` }}
+                        />
+                      );
+                    })}
+                  </div>
+
+                  {/* Radix Slider (invisible interaction layer) */}
+                  <Slider.Root
+                    className="shutter-slider-root"
+                    value={[displayShutter === -1 ? 0 : displayShutter]}
+                    onValueChange={(value) => {
+                      if (shutterValue !== -1 && shootingMode !== 'A') {
+                        setShutterPreview(value[0]); // Only update preview, no API call
+                      }
+                    }}
+                    onValueCommit={(value) => {
+                      if (shutterValue !== -1 && shootingMode !== 'A') {
+                        setShutterPreview(null); // Clear preview
+                        onSetShutterValue(value[0]); // Send API and set pending
+                      }
+                    }}
+                    min={0}
+                    max={shutterSpeeds.length - 1}
+                    step={1}
+                    inverted={true}
+                    disabled={shutterValue === -1 || shootingMode === 'A'}
+                  >
+                    <Slider.Track className="shutter-slider-track">
+                      <Slider.Range className="shutter-slider-range" />
+                    </Slider.Track>
+                    <Slider.Thumb className="shutter-slider-thumb" />
+                  </Slider.Root>
+                </div>
+              </div>
+              <div className="shutter-dial-controls">
+                <button
+                  className="shutter-dial-arrow"
+                  onClick={() => {
+                    const newValue = Math.max(0, shutterValue - 1);
+                    setShutterPreview(null);
+                    onSetShutterValue(newValue);
+                  }}
+                  disabled={shutterValue <= 0 || shootingMode === 'A'}
+                >
+                  <ChevronDown size={16} style={{ transform: 'rotate(90deg)' }} />
+                </button>
+                <div className="shutter-dial-label">{displayShutter === -1 ? '---' : shutterSpeeds[displayShutter]}</div>
+                <button
+                  className="shutter-dial-arrow"
+                  onClick={() => {
+                    const newValue = Math.min(shutterSpeeds.length - 1, shutterValue + 1);
+                    setShutterPreview(null);
+                    onSetShutterValue(newValue);
+                  }}
+                  disabled={shutterValue === shutterSpeeds.length - 1 || shootingMode === 'A'}
+                >
+                  <ChevronDown size={16} style={{ transform: 'rotate(-90deg)' }} />
+                </button>
+              </div>
+              <div className="shutter-dial-hints">
+                <span className="shutter-hint-slow">Slow</span>
+                <span className="shutter-hint-fast">Fast</span>
+              </div>
+            </div>
+          )}
+
+          {activeSetting === 'aperture' && createDialControl(
+            'APERTURE',
+            apertureOptions,
+            apertureIndex,
+            onSetApertureIndex,
+            'Open',
+            'Closed',
+            true,
+            (value) => setCameraSetting('f-number', value)
+          )}
+
+          {activeSetting === 'iso' && createDialControl(
+            'ISO',
+            isoOptions,
+            isoIndex,
+            onSetIsoIndex,
+            'Low',
+            'High',
+            true,
+            (value) => setCameraSetting('iso', value)
+          )}
+
+          {activeSetting === 'ev' && createDialControl(
+            'EXPOSURE COMPENSATION',
+            evOptions,
+            evIndex,
+            onSetEvIndex,
+            'Dark',
+            'Bright'
+          )}
+
+          {activeSetting === 'wb' && (
+            <div className="setting-control-panel">
+              <div className="setting-control-header">
+                <span className="setting-control-title">WHITE BALANCE</span>
+                <button
+                  className="setting-control-close"
+                  onClick={() => onSetActiveSetting(null)}
+                >
+                  <ChevronDown size={14} />
+                </button>
+              </div>
+              <div className="setting-options-grid">
+                {(cameraSettingOptions.whitebalance.length > 0 ? cameraSettingOptions.whitebalance : ['Auto', 'Daylight', 'Cloudy', 'Tungsten', 'Fluorescent', 'Flash', 'Custom']).map((option) => (
+                  <button
+                    key={option}
+                    className="setting-option-btn"
+                    onClick={() => onSetWbValue(option)}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {activeSetting === 'metering' && (
+            <div className="setting-control-panel">
+              <div className="setting-control-header">
+                <span className="setting-control-title">METERING MODE</span>
+                <button
+                  className="setting-control-close"
+                  onClick={() => onSetActiveSetting(null)}
+                >
+                  <ChevronDown size={14} />
+                </button>
+              </div>
+              <div className="setting-options-grid">
+                {[
+                  { label: 'Evaluative', icon: <Icon path={mdiCameraMeteringMatrix} size={1} /> },
+                  { label: 'Partial', icon: <Icon path={mdiCameraMeteringPartial} size={1} /> },
+                  { label: 'Spot', icon: <Icon path={mdiCameraMeteringSpot} size={1} /> },
+                  { label: 'Center-Weighted', icon: <Icon path={mdiCameraMeteringCenter} size={1} /> },
+                ].map((option) => (
+                  <button
+                    key={option.label}
+                    className="setting-option-btn"
+                    onClick={() => onSetMeteringValue(option.label)}
+                  >
+                    {option.icon}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {activeSetting === 'mode' && (
+            <div className="setting-control-panel">
+              <div className="setting-control-header">
+                <span className="setting-control-title">SHOOTING MODE</span>
+                <button
+                  className="setting-control-close"
+                  onClick={() => onSetActiveSetting(null)}
+                >
+                  <ChevronDown size={14} />
+                </button>
+              </div>
+              <div className="setting-options-grid">
+                {[
+                  { label: 'P', description: 'Program' },
+                  { label: 'A', description: 'Aperture Priority' },
+                  { label: 'S', description: 'Shutter Priority' },
+                  { label: 'M', description: 'Manual' },
+                ].map((option) => (
+                  <button
+                    key={option.label}
+                    className={`setting-option-btn ${shootingMode === option.label ? 'setting-option-selected' : ''}`}
+                    onClick={() => setCameraSetting('expprogram', option.label)}
+                  >
+                    <span className="mode-option-label">{option.label}</span>
+                    <span className="mode-option-description">{option.description}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

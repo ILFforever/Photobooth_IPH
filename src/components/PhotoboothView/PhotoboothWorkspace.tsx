@@ -12,7 +12,7 @@ export default function PhotoboothWorkspace(props: PhotoboothWorkspaceProps) {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="photobooth-placeholder"
+        className="photobooth-content"
       >
         <div className="placeholder-content">
           <div className="placeholder-icon">📷</div>

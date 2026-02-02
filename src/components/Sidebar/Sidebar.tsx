@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import CollageSidebar from "./CollageSidebar";
+import { CollageSidebar } from "./Collage";
 
 const Sidebar = () => {
   const [width, setWidth] = useState(360);

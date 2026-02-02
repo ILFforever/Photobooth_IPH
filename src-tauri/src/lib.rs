@@ -12,6 +12,10 @@ use tauri::{State, Manager, Emitter};
 use base64::{Engine as _, engine::general_purpose};
 use std::io::Cursor;
 
+// USB Camera management module
+mod usb_camera;
+use usb_camera::{UsbCamera, AttachedCamera, list_usb_cameras, attach_usb_camera, detach_usb_camera, get_attached_cameras, is_camera_attached, cleanup_all_cameras, attach_all_cameras};
+
 // Custom deserializer helper to accept both int and float for Option<u32>
 fn deserialize_optional_u32_or_float<'de, D>(deserializer: D) -> Result<Option<u32>, D::Error>
 where
@@ -2353,6 +2357,59 @@ async fn get_app_setting(app: tauri::AppHandle, key: String) -> Result<Option<St
 
 // ==================== END APP SETTINGS SYSTEM ====================
 
+// ==================== PHOTOBOOTH SESSION SYSTEM ====================
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+struct PhotoboothSession {
+    name: String,
+    shot_count: u32,
+    created_at: String,
+    last_used_at: String,
+}
+
+#[tauri::command]
+async fn load_photobooth_session(folder_path: String) -> Result<Option<PhotoboothSession>, String> {
+    let config_path = std::path::Path::new(&folder_path).join(".photobooth-session.json");
+
+    if !config_path.exists() {
+        return Ok(None);
+    }
+
+    let content = fs::read_to_string(&config_path)
+        .map_err(|e| format!("Failed to read session file: {}", e))?;
+
+    let session: PhotoboothSession = serde_json::from_str(&content)
+        .map_err(|e| format!("Failed to parse session file: {}", e))?;
+
+    Ok(Some(session))
+}
+
+#[tauri::command]
+async fn save_photobooth_session(folder_path: String, session: PhotoboothSession) -> Result<(), String> {
+    let config_path = std::path::Path::new(&folder_path).join(".photobooth-session.json");
+
+    let session_to_save = PhotoboothSession {
+        last_used_at: chrono::Utc::now().to_rfc3339(),
+        created_at: if session.created_at.is_empty() {
+            chrono::Utc::now().to_rfc3339()
+        } else {
+            session.created_at
+        },
+        ..session
+    };
+
+    let json = serde_json::to_string_pretty(&session_to_save)
+        .map_err(|e| format!("Failed to serialize session: {}", e))?;
+
+    fs::write(config_path, json)
+        .map_err(|e| format!("Failed to write session file: {}", e))?;
+
+    Ok(())
+}
+
+// ==================== END PHOTOBOOTH SESSION SYSTEM ====================
+
 // ==================== CUSTOM SETS SYSTEM ====================
 
 // Overlay layer types for custom sets
@@ -2780,7 +2837,9 @@ pub fn run() {
             save_background, load_backgrounds, delete_background, import_background,
             save_custom_canvas_size, get_custom_canvas_sizes, delete_custom_canvas_size,
             save_app_setting, get_app_setting,
-            save_custom_set, load_custom_sets, get_custom_set, delete_custom_set, duplicate_custom_set
+            save_custom_set, load_custom_sets, get_custom_set, delete_custom_set, duplicate_custom_set,
+            load_photobooth_session, save_photobooth_session,
+            list_usb_cameras, attach_usb_camera, detach_usb_camera, get_attached_cameras, is_camera_attached, cleanup_all_cameras, attach_all_cameras
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

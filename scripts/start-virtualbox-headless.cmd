@@ -23,7 +23,7 @@ if not errorlevel 1 (
     echo VM "%VM_NAME%" is already running!
     echo.
     echo VM is accessible at:
-    echo   http://localhost:3000/api/health
+    echo   http://localhost:58321/api/health
     echo.
     pause
     exit /b 0
@@ -39,7 +39,7 @@ echo.
 echo VM started in background!
 echo.
 echo The VM is now running. You can:
-echo   - Test API: http://localhost:3000/api/health
+echo   - Test API: http://localhost:58321/api/health
 echo   - View console: scripts/show-console.cmd
 echo   - Stop VM:   scripts/stop-virtualbox.cmd
 echo.

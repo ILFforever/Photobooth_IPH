@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useCollage } from '../../contexts/CollageContext';
-import { CustomSet, CustomSetPreview } from '../../types/customSet';
-import { Background } from '../../types/background';
+import { useCollage } from '../../../contexts/CollageContext';
+import { CustomSet, CustomSetPreview } from '../../../types/customSet';
+import { Background } from '../../../types/background';
 import './CustomSetsSidebar.css';
 
 interface SetPreviewData extends CustomSetPreview {
