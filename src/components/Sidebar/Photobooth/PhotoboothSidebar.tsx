@@ -51,6 +51,7 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
   const [cameraIsoOptions, setCameraIsoOptions] = useState<string[]>([]);
   const [cameraShutterOptions, setCameraShutterOptions] = useState<string[]>([]);
   const [cameraWbOptions, setCameraWbOptions] = useState<string[]>([]);
+  const [cameraEvOptions, setCameraEvOptions] = useState<string[]>([]);
 
   // Use camera-provided values or defaults - memoized to prevent WebSocket reconnection
   const shutterSpeeds = useMemo(() =>
@@ -65,7 +66,13 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
     cameraIsoOptions.length > 0 ? cameraIsoOptions : ['100', '200', '400', '800', '1600', '3200', '6400', '12800', '25600', '51200'],
     [cameraIsoOptions]
   );
-  const evOptions = useMemo(() => ['-3.0', '-2.0', '-1.0', '0.0', '+1.0', '+2.0', '+3.0'], []);
+  const evOptions = useMemo(() =>
+    cameraEvOptions.length > 0 ? cameraEvOptions : [
+      '-3.0', '-2.7', '-2.3', '-2.0', '-1.7', '-1.3', '-1.0', '-0.7', '-0.3', '0.0',
+      '+0.3', '+0.7', '+1.0', '+1.3', '+1.7', '+2.0', '+2.3', '+2.7', '+3.0'
+    ],
+    [cameraEvOptions]
+  );
   const wbOptions = useMemo(() =>
     cameraWbOptions.length > 0 ? cameraWbOptions : ['Auto', 'Daylight', 'Cloudy', 'Tungsten', 'Fluorescent', 'Flash', 'Custom'],
     [cameraWbOptions]
@@ -259,12 +266,16 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
 
   // Handle camera options loaded from camera config
   // Memoized with useCallback to prevent WebSocket reconnection loops
-  const handleCameraOptionsLoaded = useCallback((options: { iso: string[]; aperture: string[]; shutterspeed: string[]; whitebalance: string[] }) => {
+  const handleCameraOptionsLoaded = useCallback((options: { iso: string[]; aperture: string[]; shutterspeed: string[]; whitebalance: string[]; '5010'?: string[] }) => {
     console.log('Camera options loaded:', options);
     setCameraApertureOptions(options.aperture);
     setCameraIsoOptions(options.iso);
     setCameraShutterOptions(options.shutterspeed);
     setCameraWbOptions(options.whitebalance);
+    // Use '5010' EV choices for Fuji cameras (already converted to standard format)
+    if (options['5010'] && options['5010'].length > 0) {
+      setCameraEvOptions(options['5010']);
+    }
 
     // Reset indexes to safe defaults when options change
     setApertureIndex(0);

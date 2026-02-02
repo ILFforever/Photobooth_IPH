@@ -21,9 +21,14 @@ import {
 import * as Slider from "@radix-ui/react-slider";
 import { useState, useEffect } from "react";
 import { useCamera } from "../../../contexts/CameraContext";
+import { detectBrand, normalizeMode, isSettingAdjustable, type CameraBrand } from "../../../services/cameraBrands";
+import { getCameraSettingsService } from "../../../services/cameraSettingsService";
 import "./PhotoboothSidebar.css";
 
 const API_BASE = 'http://localhost:58321';
+
+// Get the global camera settings service
+const cameraSettingsService = getCameraSettingsService();
 
 interface CameraInfo {
   id: string;
@@ -111,7 +116,7 @@ interface CameraSectionProps {
   onSetWbValue: (value: string) => void;
   onSetMeteringValue: (value: string) => void;
   onSetActiveSetting: (setting: SettingType) => void;
-  onCameraOptionsLoaded?: (options: { iso: string[]; aperture: string[]; shutterspeed: string[]; whitebalance: string[] }) => void;
+  onCameraOptionsLoaded?: (options: { iso: string[]; aperture: string[]; shutterspeed: string[]; whitebalance: string[]; '5010'?: string[] }) => void;
   pendingSettings?: Record<string, string>;
 }
 
@@ -149,9 +154,13 @@ export function CameraSection({
   const [cameraStatus, setCameraStatus] = useState<any>(null);
   const [lensInfo, setLensInfo] = useState<string | null>(null);
   const [cameraConfig, setCameraConfig] = useState<any>(null); // Stores config with choices
+  const [cameraBrand, setCameraBrand] = useState<CameraBrand>(detectBrand('', '')); // Default to Fuji
 
   // Camera status from centralized WebSocket context
   const { batteryLevel, shootingMode } = useCamera();
+
+  // Normalize shooting mode for display and logic using brand framework
+  const normalizedMode = normalizeMode(shootingMode, cameraBrand);
 
   // Preview states for dragging - only send API on commit
   const [shutterPreview, setShutterPreview] = useState<number | null>(null);
@@ -173,6 +182,7 @@ export function CameraSection({
     shutterspeed2: string[];
     whitebalance: string[];
     exposurecompensation: string[];
+    '5010'?: string[]; // Fuji EV compensation (PTP property)
   }>({ iso: [], aperture: [], shutterspeed: [], shutterspeed2: [], whitebalance: [], exposurecompensation: [] });
 
   // Fetch available cameras on mount
@@ -190,16 +200,16 @@ export function CameraSection({
 
   // Close control panels when switching to a mode where they're not applicable
   useEffect(() => {
-    if (activeSetting === 'shutter' && shootingMode === 'A') {
+    if (activeSetting === 'shutter' && !isSettingAdjustable(shootingMode, 'shutter', cameraBrand)) {
       onSetActiveSetting(null);
     }
-    if (activeSetting === 'aperture' && shootingMode === 'S') {
+    if (activeSetting === 'aperture' && !isSettingAdjustable(shootingMode, 'aperture', cameraBrand)) {
       onSetActiveSetting(null);
     }
-    if (activeSetting === 'ev' && shootingMode === 'M') {
+    if (activeSetting === 'ev' && !isSettingAdjustable(shootingMode, 'ev', cameraBrand)) {
       onSetActiveSetting(null);
     }
-  }, [shootingMode, activeSetting, onSetActiveSetting]);
+  }, [shootingMode, activeSetting, onSetActiveSetting, cameraBrand]);
 
   const fetchCameras = async () => {
     setIsLoadingCameras(true);
@@ -223,6 +233,14 @@ export function CameraSection({
     setShowCameraDropdown(false);
     setLensInfo(null);
 
+    // Detect camera brand for quirks handling
+    const brand = detectBrand(camera.manufacturer, camera.model);
+    setCameraBrand(brand);
+    console.log(`Detected camera brand: ${brand.name} (id: ${brand.id})`);
+
+    // Update the global camera settings service
+    cameraSettingsService.setCamera(camera.id, camera.manufacturer, camera.model);
+
     // Fetch initial status and config
     try {
       const [statusResponse, configResponse] = await Promise.all([
@@ -245,6 +263,20 @@ export function CameraSection({
         // Extract setting choices from config
         // Note: Some cameras use 'f-number' instead of 'aperture' for the widget name
         const apertureConfig = config['f-number']?.choices || config.aperture?.choices || [];
+
+        // Convert Fuji "5010" EV choices from ×1000 format to standard EV format
+        // e.g., "-5000" → "-5.0", "1000" → "+1.0"
+        let ev5010Choices: string[] | undefined;
+        if (config['5010']?.choices && Array.isArray(config['5010'].choices)) {
+          ev5010Choices = config['5010'].choices.map((v: string) => {
+            const num = parseInt(v, 10);
+            const ev = num / 1000;
+            // Format with + for positive values
+            return ev > 0 ? `+${ev.toFixed(3)}` : ev.toFixed(3);
+          });
+          console.log('Converted 5010 EV choices:', ev5010Choices);
+        }
+
         const newOptions: typeof cameraSettingOptions = {
           iso: config.iso?.choices || [],
           aperture: apertureConfig,
@@ -252,6 +284,7 @@ export function CameraSection({
           shutterspeed2: config.shutterspeed2?.choices || [],
           whitebalance: config.whitebalance?.choices || [],
           exposurecompensation: config.exposurecompensation?.choices || [],
+          '5010': ev5010Choices,
         };
         setCameraSettingOptions(newOptions);
         console.log('Camera setting options:', newOptions);
@@ -348,6 +381,13 @@ export function CameraSection({
     }
   };
 
+  // Helper to determine if an EV tick should be short (1/3 or 2/3 increments)
+  const isEvShortTick = (evValue: string): boolean => {
+    // Short tick at 0.3 and 0.7 values (representing 1/3 and 2/3 EV)
+    // Long ticks at whole numbers: 0.0, ±1.0, ±2.0, ±3.0
+    return evValue.includes('.3') || evValue.includes('.7');
+  };
+
   const createDialControl = (
     title: string,
     options: string[],
@@ -356,7 +396,9 @@ export function CameraSection({
     leftHint: string,
     rightHint: string,
     showArrows?: boolean,
-    onCommit?: (value: string) => void
+    onCommit?: (value: string) => void,
+    disabled?: boolean,
+    isShortTick?: (optionValue: string) => boolean
   ) => (
     <div className="setting-control-panel">
       <div className="setting-control-header">
@@ -382,14 +424,15 @@ export function CameraSection({
               transform: `translateX(${50 - (value / (options.length - 1)) * 100}%)`
             }}
           >
-            {options.map((_, index) => {
+            {options.map((option, index) => {
               const position = (index / (options.length - 1)) * 100;
               const isActive = Math.abs(index - value) < 0.5;
+              const isShort = isShortTick?.(option);
 
               return (
                 <div
                   key={index}
-                  className={`shutter-tick ${isActive ? 'shutter-tick-active' : ''}`}
+                  className={`shutter-tick ${isActive ? 'shutter-tick-active' : ''} ${isShort ? 'shutter-tick-short' : ''}`}
                   style={{ left: `${position}%` }}
                 />
               );
@@ -406,6 +449,7 @@ export function CameraSection({
             max={options.length - 1}
             step={1}
             inverted={true}
+            disabled={disabled}
           >
             <Slider.Track className="shutter-slider-track">
               <Slider.Range className="shutter-slider-range" />
@@ -420,7 +464,7 @@ export function CameraSection({
             <button
               className="shutter-dial-arrow"
               onClick={() => onChange(Math.max(0, value - 1))}
-              disabled={value === 0}
+              disabled={value === 0 || disabled}
             >
               <ChevronDown size={16} style={{ transform: 'rotate(90deg)' }} />
             </button>
@@ -428,7 +472,7 @@ export function CameraSection({
             <button
               className="shutter-dial-arrow"
               onClick={() => onChange(Math.min(options.length - 1, value + 1))}
-              disabled={value === options.length - 1}
+              disabled={value === options.length - 1 || disabled}
             >
               <ChevronDown size={16} style={{ transform: 'rotate(-90deg)' }} />
             </button>
@@ -533,7 +577,7 @@ export function CameraSection({
                   className={`mode-indicator ${activeSetting === 'mode' ? 'active' : ''}`}
                   onClick={() => onSetActiveSetting(activeSetting === 'mode' ? null : 'mode')}
                 >
-                  {shootingMode}
+                  {normalizedMode}
                   {activeSetting === 'mode' && <ChevronUp size={10} className="mode-chevron" />}
                 </span>
                 <div className="right-group">
@@ -547,22 +591,22 @@ export function CameraSection({
               </div>
             <div className="settings-grid">
               <div
-                className={`setting-cell ${activeSetting === 'shutter' ? 'active' : ''} ${shootingMode === 'A' ? 'disabled' : ''}`}
-                onClick={() => shootingMode !== 'A' && onToggleSetting('shutter')}
+                className={`setting-cell ${activeSetting === 'shutter' ? 'active' : ''} ${!isSettingAdjustable(shootingMode, 'shutter', cameraBrand) ? 'disabled' : ''}`}
+                onClick={() => isSettingAdjustable(shootingMode, 'shutter', cameraBrand) && onToggleSetting('shutter')}
               >
                 <span className="setting-label">SHUTTER</span>
                 <span className="setting-value">
-                  {displayShutter === -1 ? '---' : shutterSpeeds[displayShutter]} {activeSetting === 'shutter' && shootingMode !== 'A' && <ChevronUp size={12} className="setting-chevron" />}
+                  {displayShutter === -1 ? '---' : shutterSpeeds[displayShutter]} {activeSetting === 'shutter' && isSettingAdjustable(shootingMode, 'shutter', cameraBrand) && <ChevronUp size={12} className="setting-chevron" />}
                 </span>
                 {pendingSettings?.['shutter'] && <span className="pending-indicator" />}
               </div>
               <div
-                className={`setting-cell ${activeSetting === 'aperture' ? 'active' : ''} ${shootingMode === 'S' ? 'disabled' : ''}`}
-                onClick={() => shootingMode !== 'S' && onToggleSetting('aperture')}
+                className={`setting-cell ${activeSetting === 'aperture' ? 'active' : ''} ${!isSettingAdjustable(shootingMode, 'aperture', cameraBrand) ? 'disabled' : ''}`}
+                onClick={() => isSettingAdjustable(shootingMode, 'aperture', cameraBrand) && onToggleSetting('aperture')}
               >
                 <span className="setting-label">APERTURE</span>
                 <span className="setting-value">
-                  {apertureIndex === -1 ? '---' : apertureOptions[apertureIndex]} {activeSetting === 'aperture' && shootingMode !== 'S' && <ChevronUp size={12} className="setting-chevron" />}
+                  {apertureIndex === -1 ? '---' : apertureOptions[apertureIndex]} {activeSetting === 'aperture' && isSettingAdjustable(shootingMode, 'aperture', cameraBrand) && <ChevronUp size={12} className="setting-chevron" />}
                 </span>
                 {pendingSettings?.['aperture'] && <span className="pending-indicator" />}
               </div>
@@ -577,12 +621,12 @@ export function CameraSection({
                 {pendingSettings?.['iso'] && <span className="pending-indicator" />}
               </div>
               <div
-                className={`setting-cell ${activeSetting === 'ev' ? 'active' : ''} ${shootingMode === 'M' ? 'disabled' : ''}`}
-                onClick={() => shootingMode !== 'M' && onToggleSetting('ev')}
+                className={`setting-cell ${activeSetting === 'ev' ? 'active' : ''} ${!isSettingAdjustable(shootingMode, 'ev', cameraBrand) ? 'disabled' : ''}`}
+                onClick={() => isSettingAdjustable(shootingMode, 'ev', cameraBrand) && onToggleSetting('ev')}
               >
                 <span className="setting-label">EV</span>
                 <span className="setting-value">
-                  {evIndex === -1 ? '---' : evOptions[evIndex]} {activeSetting === 'ev' && shootingMode !== 'M' && <ChevronUp size={12} className="setting-chevron" />}
+                  {evIndex === -1 ? '---' : evOptions[evIndex]} {activeSetting === 'ev' && isSettingAdjustable(shootingMode, 'ev', cameraBrand) && <ChevronUp size={12} className="setting-chevron" />}
                 </span>
                 {pendingSettings?.['ev'] && <span className="pending-indicator" />}
               </div>
@@ -652,12 +696,12 @@ export function CameraSection({
                     className="shutter-slider-root"
                     value={[displayShutter === -1 ? 0 : displayShutter]}
                     onValueChange={(value) => {
-                      if (shutterValue !== -1 && shootingMode !== 'A') {
+                      if (shutterValue !== -1 && isSettingAdjustable(shootingMode, 'shutter', cameraBrand)) {
                         setShutterPreview(value[0]); // Only update preview, no API call
                       }
                     }}
                     onValueCommit={(value) => {
-                      if (shutterValue !== -1 && shootingMode !== 'A') {
+                      if (shutterValue !== -1 && isSettingAdjustable(shootingMode, 'shutter', cameraBrand)) {
                         setShutterPreview(null); // Clear preview
                         onSetShutterValue(value[0]); // Send API and set pending
                       }
@@ -666,7 +710,7 @@ export function CameraSection({
                     max={shutterSpeeds.length - 1}
                     step={1}
                     inverted={true}
-                    disabled={shutterValue === -1 || shootingMode === 'A'}
+                    disabled={shutterValue === -1 || !isSettingAdjustable(shootingMode, 'shutter', cameraBrand)}
                   >
                     <Slider.Track className="shutter-slider-track">
                       <Slider.Range className="shutter-slider-range" />
@@ -683,7 +727,7 @@ export function CameraSection({
                     setShutterPreview(null);
                     onSetShutterValue(newValue);
                   }}
-                  disabled={shutterValue <= 0 || shootingMode === 'A'}
+                  disabled={shutterValue <= 0 || !isSettingAdjustable(shootingMode, 'shutter', cameraBrand)}
                 >
                   <ChevronDown size={16} style={{ transform: 'rotate(90deg)' }} />
                 </button>
@@ -695,7 +739,7 @@ export function CameraSection({
                     setShutterPreview(null);
                     onSetShutterValue(newValue);
                   }}
-                  disabled={shutterValue === shutterSpeeds.length - 1 || shootingMode === 'A'}
+                  disabled={shutterValue === shutterSpeeds.length - 1 || !isSettingAdjustable(shootingMode, 'shutter', cameraBrand)}
                 >
                   <ChevronDown size={16} style={{ transform: 'rotate(-90deg)' }} />
                 </button>
@@ -715,7 +759,8 @@ export function CameraSection({
             'Open',
             'Closed',
             true,
-            (value) => setCameraSetting('f-number', value)
+            (value) => setCameraSetting('f-number', value),
+            !isSettingAdjustable(shootingMode, 'aperture', cameraBrand)
           )}
 
           {activeSetting === 'iso' && createDialControl(
@@ -735,7 +780,11 @@ export function CameraSection({
             evIndex,
             onSetEvIndex,
             'Dark',
-            'Bright'
+            'Bright',
+            true,
+            undefined,
+            !isSettingAdjustable(shootingMode, 'ev', cameraBrand),
+            isEvShortTick
           )}
 
           {activeSetting === 'wb' && (
@@ -813,8 +862,8 @@ export function CameraSection({
                 ].map((option) => (
                   <button
                     key={option.label}
-                    className={`setting-option-btn ${shootingMode === option.label ? 'setting-option-selected' : ''}`}
-                    onClick={() => setCameraSetting('expprogram', option.label)}
+                    className={`setting-option-btn ${normalizedMode === option.label ? 'setting-option-selected' : ''}`}
+                    onClick={() => cameraSettingsService.setMode(option.label as any)}
                   >
                     <span className="mode-option-label">{option.label}</span>
                     <span className="mode-option-description">{option.description}</span>

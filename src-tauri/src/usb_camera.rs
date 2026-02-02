@@ -73,11 +73,11 @@ impl CameraManager {
                     address: String::new(),
                 };
 
-                // Parse device properties
+                // Parse device properties (lines until empty line or next UUID)
                 i += 1;
                 while i < lines.len() {
                     let prop_line = lines[i].trim();
-                    if prop_line.is_empty() || !prop_line.starts_with(' ') {
+                    if prop_line.is_empty() || prop_line.starts_with("UUID:") {
                         break;
                     }
 
@@ -98,13 +98,26 @@ impl CameraManager {
                     i += 1;
                 }
 
-                // Only include cameras (PTTP class or camera-related keywords)
-                let is_camera = camera.product.to_lowercase().contains("camera")
-                    || camera.manufacturer.to_lowercase().contains("fuji")
-                    || camera.manufacturer.to_lowercase().contains("canon")
-                    || camera.manufacturer.to_lowercase().contains("nikon")
-                    || camera.manufacturer.to_lowercase().contains("sony")
-                    || !camera.manufacturer.is_empty();
+                // Only include cameras (PTP class or camera-related keywords)
+                let manufacturer_lower = camera.manufacturer.to_lowercase();
+                let product_lower = camera.product.to_lowercase();
+                let is_camera = product_lower.contains("camera")
+                    || product_lower.contains("x-pro")
+                    || product_lower.contains("x-t")
+                    || product_lower.contains("x-h")
+                    || product_lower.contains("x-s")
+                    || product_lower.contains("x-e")
+                    || product_lower.contains("x100")
+                    || product_lower.contains("gfx")
+                    || manufacturer_lower.contains("fuji")
+                    || manufacturer_lower.contains("canon")
+                    || manufacturer_lower.contains("nikon")
+                    || manufacturer_lower.contains("sony")
+                    || manufacturer_lower.contains("olympus")
+                    || manufacturer_lower.contains("panasonic")
+                    || manufacturer_lower.contains("ricoh")
+                    || manufacturer_lower.contains("pentax")
+                    || camera.vendor_id.contains("04cb"); // Fujifilm USB vendor ID
 
                 if is_camera && !camera.vendor_id.is_empty() {
                     cameras.push(camera);
@@ -126,8 +139,13 @@ impl CameraManager {
             .map_err(|e| format!("Failed to check VM state: {}", e))?;
 
         let vm_state = String::from_utf8_lossy(&vm_state_output.stdout);
-        if !vm_state.contains("State:            running") {
-            return Err("VM is not running. Please start the PhotoboothLinux VM first.".to_string());
+        let state_value = vm_state.lines()
+            .find(|line| line.trim().starts_with("State:"))
+            .and_then(|line| line.split_once(':'))
+            .map(|(_, val)| val.trim().to_lowercase())
+            .unwrap_or_default();
+        if !state_value.starts_with("running") {
+            return Err(format!("VM is not running (state: {}). Please start the PhotoboothLinux VM first.", state_value));
         }
 
         // Attach the camera using controlvm (runtime-only, no permanent changes)

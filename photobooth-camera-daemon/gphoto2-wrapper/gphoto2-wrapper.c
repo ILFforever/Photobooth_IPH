@@ -650,6 +650,7 @@ static void get_config(int camera_index) {
         "shutterspeed",
         "shutterspeed2",
         "exposurecompensation",
+        "5010",  // Exposure Bias Compensation (Fuji PTP property)
         "whitebalance",
         "focusmode",
         "drivemode",
