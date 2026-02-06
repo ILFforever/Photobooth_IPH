@@ -1,6 +1,7 @@
 import { ChevronDown, ChevronRight, HdmiPort, Usb, AlertTriangle, Info, X } from "lucide-react";
 import "./PhotoboothSidebar.css";
 import { useState, useRef, useEffect } from "react";
+import { useLiveView } from "../../../contexts/LiveViewContext";
 
 type CollapsibleSection = 'camera' | 'liveview' | 'folder' | 'photobooth';
 type CaptureMethod = 'hdmi' | 'usbc';
@@ -11,19 +12,17 @@ interface LiveViewSectionProps {
 }
 
 export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSectionProps) {
+  const { liveViewStream, setLiveViewStream, selectedDevice, setSelectedDevice } = useLiveView();
   const [captureMethod, setCaptureMethod] = useState<CaptureMethod>('hdmi');
   const [showUsbWarning, setShowUsbWarning] = useState(false);
   const [showInfoModal, setShowInfoModal] = useState(false);
-  const [selectedCaptureDevice, setSelectedCaptureDevice] = useState<string>('');
   const [showDeviceDropdown, setShowDeviceDropdown] = useState(false);
   const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
   const [captureDevices, setCaptureDevices] = useState<Array<{ id: string; name: string }>>([]);
-  const [videoStream, setVideoStream] = useState<MediaStream | null>(null);
   const [isLoadingDevices, setIsLoadingDevices] = useState(true);
   const [permissionError, setPermissionError] = useState<string | null>(null);
   const dropdownButtonRef = useRef<HTMLButtonElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const videoStreamRef = useRef<MediaStream | null>(null);
 
   // Load capture devices on mount
   useEffect(() => {
@@ -95,12 +94,12 @@ export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSec
 
   // Start video stream when device is selected and panel is expanded
   useEffect(() => {
-    if (selectedCaptureDevice && captureMethod === 'hdmi' && expandedSections.liveview) {
+    if (selectedDevice && captureMethod === 'hdmi' && expandedSections.liveview) {
       const startVideo = async () => {
         try {
-          console.log('[LiveView] Starting video stream for device:', selectedCaptureDevice);
+          console.log('[LiveView] Starting video stream for device:', selectedDevice);
           const stream = await navigator.mediaDevices.getUserMedia({
-          video: { deviceId: { exact: selectedCaptureDevice } }
+          video: { deviceId: { exact: selectedDevice } }
         });
         console.log('[LiveView] Stream obtained:', stream);
         console.log('[LiveView] Stream tracks:', stream.getTracks());
@@ -113,9 +112,8 @@ export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSec
           console.log('[LiveView] Video track capabilities:', videoTrack.getCapabilities());
         }
 
-        // Update both state and ref (video element will be attached in separate effect)
-        videoStreamRef.current = stream;
-        setVideoStream(stream);
+        // Update shared stream state
+        setLiveViewStream(stream);
       } catch (error) {
         console.error('[LiveView] Error starting video stream:', error);
       }
@@ -123,33 +121,26 @@ export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSec
 
       startVideo();
 
-      // Cleanup function - uses ref to always get latest stream
+      // Cleanup function - stream cleanup is handled by context
       return () => {
         console.log('[LiveView] Cleaning up video stream');
-        if (videoStreamRef.current) {
-          videoStreamRef.current.getTracks().forEach(track => track.stop());
-          videoStreamRef.current = null;
-        }
+        setLiveViewStream(null);
       };
     } else {
       // Stop video stream when switching away from HDMI, no device selected, or panel collapsed
-      console.log('[LiveView] Stopping video stream (method:', captureMethod, 'device:', selectedCaptureDevice, 'expanded:', expandedSections.liveview, ')');
-      if (videoStreamRef.current) {
-        videoStreamRef.current.getTracks().forEach(track => track.stop());
-        videoStreamRef.current = null;
-      }
-      setVideoStream(null);
+      console.log('[LiveView] Stopping video stream (method:', captureMethod, 'device:', selectedDevice, 'expanded:', expandedSections.liveview, ')');
+      setLiveViewStream(null);
       if (videoRef.current) {
         videoRef.current.srcObject = null;
       }
     }
-  }, [selectedCaptureDevice, captureMethod, expandedSections.liveview]);
+  }, [selectedDevice, captureMethod, expandedSections.liveview, setLiveViewStream]);
 
   // Separate effect to set video element when stream changes
   useEffect(() => {
-    if (videoStream && videoRef.current) {
+    if (liveViewStream && videoRef.current) {
       console.log('[LiveView] Setting srcObject on video element (from stream effect)');
-      videoRef.current.srcObject = videoStream;
+      videoRef.current.srcObject = liveViewStream;
       console.log('[LiveView] Video element currentSrc:', videoRef.current.currentSrc);
       console.log('[LiveView] Video element videoWidth:', videoRef.current.videoWidth);
       console.log('[LiveView] Video element videoHeight:', videoRef.current.videoHeight);
@@ -163,14 +154,14 @@ export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSec
         console.log('[LiveView] Video started playing');
       };
     }
-  }, [videoStream]);
+  }, [liveViewStream]);
 
   const handleCaptureMethodChange = (method: CaptureMethod) => {
     if (method === 'usbc' && captureMethod === 'hdmi') {
       setShowUsbWarning(true);
     }
     setCaptureMethod(method);
-    setSelectedCaptureDevice('');
+    setSelectedDevice('');
   };
 
   useEffect(() => {
@@ -199,7 +190,7 @@ export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSec
         <div className="collapsible-content">
           <div className="liveview-container">
             <div className="liveview-frame">
-              {captureMethod === 'hdmi' && videoStream ? (
+              {captureMethod === 'hdmi' && liveViewStream ? (
                 <video
                   ref={videoRef}
                   autoPlay
@@ -272,8 +263,8 @@ export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSec
                       onClick={() => setShowDeviceDropdown(!showDeviceDropdown)}
                     >
                       <span className="device-dropdown-text">
-                        {selectedCaptureDevice
-                          ? captureDevices.find(d => d.id === selectedCaptureDevice)?.name
+                        {selectedDevice
+                          ? captureDevices.find(d => d.id === selectedDevice)?.name
                           : 'Select capture device...'}
                       </span>
                       <ChevronDown size={14} className={`device-dropdown-icon ${showDeviceDropdown ? 'open' : ''}`} />
@@ -295,9 +286,9 @@ export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSec
                           captureDevices.map((device) => (
                             <button
                               key={device.id}
-                              className={`device-dropdown-item ${selectedCaptureDevice === device.id ? 'selected' : ''}`}
+                              className={`device-dropdown-item ${selectedDevice === device.id ? 'selected' : ''}`}
                               onClick={() => {
-                                setSelectedCaptureDevice(device.id);
+                                setSelectedDevice(device.id);
                                 setShowDeviceDropdown(false);
                               }}
                             >

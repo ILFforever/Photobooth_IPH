@@ -24,6 +24,7 @@
 #include <gphoto2/gphoto2.h>
 #include <gphoto2/gphoto2-port-version.h>
 #include <gphoto2/gphoto2-version.h>
+#include "camera-brand.h"
 
 /* Global flag for signal-based shutdown (used by watch/liveview loops) */
 static volatile sig_atomic_t g_shutdown_requested = 0;
@@ -642,23 +643,31 @@ static void get_config(int camera_index) {
         return;
     }
 
-    /* Common settings we want to read */
+    /* Common settings we want to read - includes Fuji and Canon widget names */
     const char *settings[] = {
         "iso",
-        "aperture",
-        "f-number",  // Alternative aperture name
+        "aperture",           // Canon aperture
+        "f-number",           // Fuji aperture
         "shutterspeed",
         "shutterspeed2",
         "exposurecompensation",
-        "5010",  // Exposure Bias Compensation (Fuji PTP property)
+        "5010",               // Exposure Bias Compensation (Fuji PTP property)
         "whitebalance",
         "focusmode",
+        "exposuremetermode",  // Exposure Metering Mode (Fuji)
+        "meteringmode",       // Metering Mode (Canon)
+        "500b",               // Exposure Metering Mode (PTP property)
         "drivemode",
         "imageformat",
         "imagesize",
         "flashmode",
-        "lensname",  // Lens name (Camera Status Information)
-        "d36b",  // BatteryInfo2 (Fuji X-H2 battery level)
+        "lensname",           // Lens name (Camera Status Information)
+        "d36b",               // BatteryInfo2 (Fuji X-H2 battery level)
+        "5001",               // Canon battery PTP property
+        "batterylevel",       // Generic battery
+        "autoexposuremode",   // Canon Auto Exposure Mode
+        "autoexposuremodedial", // Canon Auto Exposure Mode Dial
+        "expprogram",         // Fuji/other shooting mode
         NULL
     };
 

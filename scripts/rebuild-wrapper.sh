@@ -25,9 +25,17 @@ if [ ! -f "$CC" ]; then
     exit 1
 fi
 
+# Compile camera-brand.c once (shared between wrapper and controller)
+echo "Compiling camera-brand.o..."
+$CC "${PROJECT_ROOT}/photobooth-camera-daemon/gphoto2-wrapper/camera-brand.c" \
+    -c -fPIC \
+    -o camera-brand.o
+echo "Built: camera-brand.o"
+
 # Compile gphoto2-wrapper
 echo "Compiling gphoto2-wrapper..."
 $CC "${PROJECT_ROOT}/photobooth-camera-daemon/gphoto2-wrapper/gphoto2-wrapper.c" \
+    camera-brand.o \
     -I"$SYSROOT/usr/include/gphoto2" \
     -L"$SYSROOT/usr/lib" \
     -lgphoto2 \
@@ -41,6 +49,7 @@ ls -lh gphoto2-wrapper
 # Compile gphoto2-controller
 echo "Compiling gphoto2-controller..."
 $CC "${PROJECT_ROOT}/photobooth-camera-daemon/gphoto2-wrapper/gphoto2-controller.c" \
+    camera-brand.o \
     -I"$SYSROOT/usr/include/gphoto2" \
     -L"$SYSROOT/usr/lib" \
     -lgphoto2 \

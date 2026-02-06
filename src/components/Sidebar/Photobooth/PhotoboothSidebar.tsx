@@ -1,13 +1,20 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Check, Layers, FolderOpen, Plus, Calendar, Image as ImageIcon } from "lucide-react";
 import * as Slider from "@radix-ui/react-slider";
 import { open } from '@tauri-apps/plugin-dialog';
+import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { CameraSection } from "./CameraSection";
 import { LiveViewSection } from "./LiveViewSection";
 import { ImageQuality } from "./ImageQuality";
 import { FocusSettings } from "./FocusSettings";
 import { useCamera } from "../../../contexts/CameraContext";
+import { usePhotoboothSettings, type PhotoboothSessionInfo } from "../../../contexts/PhotoboothSettingsContext";
 import type { CameraStatus } from "../../../services/cameraWebSocket";
+import { getCameraSettingsService } from "../../../services/cameraSettingsService";
+import type { CustomSet, CustomSetPreview } from "../../../types/customSet";
+
+// Get a singleton instance for EV mapping
+const cameraSettingsService = getCameraSettingsService();
 import "./PhotoboothSidebar.css";
 
 const API_BASE = 'http://localhost:58321';
@@ -21,20 +28,31 @@ interface PhotoboothSidebarProps {
 
 type PhotoboothTab = 'camera' | 'settings';
 
-type CollapsibleSection = 'camera' | 'liveview' | 'folder' | 'photobooth';
+type CollapsibleSection = 'camera' | 'liveview' | 'folder' | 'photobooth' | 'frame' | 'session';
 type SettingType = 'shutter' | 'aperture' | 'iso' | 'ev' | 'wb' | 'metering' | 'folder' | 'mode' | null;
 
 export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
-  const { addStatusListener, removeStatusListener } = useCamera();
+  const { addStatusListener, removeStatusListener, isCameraConnected } = useCamera();
 
   const [activeTab, setActiveTab] = useState<PhotoboothTab>('camera');
   const [expandedSections, setExpandedSections] = useState<Record<CollapsibleSection, boolean>>({
-    camera: true,
+    camera: false,
     liveview: false,
     folder: false,
-    photobooth: true,
+    photobooth: false,
+    frame: false,
+    session: false,
   });
   const [activeSetting, setActiveSetting] = useState<SettingType>(null);
+
+  // Track whether user has selected a camera in CameraSection
+  const [hasSelectedCamera, setHasSelectedCamera] = useState(false);
+
+  // Handle connection change callback from CameraSection
+  const handleConnectionChange = useCallback((isConnected: boolean, hasSelected: boolean) => {
+    console.log('[PhotoboothSidebar] Connection change:', isConnected, hasSelected);
+    setHasSelectedCamera(hasSelected);
+  }, []);
 
   // Default shutter speeds (fast to slow) - will be reversed for the dial
   const defaultShutterSpeeds = [
@@ -95,12 +113,75 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
   const debounceTimeoutsRef = useRef<Record<string, number>>({});
   const DEBOUNCE_MS = 500;
 
-  // Photobooth settings
-  const [autoCount, setAutoCount] = useState(3); // Number of photos to take
-  const [timerDelay, setTimerDelay] = useState(5); // Delay in seconds
-  const [selectedFolder, setSelectedFolder] = useState<string | null>(null); // Selected folder path
+  // Photobooth settings from shared context
+  const {
+    autoCount, setAutoCount,
+    timerDelay, setTimerDelay,
+    delayBetweenPhotos, setDelayBetweenPhotos,
+    photoReviewTime, setPhotoReviewTime,
+    workingFolder, setWorkingFolder,
+    currentSession,
+    sessions,
+    refreshSessions,
+    createNewSession,
+    loadSession,
+    setCurrentSession,
+    isLoadingSessions
+  } = usePhotoboothSettings();
   const [imageQualityExpanded, setImageQualityExpanded] = useState(false);
   const [focusSettingsExpanded, setFocusSettingsExpanded] = useState(false);
+
+  // Custom Set selection
+  const [selectedSetId, setSelectedSetId] = useState<string | null>(null);
+  const [customSets, setCustomSets] = useState<CustomSet[]>([]);
+  const [loadingSets, setLoadingSets] = useState(false);
+  const [expandedSetIds, setExpandedSetIds] = useState<Set<string>>(new Set());
+
+  // Load custom sets on mount
+  useEffect(() => {
+    loadCustomSets();
+  }, []);
+
+  // Refresh sessions when working folder changes
+  useEffect(() => {
+    if (workingFolder) {
+      refreshSessions();
+    }
+  }, [workingFolder]);
+
+  const loadCustomSets = async () => {
+    try {
+      setLoadingSets(true);
+      const previews = await invoke<CustomSetPreview[]>('load_custom_sets');
+      // Load full set data for each preview
+      const fullSets = await Promise.all(
+        previews.map(async (preview) => {
+          try {
+            return await invoke<CustomSet>('get_custom_set', { setId: preview.id });
+          } catch {
+            return null;
+          }
+        })
+      );
+      setCustomSets(fullSets.filter((s): s is CustomSet => s !== null));
+    } catch (error) {
+      console.error('Failed to load custom sets:', error);
+    } finally {
+      setLoadingSets(false);
+    }
+  };
+
+  const toggleSetExpanded = (setId: string) => {
+    setExpandedSetIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(setId)) {
+        newSet.delete(setId);
+      } else {
+        newSet.add(setId);
+      }
+      return newSet;
+    });
+  };
 
   const toggleSection = (section: CollapsibleSection) => {
     setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
@@ -114,7 +195,7 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
         title: 'Select Working Folder'
       });
       if (selected && typeof selected === 'string') {
-        setSelectedFolder(selected);
+        setWorkingFolder(selected);
       }
     } catch (error) {
       console.error('Failed to open folder dialog:', error);
@@ -184,17 +265,38 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
 
   const handleSetIsoIndex = (value: number) => {
     setIsoIndex(value);
-    debouncedSetSetting('iso', 'iso', isoOptions[value]);
+    // Convert display value (e.g., "Auto 1") to camera value (e.g., "-1")
+    const displayValue = isoOptions[value];
+    const cameraValue = cameraSettingsService.convertIsoToCamera(displayValue);
+    debouncedSetSetting('iso', 'iso', cameraValue);
   };
 
   const handleSetEvIndex = (value: number) => {
     setEvIndex(value);
-    debouncedSetSetting('ev', 'exposurecompensation', evOptions[value]);
+    // API call handled on commit (when user releases slider), not during drag
   };
 
   const handleSetWbValue = (value: string) => {
     setWbValue(value);
     debouncedSetSetting('wb', 'whitebalance', value);
+  };
+
+  const handleSetMeteringValue = (value: string) => {
+    setMeteringValue(value);
+    // Use the camera service to send metering command (handles brand-specific mapping)
+    const meteringSetting = cameraSettingsService.getMeteringSettingName();
+    if (cameraSettingsService.getBrand().id === 'fuji') {
+      // Fuji: map UI value to camera value (must match actual gphoto2 choices exactly)
+      const fujiMeteringMap: Record<string, string> = {
+        'Evaluative': 'Multi Spot',
+        'Partial': 'Center Spot',
+        'Spot': 'Average',
+        'Center-Weighted': 'Center Weighted',
+      };
+      debouncedSetSetting('metering', meteringSetting, fujiMeteringMap[value] || value);
+    } else {
+      debouncedSetSetting('metering', meteringSetting, value);
+    }
   };
 
   // Confirm a setting value received from WebSocket - clears red dot if matches
@@ -223,12 +325,15 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
   }, [shutterSpeeds, apertureOptions, isoOptions, evOptions]);
 
   const handleWsStatus = useCallback((data: CameraStatus) => {
+    // console.log('[PhotoboothSidebar] WebSocket status received:', data); // Verbose - disabled
     const opts = optionsRef.current;
 
     if (data.iso && opts.isoOptions.length > 0) {
-      const idx = opts.isoOptions.findIndex(opt => opt === data.iso);
+      // Convert camera ISO value (e.g., "-1") to display value (e.g., "Auto 1") before lookup
+      const displayIso = cameraSettingsService.convertIsoToDisplay(data.iso);
+      const idx = opts.isoOptions.findIndex(opt => opt === displayIso);
       if (idx !== -1) {
-        confirmSettingValue('iso', data.iso!);
+        confirmSettingValue('iso', displayIso);
         setIsoIndex(idx);
       }
     }
@@ -247,15 +352,29 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
       }
     }
     if (data.ev && opts.evOptions.length > 0) {
-      const idx = opts.evOptions.findIndex(opt => opt === data.ev);
+      // console.log('[PhotoboothSidebar] EV update received:', data.ev, 'options:', opts.evOptions); // Verbose - disabled
+      // Use service to map EV value to index (handles brand-specific conversions)
+      const idx = cameraSettingsService.mapEvToIndex(data.ev, opts.evOptions);
+      // console.log('[PhotoboothSidebar] EV index:', idx); // Verbose - disabled
       if (idx !== -1) {
-        confirmSettingValue('ev', data.ev!);
+        confirmSettingValue('ev', opts.evOptions[idx]);
         setEvIndex(idx);
+      } else {
+        console.warn('[PhotoboothSidebar] EV value could not be mapped:', data.ev);
       }
+    } else {
+      console.log('[PhotoboothSidebar] EV update: data.ev=', data.ev, 'opts.evOptions.length=', opts.evOptions.length);
     }
     if (data.wb) {
-      confirmSettingValue('wb', data.wb);
-      setWbValue(data.wb);
+      // Convert camera WB value to display label (e.g., "Automatic" -> "Auto")
+      const displayWb = cameraSettingsService.convertWhiteBalanceToDisplay(data.wb);
+      confirmSettingValue('wb', displayWb);
+      setWbValue(displayWb);
+    }
+    if (data.metering) {
+      // Convert camera metering value to display value (e.g., Fuji "Multi" -> "Evaluative")
+      const displayMetering = cameraSettingsService.convertMeteringToDisplay(data.metering);
+      setMeteringValue(displayMetering);
     }
   }, [confirmSettingValue]);
 
@@ -266,15 +385,15 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
 
   // Handle camera options loaded from camera config
   // Memoized with useCallback to prevent WebSocket reconnection loops
-  const handleCameraOptionsLoaded = useCallback((options: { iso: string[]; aperture: string[]; shutterspeed: string[]; whitebalance: string[]; '5010'?: string[] }) => {
+  const handleCameraOptionsLoaded = useCallback((options: { iso: string[]; aperture: string[]; shutterspeed: string[]; whitebalance: string[]; ev?: string[] }) => {
     console.log('Camera options loaded:', options);
     setCameraApertureOptions(options.aperture);
     setCameraIsoOptions(options.iso);
     setCameraShutterOptions(options.shutterspeed);
     setCameraWbOptions(options.whitebalance);
-    // Use '5010' EV choices for Fuji cameras (already converted to standard format)
-    if (options['5010'] && options['5010'].length > 0) {
-      setCameraEvOptions(options['5010']);
+    // Use brand-specific EV choices (e.g., '5010' for Fuji, 'exposurecompensation' for Canon)
+    if (options.ev && options.ev.length > 0) {
+      setCameraEvOptions(options.ev);
     }
 
     // Reset indexes to safe defaults when options change
@@ -288,7 +407,7 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
   return (
     <div className="photobooth-sidebar">
       <div className="sidebar">
-        <h2 className="sidebar-title">Photobooth</h2>
+        <h2 className="sidebar-title">Control Center</h2>
 
         <div className="sidebar-divider" />
 
@@ -304,60 +423,162 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
               className={`photobooth-tab ${activeTab === 'settings' ? 'active' : ''}`}
               onClick={() => setActiveTab('settings')}
             >
-              Settings
+              Photobooth
             </button>
           </div>
 
           <div className="photobooth-tab-content">
-            {activeTab === 'camera' ? (
-              <div className="tab-panel">
-                {/* Camera Info Section */}
-                <CameraSection
-                  expandedSections={expandedSections}
-                  toggleSection={toggleSection}
-                  shutterSpeeds={shutterSpeeds}
-                  apertureOptions={apertureOptions}
-                  isoOptions={isoOptions}
-                  evOptions={evOptions}
-                  shutterValue={shutterValue}
-                  apertureIndex={apertureIndex}
-                  isoIndex={isoIndex}
-                  evIndex={evIndex}
-                  wbValue={wbValue}
-                  meteringValue={meteringValue}
-                  activeSetting={activeSetting}
-                  onToggleSetting={toggleSetting}
-                  onSetShutterValue={handleSetShutterValue}
-                  onSetApertureIndex={handleSetApertureIndex}
-                  onSetIsoIndex={handleSetIsoIndex}
-                  onSetEvIndex={handleSetEvIndex}
-                  onSetWbValue={handleSetWbValue}
-                  onSetMeteringValue={setMeteringValue}
-                  onSetActiveSetting={setActiveSetting}
-                  onCameraOptionsLoaded={handleCameraOptionsLoaded}
-                  pendingSettings={pendingSettings}
-                />
+            {/* Camera Tab - Always mounted, hidden when not active to preserve state */}
+            <div className="tab-panel" style={{ display: activeTab === 'camera' ? 'flex' : 'none' }}>
+              {/* Camera Info Section */}
+              <CameraSection
+                expandedSections={expandedSections}
+                toggleSection={toggleSection}
+                shutterSpeeds={shutterSpeeds}
+                apertureOptions={apertureOptions}
+                isoOptions={isoOptions}
+                evOptions={evOptions}
+                shutterValue={shutterValue}
+                apertureIndex={apertureIndex}
+                isoIndex={isoIndex}
+                evIndex={evIndex}
+                wbValue={wbValue}
+                meteringValue={meteringValue}
+                activeSetting={activeSetting}
+                onToggleSetting={toggleSetting}
+                onSetShutterValue={handleSetShutterValue}
+                onSetApertureIndex={handleSetApertureIndex}
+                onSetIsoIndex={handleSetIsoIndex}
+                onSetEvIndex={handleSetEvIndex}
+                onSetWbValue={handleSetWbValue}
+                onSetMeteringValue={handleSetMeteringValue}
+                onSetActiveSetting={setActiveSetting}
+                onCameraOptionsLoaded={handleCameraOptionsLoaded}
+                pendingSettings={pendingSettings}
+                onConnectionChange={handleConnectionChange}
+              />
 
-                {/* Live View Section */}
-                <LiveViewSection
-                  expandedSections={expandedSections}
-                  toggleSection={toggleSection}
-                />
+              {/* Live View, Image Quality, and Focus Settings - Only show when camera is selected AND connected */}
+              {hasSelectedCamera && isCameraConnected && (
+                <>
+                  {/* Live View Section */}
+                  <LiveViewSection
+                    expandedSections={expandedSections}
+                    toggleSection={toggleSection}
+                  />
 
-                {/* Image Quality Section */}
-                <ImageQuality
-                  isExpanded={imageQualityExpanded}
-                  onToggle={() => setImageQualityExpanded(!imageQualityExpanded)}
-                />
+                  {/* Image Quality Section */}
+                  <ImageQuality
+                    isExpanded={imageQualityExpanded}
+                    onToggle={() => setImageQualityExpanded(!imageQualityExpanded)}
+                    cameraConnected={isCameraConnected}
+                  />
 
-                {/* Focus Settings Section */}
-                <FocusSettings
-                  isExpanded={focusSettingsExpanded}
-                  onToggle={() => setFocusSettingsExpanded(!focusSettingsExpanded)}
-                />
-              </div>
-            ) : (
-              <div className="tab-panel">
+                  {/* Focus Settings Section */}
+                  <FocusSettings
+                    isExpanded={focusSettingsExpanded}
+                    onToggle={() => setFocusSettingsExpanded(!focusSettingsExpanded)}
+                    cameraConnected={isCameraConnected}
+                  />
+                </>
+              )}
+            </div>
+
+            {/* Photobooth Settings Tab - Always mounted, hidden when not active */}
+            <div className="tab-panel" style={{ display: activeTab === 'settings' ? 'flex' : 'none' }}>
+                {/* Custom Set Selection Section */}
+                <div className="collapsible-section">
+                  <button
+                    className="collapsible-header"
+                    onClick={() => toggleSection('frame')}
+                  >
+                    <div className="collapsible-header-left">
+                      {expandedSections.frame ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                      <span className="collapsible-title">Select Set</span>
+                    </div>
+                    {selectedSetId && (
+                      <span className="collapsible-badge">
+                        {customSets.find(s => s.id === selectedSetId)?.name}
+                      </span>
+                    )}
+                  </button>
+                  {expandedSections.frame && (
+                    <div className="collapsible-content">
+                      {loadingSets ? (
+                        <div className="custom-sets-loading">Loading sets...</div>
+                      ) : customSets.length === 0 ? (
+                        <div className="custom-sets-empty-state">
+                          <p>No custom sets found.</p>
+                          <p className="custom-sets-hint">Create sets in Collage Creator to use them here.</p>
+                        </div>
+                      ) : (
+                        <div className="custom-set-list">
+                          {customSets.map((set) => (
+                            <div
+                              key={set.id}
+                              className={`custom-set-item ${selectedSetId === set.id ? 'selected' : ''} ${expandedSetIds.has(set.id) ? 'expanded' : ''}`}
+                            >
+                              <button
+                                className="custom-set-item-header"
+                                onClick={() => toggleSetExpanded(set.id)}
+                              >
+                                <div className="custom-set-item-left">
+                                  {expandedSetIds.has(set.id) ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                                  <span className="custom-set-item-name">{set.name}</span>
+                                </div>
+                                <div className="custom-set-item-right">
+                                  <span className="custom-set-zones-badge">{set.frame.zones.length} zones</span>
+                                  {selectedSetId === set.id && (
+                                    <div className="custom-set-check">
+                                      <Check size={12} />
+                                    </div>
+                                  )}
+                                </div>
+                              </button>
+                              {expandedSetIds.has(set.id) && (
+                                <div className="custom-set-item-details">
+                                  <div className="custom-set-preview-area">
+                                    {set.thumbnail ? (
+                                      <img src={convertFileSrc(set.thumbnail.replace('asset://', ''))} alt={set.name} />
+                                    ) : (
+                                      <div className="custom-set-no-preview">
+                                        <Layers size={24} />
+                                        <span>No preview</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div className="custom-set-info">
+                                    <div className="custom-set-detail-row">
+                                      <span className="detail-label">Canvas</span>
+                                      <span className="detail-value">{set.canvasSize.width} × {set.canvasSize.height}</span>
+                                    </div>
+                                    <div className="custom-set-detail-row">
+                                      <span className="detail-label">Frame</span>
+                                      <span className="detail-value">{set.frame.name}</span>
+                                    </div>
+                                    {set.description && (
+                                      <div className="custom-set-detail-row">
+                                        <span className="detail-label">Note</span>
+                                        <span className="detail-value">{set.description}</span>
+                                      </div>
+                                    )}
+                                    <button
+                                      className="custom-set-use-btn"
+                                      onClick={() => setSelectedSetId(set.id)}
+                                    >
+                                      {selectedSetId === set.id ? 'Selected' : 'Use This Set'}
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 {/* Working Folder Section */}
                 <div className="collapsible-section">
                   <button
@@ -374,12 +595,123 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
                       <div className="setting-cell setting-cell-static">
                         <span className="setting-label">LOCATION</span>
                         <span className="setting-value">
-                          {selectedFolder || 'No folder selected'}
+                          {workingFolder || 'No folder selected'}
                         </span>
                       </div>
                       <button className="folder-browse-btn" onClick={handleBrowseFolder}>
                         Browse...
                       </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Session Management Section */}
+                <div className="collapsible-section">
+                  <button
+                    className="collapsible-header"
+                    onClick={() => toggleSection('session')}
+                  >
+                    <div className="collapsible-header-left">
+                      {expandedSections.session ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                      <span className="collapsible-title">Sessions</span>
+                    </div>
+                    {currentSession && (
+                      <span className="collapsible-badge">
+                        {currentSession.shotCount} photos
+                      </span>
+                    )}
+                  </button>
+                  {expandedSections.session && (
+                    <div className="collapsible-content">
+                      {!workingFolder ? (
+                        <div className="session-empty-state">
+                          <p>Select a working folder first to manage sessions.</p>
+                        </div>
+                      ) : (
+                        <>
+                          {/* Current Session Info */}
+                          {currentSession && (
+                            <div className="current-session-info">
+                              <div className="session-info-header">
+                                <span className="session-info-title">Current Session</span>
+                                <span className="session-info-name">{currentSession.name}</span>
+                              </div>
+                              <div className="session-info-stats">
+                                <div className="session-stat">
+                                  <ImageIcon size={12} />
+                                  <span>{currentSession.shotCount} photos</span>
+                                </div>
+                                <div className="session-stat">
+                                  <FolderOpen size={12} />
+                                  <span>{currentSession.id}</span>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Create New Session Button */}
+                          <button
+                            className="create-session-btn"
+                            onClick={async () => {
+                              try {
+                                const defaultName = workingFolder ? workingFolder.split(/[/\\]/).pop() || 'Session' : 'Session';
+                                const timestamp = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                                await createNewSession(`${defaultName} ${timestamp}`);
+                              } catch (error) {
+                                console.error('Failed to create session:', error);
+                              }
+                            }}
+                          >
+                            <Plus size={14} />
+                            <span>New Session</span>
+                          </button>
+
+                          {/* Session List */}
+                          <div className="session-list">
+                            {isLoadingSessions ? (
+                              <div className="sessions-loading">Loading sessions...</div>
+                            ) : sessions.length === 0 ? (
+                              <div className="sessions-empty">
+                                <p>No sessions yet</p>
+                                <p className="sessions-empty-hint">Create a session to start capturing photos</p>
+                              </div>
+                            ) : (
+                              sessions.map((session) => (
+                                <div
+                                  key={session.id}
+                                  className={`session-item ${currentSession?.id === session.id ? 'active' : ''}`}
+                                  onClick={() => loadSession(session.id)}
+                                >
+                                  <div className="session-item-left">
+                                    <FolderOpen size={14} className={currentSession?.id === session.id ? 'session-icon-active' : ''} />
+                                    <div className="session-item-info">
+                                      <span className="session-item-name">{session.name}</span>
+                                      <span className="session-item-folder">{session.folderName}</span>
+                                    </div>
+                                  </div>
+                                  <div className="session-item-right">
+                                    <div className="session-item-stats">
+                                      <span className="session-stat-item">
+                                        <ImageIcon size={10} />
+                                        {session.shotCount}
+                                      </span>
+                                      <span className="session-stat-item">
+                                        <Calendar size={10} />
+                                        {new Date(session.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                      </span>
+                                    </div>
+                                    {currentSession?.id === session.id && (
+                                      <div className="session-check">
+                                        <Check size={12} />
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>
@@ -440,10 +772,10 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
                         </div>
                       </div>
 
-                      {/* Timer Delay Slider */}
+                      {/* Timer Delay Slider - Delay before 1st photo */}
                       <div className="slider-setting">
                         <div className="slider-header">
-                          <span className="slider-label">Timer Delay</span>
+                          <span className="slider-label">Delay Before 1st Photo</span>
                           <span className="slider-value">{timerDelay}s</span>
                         </div>
                         <div className="slider-wrapper">
@@ -482,14 +814,99 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
                           </Slider.Root>
                         </div>
                       </div>
+
+                      {/* Delay Between Photos Slider */}
+                      <div className="slider-setting">
+                        <div className="slider-header">
+                          <span className="slider-label">Delay Between Photos</span>
+                          <span className="slider-value">{delayBetweenPhotos}s</span>
+                        </div>
+                        <div className="slider-wrapper">
+                          <div className="slider-track-container">
+                            <div className="slider-numbers-container">
+                              <div
+                                className="slider-active-indicator"
+                                style={{
+                                  left: `${((delayBetweenPhotos - 1) / 9) * 100}%`,
+                                  width: '20px',
+                                  transform: 'translateX(-50%)'
+                                }}
+                              />
+                              {Array.from({ length: 10 }, (_, i) => i + 1).map((num) => (
+                                <span
+                                  key={num}
+                                  className={`slider-number-marker ${num === delayBetweenPhotos ? 'active' : ''}`}
+                                  style={{
+                                    left: `${((num - 1) / 9) * 100}%`
+                                  }}
+                                >
+                                  {num}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                          <Slider.Root
+                            className="photobooth-slider"
+                            value={[delayBetweenPhotos]}
+                            onValueChange={(value) => setDelayBetweenPhotos(value[0])}
+                            min={1}
+                            max={10}
+                            step={1}
+                          >
+                            <Slider.Thumb className="photobooth-slider-thumb" />
+                          </Slider.Root>
+                        </div>
+                      </div>
+
+                      {/* Photo Review Time Slider */}
+                      <div className="slider-setting">
+                        <div className="slider-header">
+                          <span className="slider-label">Photo Review Time</span>
+                          <span className="slider-value">{photoReviewTime}s</span>
+                        </div>
+                        <div className="slider-wrapper">
+                          <div className="slider-track-container">
+                            <div className="slider-numbers-container">
+                              <div
+                                className="slider-active-indicator"
+                                style={{
+                                  left: `${((photoReviewTime - 1) / 9) * 100}%`,
+                                  width: '20px',
+                                  transform: 'translateX(-50%)'
+                                }}
+                              />
+                              {Array.from({ length: 10 }, (_, i) => i + 1).map((num) => (
+                                <span
+                                  key={num}
+                                  className={`slider-number-marker ${num === photoReviewTime ? 'active' : ''}`}
+                                  style={{
+                                    left: `${((num - 1) / 9) * 100}%`
+                                  }}
+                                >
+                                  {num}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                          <Slider.Root
+                            className="photobooth-slider"
+                            value={[photoReviewTime]}
+                            onValueChange={(value) => setPhotoReviewTime(value[0])}
+                            min={1}
+                            max={10}
+                            step={1}
+                          >
+                            <Slider.Thumb className="photobooth-slider-thumb" />
+                          </Slider.Root>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
               </div>
-            )}
+            </div>
           </div>
         </div>
       </div>
-    </div>
   );
 }

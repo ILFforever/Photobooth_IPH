@@ -52,7 +52,11 @@
       "Bash(scriptsstop-virtualbox.cmd)",
       "Bash(tasklist:*)",
       "Bash(\"C:\\\\Program Files\\\\Oracle\\\\VirtualBox\\\\VBoxManage.exe\" showvminfo PhotoboothLinux)",
-      "Bash(\"C:\\\\Program Files\\\\Oracle\\\\VirtualBox\\\\VBoxManage.exe\" list usbhost)"
+      "Bash(\"C:\\\\Program Files\\\\Oracle\\\\VirtualBox\\\\VBoxManage.exe\" list usbhost)",
+      "Bash(git checkout:*)",
+      "Bash(npm run)",
+      "Bash(./build.sh:*)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ]
   }
 }

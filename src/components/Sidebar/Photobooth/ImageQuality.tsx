@@ -5,9 +5,10 @@ import "./PhotoboothSidebar.css";
 interface ImageQualityProps {
   isExpanded: boolean;
   onToggle: () => void;
+  cameraConnected?: boolean;
 }
 
-export function ImageQuality({ isExpanded, onToggle }: ImageQualityProps) {
+export function ImageQuality({ isExpanded, onToggle, cameraConnected = true }: ImageQualityProps) {
   const [activeSetting, setActiveSetting] = useState<string | null>(null);
 
   const settings = [
@@ -45,6 +46,8 @@ export function ImageQuality({ isExpanded, onToggle }: ImageQualityProps) {
   const selectOption = (label: string, option: string) => {
     setSettingValues(prev => ({ ...prev, [label]: option }));
   };
+
+  if (!cameraConnected) return null;
 
   return (
     <div className="collapsible-section">

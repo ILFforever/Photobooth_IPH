@@ -7,8 +7,8 @@ use hyper::body::Incoming;
 use hyper::{Request, Response, StatusCode, Method};
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
-use hyper::body::Bytes;
-use http_body_util::{Full, BodyExt};
+use hyper::body::{Bytes, Frame};
+use http_body_util::{Full, BodyExt, StreamBody, combinators::BoxBody};
 use hyper_util::rt::TokioIo;
 use tokio::net::TcpListener;
 use std::process::Command as StdCommand;
@@ -24,12 +24,23 @@ use futures_util::stream::StreamExt;
 use futures_util::SinkExt;
 use tokio::sync::broadcast;
 use tokio::io::AsyncBufReadExt;
+use tokio_util::io::ReaderStream;
 use tokio::process::Command as TokioCommand;
 use sha1::{Sha1, Digest};
 use base64::Engine;
 
 #[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
+
+/// Type alias for boxed response body that can be either Full or streaming
+type ResponseBody = BoxBody<Bytes, std::io::Error>;
+
+/// Convert a Full<Bytes> body to a boxed body
+fn full_body(data: impl Into<Bytes>) -> ResponseBody {
+    Full::new(data.into())
+        .map_err(|never| match never {})
+        .boxed()
+}
 
 /// Compute the Sec-WebSocket-Accept value per RFC 6455
 fn compute_websocket_accept(key: &str) -> String {
@@ -574,14 +585,14 @@ async fn start_controller_process(shared_state: &SharedState) {
                                 }
                                 Ok(_) => {
                                     let trimmed = line.trim();
-                                    println!("Controller status: {}", trimmed);
+                                    // println!("Controller status: {}", trimmed); // Verbose - disabled
 
                                     // Parse and cache the status for /api/camera/status endpoint
                                     if let Ok(status_json) = serde_json::from_str::<serde_json::Value>(&trimmed) {
                                         let mut cached = cached_status.lock().await;
                                         // Use "0" as default camera ID for single camera setup
                                         cached.insert("0".to_string(), (status_json, std::time::Instant::now()));
-                                        println!("Updated cached_status for camera 0");
+                                        // println!("Updated cached_status for camera 0"); // Verbose - disabled
                                     }
 
                                     // Broadcast to all WebSocket clients
@@ -661,19 +672,19 @@ async fn send_controller_command(cmd: &str) -> Result<(), Box<dyn std::error::Er
     Err(Box::new(last_err.unwrap()))
 }
 
-fn make_api_response(data: impl Serialize) -> Response<Full<Bytes>> {
+fn make_api_response(data: impl Serialize) -> Response<ResponseBody> {
     match serde_json::to_string(&data) {
         Ok(json) => {
             Response::builder()
                 .header("content-type", "application/json")
                 .header("access-control-allow-origin", "*")
-                .body(Full::new(Bytes::from(json)))
+                .body(full_body(json))
                 .unwrap()
         }
         Err(e) => {
             Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body(Full::new(Bytes::from(format!("{{\"error\":\"JSON error: {}\"}}", e))))
+                .body(full_body(format!("{{\"error\":\"JSON error: {}\"}}", e)))
                 .unwrap()
         }
     }
@@ -683,7 +694,7 @@ async fn handle_request(
     state: CameraState,
     shared_state: SharedState,
     req: Request<Incoming>,
-) -> Result<Option<Response<Full<Bytes>>>, hyper::Error> {
+) -> Result<Option<Response<ResponseBody>>, hyper::Error> {
     let method = req.method();
     let path = req.uri().path();
     let uri_str = req.uri().to_string();
@@ -697,7 +708,7 @@ async fn handle_request(
             .header("access-control-allow-origin", "*")
             .header("access-control-allow-methods", "GET, POST, OPTIONS")
             .header("access-control-allow-headers", "Content-Type, Authorization")
-            .body(Full::new(Bytes::from("")))
+            .body(full_body(""))
             .unwrap()));
     }
 
@@ -744,6 +755,23 @@ async fn handle_request(
                 Err(e) => Some(make_api_response(serde_json::json!({
                     "success": false,
                     "error": format!("Failed to send capture command: {}", e)
+                })))
+            }
+        }
+
+        (&Method::POST, path) if path.starts_with("/api/controller/switch") => {
+            // Switch which camera the controller is tracking
+            let camera_index = parse_query_param(&uri_str, "camera").unwrap_or(0);
+            let cmd = format!("SWITCH_CAMERA {}", camera_index);
+            match send_controller_command(&cmd).await {
+                Ok(_) => Some(make_api_response(serde_json::json!({
+                    "success": true,
+                    "message": format!("Switched to camera {}", camera_index),
+                    "camera_index": camera_index
+                }))),
+                Err(e) => Some(make_api_response(serde_json::json!({
+                    "success": false,
+                    "error": format!("Failed to switch camera: {}", e)
                 })))
             }
         }
@@ -926,7 +954,7 @@ async fn handle_request(
             })))
         }
 
-        // GET /api/photo/{filename} - Serve captured image
+        // GET /api/photo/{filename} - Serve captured image (streaming for performance)
         (&Method::GET, path) if path.starts_with("/api/photo/") => {
             let filename = path.strip_prefix("/api/photo/")
                 .unwrap_or_default()
@@ -937,12 +965,12 @@ async fn handle_request(
                 Some(Response::builder()
                     .status(StatusCode::BAD_REQUEST)
                     .header("content-type", "application/json")
-                    .body(Full::new(Bytes::from(r#"{"error":"Invalid filename"}"#)))
+                    .body(full_body(r#"{"error":"Invalid filename"}"#))
                     .unwrap())
             } else {
                 let file_path = Path::new("/tmp").join(filename);
-                match fs::read(&file_path) {
-                    Ok(data) => {
+                match tokio::fs::File::open(&file_path).await {
+                    Ok(file) => {
                         // Determine content type based on extension
                         let content_type = if filename.ends_with(".jpg") || filename.ends_with(".jpeg") {
                             "image/jpeg"
@@ -952,20 +980,32 @@ async fn handle_request(
                             "application/octet-stream"
                         };
 
-                        Some(Response::builder()
+                        // Get file size for Content-Length header
+                        let file_size = file.metadata().await.ok().map(|m| m.len());
+
+                        // Stream the file in chunks for better performance
+                        let stream = ReaderStream::new(file);
+                        let body: ResponseBody = BodyExt::boxed(StreamBody::new(stream.map(|result| {
+                            result.map(Frame::data)
+                        })));
+
+                        let mut builder = Response::builder()
                             .status(StatusCode::OK)
                             .header("content-type", content_type)
-                            .header("content-length", data.len())
-                            .header("access-control-allow-origin", "*")
-                            .body(Full::new(Bytes::from(data)))
-                            .unwrap())
+                            .header("access-control-allow-origin", "*");
+
+                        if let Some(size) = file_size {
+                            builder = builder.header("content-length", size);
+                        }
+
+                        Some(builder.body(body).unwrap())
                     }
                     Err(e) => {
-                        eprintln!("Failed to read file {}: {}", file_path.display(), e);
+                        eprintln!("Failed to open file {}: {}", file_path.display(), e);
                         Some(Response::builder()
                             .status(StatusCode::NOT_FOUND)
                             .header("content-type", "application/json")
-                            .body(Full::new(Bytes::from(format!(r#"{{"error":"File not found: {}"}}"#, filename))))
+                            .body(full_body(format!(r#"{{"error":"File not found: {}"}}"#, filename)))
                             .unwrap())
                     }
                 }
@@ -1009,7 +1049,7 @@ async fn handle_request(
             Some(Response::builder()
                 .status(StatusCode::NOT_FOUND)
                 .header("content-type", "application/json")
-                .body(Full::new(Bytes::from(r#"{"error":"Not found"}"#)))
+                .body(full_body(r#"{"error":"Not found"}"#))
                 .unwrap())
         }
     };
@@ -1134,7 +1174,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             .header("upgrade", "websocket")
                             .header("connection", "Upgrade")
                             .header("sec-websocket-accept", accept_key)
-                            .body(Full::new(Bytes::new()))
+                            .body(full_body(""))
                             .unwrap())
                     } else {
                         // Regular HTTP request
@@ -1144,7 +1184,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 // Should not happen for non-WS requests
                                 Ok(Response::builder()
                                     .status(StatusCode::INTERNAL_SERVER_ERROR)
-                                    .body(Full::new(Bytes::from("Internal error")))
+                                    .body(full_body("Internal error"))
                                     .unwrap())
                             }
                             Err(e) => Err(e),

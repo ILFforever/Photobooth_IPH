@@ -1,0 +1,448 @@
+{
+    "widgets": [
+        {
+            "children": [
+                {
+                    "children": [
+                        {
+                            "label": "Synchronize camera date and time with PC",
+                            "name": "syncdatetimeutc",
+                            "type": 4
+                        },
+                        {
+                            "label": "Synchronize camera date and time with PC",
+                            "name": "syncdatetime",
+                            "type": 4
+                        },
+                        {
+                            "label": "UI Lock",
+                            "name": "uilock",
+                            "type": 4
+                        },
+                        {
+                            "label": "Popup Flash",
+                            "name": "popupflash",
+                            "type": 4
+                        },
+                        {
+                            "label": "Drive Canon DSLR Autofocus",
+                            "name": "autofocusdrive",
+                            "type": 4
+                        },
+                        {
+                            "label": "Drive Canon DSLR Manual focus",
+                            "name": "manualfocusdrive",
+                            "type": 5
+                        },
+                        {
+                            "label": "Cancel Canon DSLR Autofocus",
+                            "name": "cancelautofocus",
+                            "type": 4
+                        },
+                        {
+                            "label": "Canon EOS Zoom",
+                            "name": "eoszoom",
+                            "type": 2
+                        },
+                        {
+                            "label": "Canon EOS Zoom Position",
+                            "name": "eoszoomposition",
+                            "type": 2
+                        },
+                        {
+                            "label": "Canon EOS Viewfinder",
+                            "name": "viewfinder",
+                            "type": 4
+                        },
+                        {
+                            "label": "Canon EOS Remote Release",
+                            "name": "eosremoterelease",
+                            "type": 5
+                        },
+                        {
+                            "label": "Movie Mode",
+                            "name": "eosmoviemode",
+                            "type": 4
+                        },
+                        {
+                            "label": "PTP Opcode",
+                            "name": "opcode",
+                            "type": 2
+                        }
+                    ],
+                    "label": "Camera Actions",
+                    "name": "actions",
+                    "type": 1
+                },
+                {
+                    "children": [
+                        {
+                            "label": "Camera Date and Time",
+                            "name": "datetimeutc",
+                            "type": 8
+                        },
+                        {
+                            "label": "Camera Date and Time",
+                            "name": "datetime",
+                            "type": 8
+                        },
+                        {
+                            "label": "Camera Output",
+                            "name": "output",
+                            "type": 5
+                        },
+                        {
+                            "label": "Recording Destination",
+                            "name": "movierecordtarget",
+                            "type": 5
+                        },
+                        {
+                            "label": "EVF Mode",
+                            "name": "evfmode",
+                            "type": 5
+                        },
+                        {
+                            "label": "Owner Name",
+                            "name": "ownername",
+                            "type": 2
+                        },
+                        {
+                            "label": "Artist",
+                            "name": "artist",
+                            "type": 2
+                        },
+                        {
+                            "label": "Copyright",
+                            "name": "copyright",
+                            "type": 2
+                        },
+                        {
+                            "label": "Nickname",
+                            "name": "nickname",
+                            "type": 2
+                        },
+                        {
+                            "label": "Custom Functions Ex",
+                            "name": "customfuncex",
+                            "type": 2
+                        },
+                        {
+                            "label": "Focus Area",
+                            "name": "focusarea",
+                            "type": 2
+                        },
+                        {
+                            "label": "Strobo Firing",
+                            "name": "strobofiring",
+                            "type": 5
+                        },
+                        {
+                            "label": "Flash Charging State",
+                            "name": "flashcharged",
+                            "type": 2
+                        },
+                        {
+                            "label": "One Shot Raw On",
+                            "name": "oneshotrawon",
+                            "type": 2
+                        },
+                        {
+                            "label": "Auto Power Off",
+                            "name": "autopoweroff",
+                            "type": 5
+                        },
+                        {
+                            "label": "Depth of Field",
+                            "name": "depthoffield",
+                            "type": 2
+                        },
+                        {
+                            "label": "Capture Target",
+                            "name": "capturetarget",
+                            "type": 5
+                        },
+                        {
+                            "label": "Capture",
+                            "name": "capture",
+                            "type": 4
+                        },
+                        {
+                            "label": "Remote Mode",
+                            "name": "remotemode",
+                            "type": 2
+                        },
+                        {
+                            "label": "Event Mode",
+                            "name": "eventmode",
+                            "type": 2
+                        }
+                    ],
+                    "label": "Camera Settings",
+                    "name": "settings",
+                    "type": 1
+                },
+                {
+                    "children": [
+                        {
+                            "label": "Serial Number",
+                            "name": "serialnumber",
+                            "type": 2
+                        },
+                        {
+                            "label": "Camera Manufacturer",
+                            "name": "manufacturer",
+                            "type": 2
+                        },
+                        {
+                            "label": "Camera Model",
+                            "name": "cameramodel",
+                            "type": 2
+                        },
+                        {
+                            "label": "Device Version",
+                            "name": "deviceversion",
+                            "type": 2
+                        },
+                        {
+                            "label": "Vendor Extension",
+                            "name": "vendorextension",
+                            "type": 2
+                        },
+                        {
+                            "label": "Camera Model",
+                            "name": "model",
+                            "type": 2
+                        },
+                        {
+                            "label": "Battery Level",
+                            "name": "",
+                            "type": 2
+                        },
+                        {
+                            "label": "Battery Level",
+                            "name": "batterylevel",
+                            "type": 2
+                        },
+                        {
+                            "label": "Lens Name",
+                            "name": "lensname",
+                            "type": 2
+                        },
+                        {
+                            "label": "Serial Number",
+                            "name": "eosserialnumber",
+                            "type": 2
+                        },
+                        {
+                            "label": "Available Shots",
+                            "name": "availableshots",
+                            "type": 2
+                        },
+                        {
+                            "label": "Movie Switch",
+                            "name": "eosmovieswitch",
+                            "type": 2
+                        }
+                    ],
+                    "label": "Camera Status Information",
+                    "name": "status",
+                    "type": 1
+                },
+                {
+                    "children": [
+                        {
+                            "label": "Image Format",
+                            "name": "imageformat",
+                            "type": 5
+                        },
+                        {
+                            "label": "Image Format SD",
+                            "name": "imageformatsd",
+                            "type": 5
+                        },
+                        {
+                            "label": "Image Format CF",
+                            "name": "imageformatcf",
+                            "type": 5
+                        },
+                        {
+                            "label": "ISO Speed",
+                            "name": "iso",
+                            "type": 5
+                        },
+                        {
+                            "label": "WhiteBalance",
+                            "name": "whitebalance",
+                            "type": 5
+                        },
+                        {
+                            "label": "Color Temperature",
+                            "name": "colortemperature",
+                            "type": 5
+                        },
+                        {
+                            "label": "WhiteBalance Adjust A",
+                            "name": "whitebalanceadjusta",
+                            "type": 5
+                        },
+                        {
+                            "label": "WhiteBalance Adjust B",
+                            "name": "whitebalanceadjustb",
+                            "type": 5
+                        },
+                        {
+                            "label": "WhiteBalance X A",
+                            "name": "whitebalancexa",
+                            "type": 5
+                        },
+                        {
+                            "label": "WhiteBalance X B",
+                            "name": "whitebalancexb",
+                            "type": 5
+                        },
+                        {
+                            "label": "Color Space",
+                            "name": "colorspace",
+                            "type": 5
+                        }
+                    ],
+                    "label": "Image Settings",
+                    "name": "imgsettings",
+                    "type": 1
+                },
+                {
+                    "children": [
+                        {
+                            "label": "Zoom Speed",
+                            "name": "zoomspeed",
+                            "type": 2
+                        },
+                        {
+                            "label": "Exposure Compensation",
+                            "name": "exposurecompensation",
+                            "type": 5
+                        },
+                        {
+                            "label": "Focus Mode",
+                            "name": "focusmode",
+                            "type": 5
+                        },
+                        {
+                            "label": "Continuous AF",
+                            "name": "continuousaf",
+                            "type": 5
+                        },
+                        {
+                            "label": "Aspect Ratio",
+                            "name": "aspectratio",
+                            "type": 5
+                        },
+                        {
+                            "label": "Storage Device",
+                            "name": "storageid",
+                            "type": 2
+                        },
+                        {
+                            "label": "High ISO Noise Reduction",
+                            "name": "highisonr",
+                            "type": 5
+                        },
+                        {
+                            "label": "Canon Auto Exposure Mode",
+                            "name": "autoexposuremode",
+                            "type": 5
+                        },
+                        {
+                            "label": "Canon Auto Exposure Mode Dial",
+                            "name": "autoexposuremodedial",
+                            "type": 5
+                        },
+                        {
+                            "label": "Drive Mode",
+                            "name": "drivemode",
+                            "type": 5
+                        },
+                        {
+                            "label": "Picture Style",
+                            "name": "picturestyle",
+                            "type": 5
+                        },
+                        {
+                            "label": "Aperture",
+                            "name": "aperture",
+                            "type": 5
+                        },
+                        {
+                            "label": "Shutter Speed",
+                            "name": "shutterspeed",
+                            "type": 5
+                        },
+                        {
+                            "label": "Metering Mode",
+                            "name": "meteringmode",
+                            "type": 5
+                        },
+                        {
+                            "label": "Live View Size",
+                            "name": "liveviewsize",
+                            "type": 5
+                        },
+                        {
+                            "label": "Bracket Mode",
+                            "name": "bracketmode",
+                            "type": 5
+                        },
+                        {
+                            "label": "Auto Exposure Bracketing",
+                            "name": "aeb",
+                            "type": 5
+                        },
+                        {
+                            "label": "Auto Lighting Optimization",
+                            "name": "alomode",
+                            "type": 5
+                        }
+                    ],
+                    "label": "Capture Settings",
+                    "name": "capturesettings",
+                    "type": 1
+                },
+                {
+                    "children": [
+                        {
+                            "label": "PTP Property 0xd402",
+                            "name": "d402",
+                            "type": 2
+                        },
+                        {
+                            "label": "PTP Property 0xd407",
+                            "name": "d407",
+                            "type": 2
+                        },
+                        {
+                            "label": "PTP Property 0xd406",
+                            "name": "d406",
+                            "type": 2
+                        },
+                        {
+                            "label": "PTP Property 0xd303",
+                            "name": "d303",
+                            "type": 2
+                        },
+                        {
+                            "label": "Battery Level",
+                            "name": "5001",
+                            "type": 6
+                        }
+                    ],
+                    "label": "Other PTP Device Properties",
+                    "name": "other",
+                    "type": 1
+                }
+            ],
+            "label": "Camera and Driver Configuration",
+            "name": "main",
+            "type": 0
+        }
+    ]
+}

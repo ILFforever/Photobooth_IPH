@@ -12,6 +12,7 @@ export interface CameraStatus {
   shutter?: string;
   ev?: string;
   wb?: string;
+  metering?: string; // Metering mode (e.g., "Multi", "Spot", "Average", "Center" for Fuji)
 }
 
 export interface PhotoDownloadedEvent {
@@ -20,7 +21,21 @@ export interface PhotoDownloadedEvent {
   camera_path: string;
 }
 
-type EventType = 'status' | 'photo_downloaded' | 'connected' | 'disconnected';
+export interface CaptureErrorEvent {
+  type: 'capture_error';
+  error: string;
+}
+
+export interface CameraDisconnectedEvent {
+  type: 'camera_disconnected';
+}
+
+export interface CameraSwitchedEvent {
+  type: 'camera_switched';
+  camera_index: number;
+}
+
+type EventType = 'status' | 'photo_downloaded' | 'capture_error' | 'camera_disconnected' | 'camera_switched' | 'connected' | 'disconnected';
 type Listener = (data: any) => void;
 
 const WS_URL = 'ws://localhost:58321/ws';
@@ -38,7 +53,7 @@ class CameraWebSocketManager {
 
   private constructor() {
     // Initialize listener sets
-    for (const event of ['status', 'photo_downloaded', 'connected', 'disconnected'] as EventType[]) {
+    for (const event of ['status', 'photo_downloaded', 'capture_error', 'camera_disconnected', 'camera_switched', 'connected', 'disconnected'] as EventType[]) {
       this.listeners.set(event, new Set());
     }
   }
@@ -104,16 +119,44 @@ class CameraWebSocketManager {
     };
 
     ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
+      const rawData = event.data as string;
 
-        if (data.type === 'photo_downloaded') {
-          this.emit('photo_downloaded', data as PhotoDownloadedEvent);
-        } else {
-          this.emit('status', data as CameraStatus);
+      // Skip empty messages or non-JSON (e.g., daemon debug output)
+      if (!rawData || !rawData.trim().startsWith('{')) {
+        // Only log if it's something unexpected (not just whitespace)
+        if (rawData && rawData.trim().length > 0) {
+          console.debug('[WS Manager] Ignoring non-JSON message:', rawData.substring(0, 50));
         }
-      } catch (error) {
-        console.error('[WS Manager] Error parsing message:', error);
+        return;
+      }
+
+      // Handle potentially concatenated JSON messages (daemon may send multiple at once)
+      // Try to split on }{ which indicates concatenated JSON objects
+      const messages = rawData.includes('}{')
+        ? rawData.split(/(?<=\})(?=\{)/)
+        : [rawData];
+
+      for (const msg of messages) {
+        try {
+          const data = JSON.parse(msg);
+
+          if (data.type === 'photo_downloaded') {
+            this.emit('photo_downloaded', data as PhotoDownloadedEvent);
+          } else if (data.type === 'capture_error') {
+            console.error('[WS Manager] Capture error:', data.error);
+            this.emit('capture_error', data as CaptureErrorEvent);
+          } else if (data.type === 'camera_disconnected') {
+            console.warn('[WS Manager] Camera disconnected');
+            this.emit('camera_disconnected', data as CameraDisconnectedEvent);
+          } else if (data.type === 'camera_switched') {
+            console.log('[WS Manager] Camera switched to index:', data.camera_index);
+            this.emit('camera_switched', data as CameraSwitchedEvent);
+          } else {
+            this.emit('status', data as CameraStatus);
+          }
+        } catch (error) {
+          console.warn('[WS Manager] Error parsing message:', error, 'Raw:', msg.substring(0, 100));
+        }
       }
     };
 

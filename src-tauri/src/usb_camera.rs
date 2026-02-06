@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use tauri::Emitter;
@@ -128,6 +128,106 @@ impl CameraManager {
         }
 
         Ok(cameras)
+    }
+
+    /// Get list of existing USB filters for the VM
+    fn get_existing_filters(&self) -> Result<HashSet<String>, String> {
+        let output = Command::new(&self.vbox_manage_path)
+            .args(&["showvminfo", &self.vm_name])
+            .output()
+            .map_err(|e| format!("Failed to get VM info: {}", e))?;
+
+        if !output.status.success() {
+            return Err(format!("VBoxManage failed: {}", String::from_utf8_lossy(&output.stderr)));
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let mut filters = HashSet::new();
+        let mut in_filter_section = false;
+
+        for line in stdout.lines() {
+            let trimmed = line.trim();
+            if trimmed.starts_with("USB Device Filters:") {
+                in_filter_section = true;
+                continue;
+            }
+            // Exit filter section when we hit another top-level section
+            if in_filter_section && !trimmed.is_empty() && !trimmed.starts_with("Name:") && !trimmed.starts_with("VendorId:") {
+                if trimmed.ends_with(':') && !trimmed.contains("USB") {
+                    break;
+                }
+            }
+            if in_filter_section && trimmed.starts_with("Name:") {
+                if let Some(name) = trimmed.split_once(':') {
+                    let name = name.1.trim().to_string();
+                    filters.insert(name);
+                }
+            }
+        }
+
+        Ok(filters)
+    }
+
+    /// Add a USB filter for a camera vendor
+    fn add_usb_filter(&self, index: usize, name: &str, vendor_id: &str) -> Result<(), String> {
+        let output = Command::new(&self.vbox_manage_path)
+            .args(&[
+                "usbfilter",
+                "add",
+                &index.to_string(),
+                "--target",
+                &self.vm_name,
+                "--name",
+                name,
+                "--vendorid",
+                vendor_id,
+            ])
+            .output()
+            .map_err(|e| format!("Failed to add USB filter: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("Failed to add USB filter '{}': {}", name, stderr));
+        }
+
+        eprintln!("Added USB filter: {} (vendor ID: {})", name, vendor_id);
+        Ok(())
+    }
+
+    /// Ensure USB filters exist for all supported camera brands
+    /// Returns the number of filters added
+    pub fn ensure_usb_filters(&self) -> Result<usize, String> {
+        // Define supported camera vendor filters
+        struct VendorFilter {
+            name: &'static str,
+            vendor_id: &'static str,
+        }
+
+        let vendors = [
+            VendorFilter { name: "Fujifilm Cameras", vendor_id: "04cb" },
+            VendorFilter { name: "Canon Cameras", vendor_id: "04a9" },
+            VendorFilter { name: "Nikon Cameras", vendor_id: "04b0" },
+            VendorFilter { name: "Sony Cameras", vendor_id: "054c" },
+            VendorFilter { name: "Olympus Cameras", vendor_id: "07b4" },
+            VendorFilter { name: "Panasonic Cameras", vendor_id: "04da" },
+            VendorFilter { name: "Ricoh Pentax Cameras", vendor_id: "05ca" },
+            VendorFilter { name: "Sigma Cameras", vendor_id: "0499" },
+            VendorFilter { name: "Leica Cameras", vendor_id: "07ca" },
+        ];
+
+        let existing_filters = self.get_existing_filters()?;
+        let mut added_count = 0;
+        let mut next_index = existing_filters.len();
+
+        for vendor in &vendors {
+            if !existing_filters.contains(vendor.name) {
+                self.add_usb_filter(next_index, vendor.name, vendor.vendor_id)?;
+                next_index += 1;
+                added_count += 1;
+            }
+        }
+
+        Ok(added_count)
     }
 
     /// Attach a camera to the VM (runtime-only, no permanent config changes)
@@ -295,4 +395,11 @@ pub async fn cleanup_all_cameras() -> Result<(), String> {
 #[tauri::command]
 pub async fn attach_all_cameras() -> Result<Vec<String>, String> {
     CAMERA_MANAGER.attach_all_cameras()
+}
+
+/// Ensure USB filters exist for all supported camera brands
+/// Returns the number of filters added
+#[tauri::command]
+pub async fn ensure_usb_filters() -> Result<usize, String> {
+    CAMERA_MANAGER.ensure_usb_filters()
 }

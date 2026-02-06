@@ -26,8 +26,16 @@ export interface CameraBrand {
     // Some brands report shutter speed differently
     shutterSpeedFormat?: 'fraction' | 'decimal';
     // EV compensation setting name and value format
-    evSetting?: string; // e.g., '5010' for Fuji PTP property
-    evValueMultiplier?: number; // e.g., 1000 for Fuji (values are ×1000)
+    evSetting?: string; // e.g., '5010' for Fuji PTP property (uses mapped EV values)
+    // Metering mode setting name
+    meteringSetting?: string;
+    // Available metering mode choices for this brand
+    meteringChoices?: string[];
+    // Available focus mode choices for this brand
+    focusModeChoices?: string[];
+    // White balance display label mappings (cameraValue -> displayLabel)
+    // Used to rename camera-reported WB values to user-friendly labels
+    whiteBalanceLabels?: Record<string, string>;
   };
 }
 
@@ -48,15 +56,32 @@ const FUJI: CameraBrand = {
   },
   settingMap: {},
   modeCapabilities: {
-    'P': { shutter: true, aperture: true, iso: true, ev: true, wb: true, metering: true, mode: true, focusmode: true },
+    'P': { shutter: false, aperture: false, iso: true, ev: true, wb: true, metering: true, mode: true, focusmode: true },
     'A': { shutter: false, aperture: true, iso: true, ev: true, wb: true, metering: true, mode: true, focusmode: true },
     'S': { shutter: true, aperture: false, iso: true, ev: true, wb: true, metering: true, mode: true, focusmode: true },
     'M': { shutter: true, aperture: true, iso: true, ev: false, wb: true, metering: true, mode: true, focusmode: true },
   },
   quirks: {
     apertureSetting: 'f-number',
-    evSetting: '5010', // Fuji uses PTP property 5010 for Exposure Bias Compensation
-    evValueMultiplier: 1000, // Fuji EV values are ×1000 (e.g., "1000" = +1 EV)
+    evSetting: '5010', // Fuji uses PTP property 5010 for Exposure Bias Compensation (uses mapped EV values)
+    meteringSetting: 'exposuremetermode',
+    focusModeChoices: ['Manual', 'Single-Servo AF', 'Continuous-Servo AF'],
+    whiteBalanceLabels: {
+      'Unknown value 8020': 'White Priority',
+      'Unknown value 8021': 'Ambient Priority',
+      'Automatic': 'Auto',
+      'Daylight': 'Daylight',
+      'Shade': 'Shade',
+      'Choose Color Temperature': 'K',
+      'Fluorescent Lamp 1': 'Fluorescent 1',
+      'Fluorescent Lamp 2': 'Fluorescent 2',
+      'Fluorescent Lamp 3': 'Fluorescent 3',
+      'Tungsten': 'Incandescent',
+      'Unknown value 0008': 'Underwater',
+      'Preset Custom 1': 'C1',
+      'Preset Custom 2': 'C2',
+      'Preset Custom 3': 'C3',
+    },
   },
 };
 
@@ -82,7 +107,23 @@ const CANON: CameraBrand = {
     'S': { shutter: true, aperture: false, iso: true, ev: true, wb: true, metering: true, mode: true, focusmode: true },
     'M': { shutter: true, aperture: true, iso: true, ev: false, wb: true, metering: true, mode: true, focusmode: true },
   },
-  quirks: {},
+  quirks: {
+    apertureSetting: 'aperture',
+    evSetting: 'exposurecompensation',
+    focusModeChoices: ['One Shot', 'AI Servo', 'AI Focus'],
+    whiteBalanceLabels: {
+      'Auto': 'Auto',
+      'Daylight': 'Daylight',
+      'Shadow': 'Shade',
+      'Cloudy': 'Cloudy',
+      'Tungsten': 'Tungsten',
+      'Fluorescent': 'Fluorescent',
+      'Flash': 'Flash',
+      'Manual': 'Custom',
+      'Color Temperature': 'K',
+      'AWB White': 'AWB White',
+    },
+  },
 };
 
 // Nikon-specific quirks

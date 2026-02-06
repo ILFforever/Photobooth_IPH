@@ -31,6 +31,7 @@
 #include <sys/statvfs.h>
 #include <dirent.h>
 #include <time.h>
+#include "camera-brand.h"
 
 #define CMD_PIPE "/tmp/camera_cmd"
 #define STATUS_PIPE "/tmp/camera_status"
@@ -38,10 +39,33 @@
 #define POLL_INTERVAL_MS 1000
 #define MAX_OPEN_RETRIES 5
 #define OPEN_RETRY_DELAY_MS 2000
+#define CAMERA_SWITCH_GRACE_SEC 5  // Grace period after camera switch before reporting disconnect
+#define MAX_DOWNLOAD_RETRIES 3     // Max download attempts before skipping a file
+#define FAILED_FILE_RESET_SEC 300  // Reset failed files after 5 minutes
+
+// Track files that have failed to download
+#define MAX_FAILED_FILES 50
+typedef struct {
+    char filename[128];
+    int retry_count;
+    time_t first_failure;
+} FailedFile;
+
+static FailedFile g_failed_files[MAX_FAILED_FILES];
+static int g_failed_file_count = 0;
 
 static volatile sig_atomic_t g_running = 1;
 static int g_status_fd = -1;
 static int g_widgets_listed = 0;  // Track if we've listed widgets for debug
+static time_t g_last_camera_switch = 0;  // Timestamp of last camera switch
+static CameraBrand g_current_brand = BRAND_UNKNOWN;  // Detected camera brand
+static CameraBrand g_last_logged_brand = BRAND_UNKNOWN;  // Track last logged brand
+
+// Persistent detection cache - only auto-detect once per camera connection
+static GPPortInfoList *g_cached_port_info_list = NULL;
+static CameraAbilitiesList *g_cached_abilities_list = NULL;
+static int g_cached_camera_index = -1;
+static int g_detection_valid = 0;
 
 typedef enum {
     MODE_IDLE,
@@ -211,14 +235,16 @@ static void ensure_storage_space(unsigned long long file_size_estimate) {
 static Camera* open_camera(int camera_index, int *ret_out) {
     Camera *camera = NULL;
     CameraList *list = NULL;
-    GPPortInfoList *port_info_list = NULL;
-    CameraAbilitiesList *abilities_list = NULL;
     GPPortInfo port_info;
     CameraAbilities abilities;
     const char *model_name = NULL;
     const char *port_name = NULL;
     int ret, count;
     GPContext *context = create_context();
+    struct timespec t_start, t_detect_end, t_init_end;
+    int did_detection = 0;
+
+    clock_gettime(CLOCK_MONOTONIC, &t_start);
 
     if (ret_out) *ret_out = GP_OK;
 
@@ -229,22 +255,44 @@ static Camera* open_camera(int camera_index, int *ret_out) {
         return NULL;
     }
 
+    /* Check if we need to do auto-detect (only once per camera connection) */
+    if (!g_detection_valid || g_cached_camera_index != camera_index) {
+        fprintf(stderr, "controller: [AUTO-DETECT] Running camera detection (first time or camera changed)...\n");
+        did_detection = 1;
+
+        /* Free old cached lists if they exist */
+        if (g_cached_abilities_list) {
+            gp_abilities_list_free(g_cached_abilities_list);
+            g_cached_abilities_list = NULL;
+        }
+        if (g_cached_port_info_list) {
+            gp_port_info_list_free(g_cached_port_info_list);
+            g_cached_port_info_list = NULL;
+        }
+
+        /* Create and populate persistent lists */
+        ret = gp_port_info_list_new(&g_cached_port_info_list);
+        if (ret < GP_OK) { goto error; }
+
+        ret = gp_port_info_list_load(g_cached_port_info_list);
+        if (ret < GP_OK) { goto error; }
+
+        ret = gp_abilities_list_new(&g_cached_abilities_list);
+        if (ret < GP_OK) { goto error; }
+
+        ret = gp_abilities_list_load(g_cached_abilities_list, context);
+        if (ret < GP_OK) { goto error; }
+
+        /* Mark cache as valid */
+        g_cached_camera_index = camera_index;
+        g_detection_valid = 1;
+    }
+
+    /* Always need to detect cameras in the current session (but lists are cached) */
     ret = gp_list_new(&list);
     if (ret < GP_OK) { goto error; }
 
-    ret = gp_port_info_list_new(&port_info_list);
-    if (ret < GP_OK) { goto error; }
-
-    ret = gp_port_info_list_load(port_info_list);
-    if (ret < GP_OK) { goto error; }
-
-    ret = gp_abilities_list_new(&abilities_list);
-    if (ret < GP_OK) { goto error; }
-
-    ret = gp_abilities_list_load(abilities_list, context);
-    if (ret < GP_OK) { goto error; }
-
-    ret = gp_abilities_list_detect(abilities_list, port_info_list, list, context);
+    ret = gp_abilities_list_detect(g_cached_abilities_list, g_cached_port_info_list, list, context);
     if (ret < GP_OK) { goto error; }
 
     count = gp_list_count(list);
@@ -262,18 +310,28 @@ static Camera* open_camera(int camera_index, int *ret_out) {
 
     gp_list_get_name(list, camera_index, &model_name);
     gp_list_get_value(list, camera_index, &port_name);
-    /* Only log on first open — suppress for repeated poll opens */
 
-    int model_index = gp_abilities_list_lookup_model(abilities_list, model_name);
-    if (model_index < GP_OK) { goto error; }
+    /* Get abilities for the model */
+    int model_index = gp_abilities_list_lookup_model(g_cached_abilities_list, model_name);
+    if (model_index < GP_OK) {
+        if (ret_out) *ret_out = model_index;
+        goto error;
+    }
+    gp_abilities_list_get_abilities(g_cached_abilities_list, model_index, &abilities);
 
-    gp_abilities_list_get_abilities(abilities_list, model_index, &abilities);
-    int port_index = gp_port_info_list_lookup_path(port_info_list, port_name);
+    int port_index = gp_port_info_list_lookup_path(g_cached_port_info_list, port_name);
     if (port_index < GP_OK) { goto error; }
 
-    gp_port_info_list_get_info(port_info_list, port_index, &port_info);
+    gp_port_info_list_get_info(g_cached_port_info_list, port_index, &port_info);
     gp_camera_set_abilities(camera, abilities);
     gp_camera_set_port_info(camera, port_info);
+
+    gp_list_free(list);
+    list = NULL;
+
+    clock_gettime(CLOCK_MONOTONIC, &t_detect_end);
+    long detect_ms = (t_detect_end.tv_sec - t_start.tv_sec) * 1000 +
+                     (t_detect_end.tv_nsec - t_start.tv_nsec) / 1000000;
 
     ret = gp_camera_init(camera, context);
     if (ret < GP_OK) {
@@ -282,16 +340,65 @@ static Camera* open_camera(int camera_index, int *ret_out) {
         goto error;
     }
 
-    gp_abilities_list_free(abilities_list);
-    gp_port_info_list_free(port_info_list);
-    gp_list_free(list);
-    gp_context_unref(context);
+    /* Brand detection with summary - only on first detection */
+    if (g_current_brand == BRAND_UNKNOWN) {
+        const char *manufacturer = NULL;
+        char manufacturer_buf[128] = {0};
+        CameraText summary;
+        ret = gp_camera_get_summary(camera, &summary, context);
+        if (ret >= GP_OK) {
+            const char *mfg_key = "Manufacturer:";
+            const char *mfg_pos = strstr(summary.text, mfg_key);
+            if (mfg_pos) {
+                mfg_pos += strlen(mfg_key);
+                while (*mfg_pos == ' ' || *mfg_pos == '\t') mfg_pos++;
+                int j = 0;
+                while (*mfg_pos && *mfg_pos != '\n' && *mfg_pos != '\r' && j < 127) {
+                    manufacturer_buf[j++] = *mfg_pos++;
+                }
+                manufacturer_buf[j] = '\0';
+                manufacturer = manufacturer_buf;
+            }
+        }
 
+        if (manufacturer && strlen(manufacturer) > 0) {
+            g_current_brand = detect_camera_brand(manufacturer);
+        } else {
+            g_current_brand = detect_camera_brand(model_name);
+        }
+
+        const char *brand_name = "Unknown";
+        switch (g_current_brand) {
+            case BRAND_FUJI:     brand_name = "Fujifilm"; break;
+            case BRAND_CANON:    brand_name = "Canon"; break;
+            case BRAND_NIKON:    brand_name = "Nikon"; break;
+            case BRAND_SONY:     brand_name = "Sony"; break;
+            case BRAND_PANASONIC: brand_name = "Panasonic"; break;
+            case BRAND_OLYMPUS:  brand_name = "Olympus"; break;
+            default:             brand_name = "Unknown"; break;
+        }
+        fprintf(stderr, "controller: Detected brand: %s\n", brand_name);
+        g_last_logged_brand = g_current_brand;
+    }
+
+    clock_gettime(CLOCK_MONOTONIC, &t_init_end);
+    long init_ms = (t_init_end.tv_sec - t_detect_end.tv_sec) * 1000 +
+                   (t_init_end.tv_nsec - t_detect_end.tv_nsec) / 1000000;
+    long total_ms = (t_init_end.tv_sec - t_start.tv_sec) * 1000 +
+                    (t_init_end.tv_nsec - t_start.tv_nsec) / 1000000;
+
+    if (did_detection) {
+        fprintf(stderr, "controller: [OPEN TIMING] Detection: %ldms (with auto-detect) | Init: %ldms | Total: %ldms\n",
+                detect_ms, init_ms, total_ms);
+    } else {
+        fprintf(stderr, "controller: [OPEN TIMING] Detection: %ldms (cached lists) | Init: %ldms | Total: %ldms\n",
+                detect_ms, init_ms, total_ms);
+    }
+
+    gp_context_unref(context);
     return camera;
 
 error:
-    if (abilities_list) gp_abilities_list_free(abilities_list);
-    if (port_info_list) gp_port_info_list_free(port_info_list);
     if (list) gp_list_free(list);
     if (camera) gp_camera_free(camera);
     gp_context_unref(context);
@@ -312,19 +419,195 @@ static int extract_file_number(const char *filename) {
 }
 
 /*
+ * Extract a value from JSON string by key
+ * Returns a newly allocated string that must be freed by caller, or NULL if not found
+ */
+static char *extract_json_value(const char *json, const char *key) {
+    char search[128];
+    snprintf(search, sizeof(search), "\"%s\":\"", key);
+
+    const char *start = strstr(json, search);
+    if (!start) return NULL;
+
+    start += strlen(search);  // Move past the key and ":\"
+
+    const char *end = strchr(start, '"');
+    if (!end) return NULL;
+
+    size_t len = end - start;
+    char *result = malloc(len + 1);
+    if (result) {
+        memcpy(result, start, len);
+        result[len] = '\0';
+    }
+    return result;
+}
+
+/*
+ * Find a widget by name or path (e.g., "parent.child") in the config tree
+ */
+static CameraWidget* find_widget_by_name(CameraWidget *root, const char *name) {
+    if (!root || !name) return NULL;
+
+    /* Check for dot-separated path (e.g., "capturesettings.aperture") */
+    const char *dot = strchr(name, '.');
+    if (dot) {
+        /* First part is the parent widget name */
+        char parent_name[64];
+        size_t parent_len = dot - name;
+        if (parent_len >= sizeof(parent_name)) parent_len = sizeof(parent_name) - 1;
+        strncpy(parent_name, name, parent_len);
+        parent_name[parent_len] = '\0';
+
+        /* Find parent widget */
+        const char *widget_name = NULL;
+        gp_widget_get_name(root, &widget_name);
+        if (widget_name && strcmp(widget_name, parent_name) == 0) {
+            /* Found parent, now search for child */
+            return find_widget_by_name(root, dot + 1);
+        }
+
+        /* Search children for parent */
+        int child_count = gp_widget_count_children(root);
+        for (int i = 0; i < child_count; i++) {
+            CameraWidget *child = NULL;
+            if (gp_widget_get_child(root, i, &child) == GP_OK && child) {
+                CameraWidget *found = find_widget_by_name(child, name);
+                if (found) return found;
+            }
+        }
+        return NULL;
+    }
+
+    /* No dot - simple name match */
+    const char *widget_name = NULL;
+    gp_widget_get_name(root, &widget_name);
+    if (widget_name && strcmp(widget_name, name) == 0) {
+        return root;
+    }
+
+    /* Search children recursively */
+    int child_count = gp_widget_count_children(root);
+    for (int i = 0; i < child_count; i++) {
+        CameraWidget *child = NULL;
+        if (gp_widget_get_child(root, i, &child) == GP_OK && child) {
+            CameraWidget *found = find_widget_by_name(child, name);
+            if (found) return found;
+        }
+    }
+
+    return NULL;
+}
+
+/*
+ * Get a single config value by name (searches full config tree)
+ * This is needed for widgets like "5010" that gp_camera_get_single_config might not find
+ */
+static char *get_config_valuebyname(Camera *camera, GPContext *context, const char *setting_name) {
+    CameraWidget *config = NULL;
+    CameraWidget *widget = NULL;
+    char *result = NULL;
+
+    int ret = gp_camera_get_config(camera, &config, context);
+    if (ret < GP_OK) {
+        fprintf(stderr, "controller: Failed to get config for '%s': %s\n",
+                setting_name, gp_result_as_string(ret));
+        return NULL;
+    }
+
+    widget = find_widget_by_name(config, setting_name);
+    if (!widget) {
+        // fprintf(stderr, "controller: Widget '%s' not found in config tree\n", setting_name);
+        gp_widget_free(config);
+        return NULL;
+    }
+
+    // Get value based on widget type
+    CameraWidgetType type;
+    gp_widget_get_type(widget, &type);
+
+    if (type == GP_WIDGET_RADIO || type == GP_WIDGET_MENU) {
+        const char *current_value = NULL;
+        ret = gp_widget_get_value(widget, &current_value);
+        if (ret >= GP_OK && current_value) {
+            result = strdup(current_value);
+        }
+    } else if (type == GP_WIDGET_TEXT) {
+        const char *text = NULL;
+        gp_widget_get_value(widget, &text);
+        if (text) {
+            result = strdup(text);
+        }
+    } else if (type == GP_WIDGET_RANGE) {
+        float current;
+        ret = gp_widget_get_value(widget, &current);
+        if (ret >= GP_OK) {
+            char buf[64];
+            snprintf(buf, sizeof(buf), "%.1f", current);
+            result = strdup(buf);
+        }
+    }
+
+    gp_widget_free(config);
+    return result;
+}
+
+/*
  * Get a single camera config value by name
  * Returns the value as a string (must be freed by caller) or NULL on error
+ *
+ * First tries gp_camera_get_single_config (fast path), then falls back to
+ * full config tree search (slow path) for widgets not accessible via single config.
+ * This is needed for Canon cameras where many widgets return GP_ERROR_BAD_PARAMETERS
+ * when accessed via get_single_config.
  */
 static char *get_single_config_value(Camera *camera, GPContext *context, const char *setting_name) {
     CameraWidget *widget = NULL;
     int ret;
     char *result = NULL;
 
+    /* Try fast path: gp_camera_get_single_config */
+    // fprintf(stderr, "controller: [FAST PATH] Trying gp_camera_get_single_config for '%s'...\n", setting_name);
     ret = gp_camera_get_single_config(camera, setting_name, &widget, context);
+
+    /* If single config fails, try slow path: full config tree search */
     if (ret < GP_OK) {
-        fprintf(stderr, "controller: Failed to get config '%s': %s\n", setting_name, gp_result_as_string(ret));
+        /* Blacklist for slow path: widgets that are unreliable and not critical */
+        const char *slow_path_blacklist[] = {
+            "d36b",         /* BatteryInfo2 - intermittently fails on Fuji, not critical */
+            "batterylevel", /* Generic battery - not critical */
+            NULL
+        };
+
+        int is_blacklisted = 0;
+        for (int i = 0; slow_path_blacklist[i] != NULL; i++) {
+            if (strcmp(setting_name, slow_path_blacklist[i]) == 0) {
+                is_blacklisted = 1;
+                break;
+            }
+        }
+
+        if (is_blacklisted) {
+            fprintf(stderr, "controller: [FAST PATH FAILED] '%s' returned %d (%s), SKIPPING slow path (blacklisted)\n",
+                    setting_name, ret, gp_result_as_string(ret));
+            return NULL;
+        }
+
+        fprintf(stderr, "controller: [FAST PATH FAILED] '%s' returned %d (%s), falling back to SLOW PATH (full config tree)...\n",
+                setting_name, ret, gp_result_as_string(ret));
+        /* Fall back to full config tree search (works for nested widgets on Canon) */
+        result = get_config_valuebyname(camera, context, setting_name);
+        if (result) {
+            /* Successfully found via full config search */
+            fprintf(stderr, "controller: [SLOW PATH SUCCESS] Found '%s' via full config tree\n", setting_name);
+            return result;
+        }
+        fprintf(stderr, "controller: Failed to get config '%s': %s (tried single config and full tree)\n",
+                setting_name, gp_result_as_string(ret));
         return NULL;
     }
+
+    // fprintf(stderr, "controller: [FAST PATH SUCCESS] Got '%s' via single config\n", setting_name);
 
     if (!widget) {
         fprintf(stderr, "controller: Config '%s' not found\n", setting_name);
@@ -335,7 +618,7 @@ static char *get_single_config_value(Camera *camera, GPContext *context, const c
     CameraWidgetType type;
 
     gp_widget_get_type(widget, &type);
-    fprintf(stderr, "controller: Widget '%s' type: %d\n", setting_name, type);
+    // fprintf(stderr, "controller: Widget '%s' type: %d\n", setting_name, type);
 
     /* Get current value based on widget type */
     if (type == GP_WIDGET_RADIO || type == GP_WIDGET_MENU) {
@@ -345,7 +628,7 @@ static char *get_single_config_value(Camera *camera, GPContext *context, const c
         if (ret >= GP_OK && current_value) {
             strncpy(value_buf, current_value, sizeof(value_buf) - 1);
             result = strdup(value_buf);
-            fprintf(stderr, "controller: Got RADIO/MENU value: %s\n", result);
+            // fprintf(stderr, "controller: Got RADIO/MENU value: %s\n", result);
         } else {
             fprintf(stderr, "controller: Failed to get RADIO/MENU value: %s\n", gp_result_as_string(ret));
         }
@@ -354,7 +637,7 @@ static char *get_single_config_value(Camera *camera, GPContext *context, const c
         gp_widget_get_value(widget, &text);
         if (text) {
             result = strdup(text);
-            fprintf(stderr, "controller: Got TEXT value: %s\n", result);
+            // fprintf(stderr, "controller: Got TEXT value: %s\n", result);
         }
     } else if (type == GP_WIDGET_RANGE) {
         float current;
@@ -362,7 +645,7 @@ static char *get_single_config_value(Camera *camera, GPContext *context, const c
         if (ret >= GP_OK) {
             snprintf(value_buf, sizeof(value_buf), "%.1f", current);
             result = strdup(value_buf);
-            fprintf(stderr, "controller: Got RANGE value: %s\n", result);
+            // fprintf(stderr, "controller: Got RANGE value: %s\n", result);
         }
     } else {
         fprintf(stderr, "controller: Unknown widget type %d for '%s'\n", type, setting_name);
@@ -418,16 +701,34 @@ static int get_camera_status_json(Camera *camera, GPContext *context, char *stat
         return -1;
     }
 
-    /* Common settings we want to read */
+    /* Get brand-specific widget names */
+    const BrandWidgets *widgets = get_widgets_for_brand(g_current_brand);
+
+    /* Build settings list from brand-specific widget names */
     const char *settings[] = {
-        "iso",
-        "f-number",
+        widgets->iso,
+        widgets->aperture,
         "shutterspeed",
         "shutterspeed2",
-        "exposurecompensation",
-        "whitebalance",
-        "focusmode",
-        "d36b",  // BatteryInfo2 (Fuji X-H2 battery level)
+        widgets->ev,
+        "exposurecompensation",  /* Fallback for EV */
+        widgets->wb,
+        widgets->focus,
+        widgets->metering,
+        widgets->battery,
+        "batterylevel",  /* Generic fallback */
+        NULL
+    };
+
+    /* Shooting mode widget names to try (brand-specific first, then fallbacks) */
+    const char *shooting_mode_widgets[] = {
+        widgets->mode,           /* Brand-specific primary */
+        "expprogram",            /* Fuji */
+        "autoexposuremode",      /* Canon */
+        "autoexposuremodedial",  /* Canon alternative */
+        "exposureprogram",
+        "exposuremode",
+        "capturemode",
         NULL
     };
 
@@ -525,6 +826,47 @@ static int get_camera_status_json(Camera *camera, GPContext *context, char *stat
         }
     }
 
+    /* Try to find shooting mode from config (still using the same config tree) */
+    char *shootingmode = NULL;
+    for (int j = 0; shooting_mode_widgets[j] != NULL; j++) {
+        CameraWidget *sm_widget = NULL;
+        int sm_child_count = gp_widget_count_children(config);
+        for (int k = 0; k < sm_child_count; k++) {
+            CameraWidget *child = NULL;
+            const char *child_name = NULL;
+            gp_widget_get_child(config, k, &child);
+            if (child) {
+                gp_widget_get_name(child, &child_name);
+                if (child_name && strcmp(child_name, shooting_mode_widgets[j]) == 0) {
+                    sm_widget = child;
+                    break;
+                }
+            }
+        }
+
+        if (sm_widget) {
+            const char *sm_value = NULL;
+            CameraWidgetType sm_type;
+            gp_widget_get_type(sm_widget, &sm_type);
+            if (sm_type == GP_WIDGET_RADIO || sm_type == GP_WIDGET_MENU) {
+                gp_widget_get_value(sm_widget, &sm_value);
+                if (sm_value) {
+                    shootingmode = strdup(sm_value);
+                    break;
+                }
+            }
+        }
+    }
+
+    /* Add shooting mode to JSON */
+    if (shootingmode && shootingmode[0] != '\0') {
+        if (!first) {
+            json_offset += snprintf(status_json + json_offset, max_size - json_offset, ",");
+        }
+        json_offset += snprintf(status_json + json_offset, max_size - json_offset, "\"shootingmode\":\"%s\"", shootingmode);
+        free(shootingmode);
+    }
+
     json_offset += snprintf(status_json + json_offset, max_size - json_offset, "}");
 
     gp_widget_free(config);
@@ -567,6 +909,81 @@ static int find_highest_file(Camera *camera, GPContext *context,
     }
 
     return max_number;
+}
+
+/* Reset old failed file entries (called periodically) */
+static void reset_old_failed_files(void) {
+    time_t now = time(NULL);
+    int new_count = 0;
+
+    for (int i = 0; i < g_failed_file_count; i++) {
+        if (now - g_failed_files[i].first_failure < FAILED_FILE_RESET_SEC) {
+            // Keep this entry
+            if (new_count != i) {
+                g_failed_files[new_count] = g_failed_files[i];
+            }
+            new_count++;
+        } else {
+            fprintf(stderr, "controller: Reset failed file entry for %s (was %d retries)\n",
+                    g_failed_files[i].filename, g_failed_files[i].retry_count);
+        }
+    }
+    g_failed_file_count = new_count;
+}
+
+/* Find a failed file entry, returns index or -1 if not found */
+static int find_failed_file(const char *filename) {
+    for (int i = 0; i < g_failed_file_count; i++) {
+        if (strcmp(g_failed_files[i].filename, filename) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+/* Check if a file should be skipped due to too many failures */
+static int should_skip_file(const char *filename) {
+    int idx = find_failed_file(filename);
+    if (idx < 0) return 0;
+    return g_failed_files[idx].retry_count >= MAX_DOWNLOAD_RETRIES;
+}
+
+/* Record a failed download attempt, returns new retry count */
+static int record_failed_download(const char *filename) {
+    int idx = find_failed_file(filename);
+
+    if (idx >= 0) {
+        // Existing entry
+        g_failed_files[idx].retry_count++;
+        return g_failed_files[idx].retry_count;
+    }
+
+    // New entry
+    if (g_failed_file_count < MAX_FAILED_FILES) {
+        strncpy(g_failed_files[g_failed_file_count].filename, filename,
+                sizeof(g_failed_files[0].filename) - 1);
+        g_failed_files[g_failed_file_count].filename[sizeof(g_failed_files[0].filename) - 1] = '\0';
+        g_failed_files[g_failed_file_count].retry_count = 1;
+        g_failed_files[g_failed_file_count].first_failure = time(NULL);
+        g_failed_file_count++;
+        return 1;
+    }
+
+    // Table full, just return 1
+    fprintf(stderr, "controller: Warning - failed files table full\n");
+    return 1;
+}
+
+/* Clear a file from failed list (on successful download) */
+static void clear_failed_file(const char *filename) {
+    int idx = find_failed_file(filename);
+    if (idx < 0) return;
+
+    // Shift remaining entries
+    for (int i = idx; i < g_failed_file_count - 1; i++) {
+        g_failed_files[i] = g_failed_files[i + 1];
+    }
+    g_failed_file_count--;
 }
 
 /* Check if a file already exists locally in /tmp */
@@ -637,6 +1054,20 @@ static int check_and_download_all_files(Camera *camera, GPContext *context) {
                 } else {
                     fprintf(stderr, "controller: Cleaned up existing file %s from camera\n", name);
                 }
+                clear_failed_file(name);  // Clear any failed download tracking
+                continue;
+            }
+
+            // Check if file should be skipped due to repeated failures
+            if (should_skip_file(name)) {
+                // Only log once in a while to avoid spam
+                static time_t last_skip_log = 0;
+                time_t now = time(NULL);
+                if (now - last_skip_log > 30) {
+                    fprintf(stderr, "controller: Skipping %s - exceeded max download retries (%d)\n",
+                            name, MAX_DOWNLOAD_RETRIES);
+                    last_skip_log = now;
+                }
                 continue;
             }
 
@@ -664,6 +1095,7 @@ static int check_and_download_all_files(Camera *camera, GPContext *context) {
                 if (ret >= GP_OK) {
                     fprintf(stderr, "controller: Downloaded %s/%s -> %s\n", folders[fi], name, output_path);
                     total_downloaded++;
+                    clear_failed_file(name);  // Clear any previous failure tracking
 
                     // Emit event to status pipe
                     if (g_status_fd >= 0) {
@@ -688,7 +1120,9 @@ static int check_and_download_all_files(Camera *camera, GPContext *context) {
                         fprintf(stderr, "controller: Deleted %s from camera\n", name);
                     }
                 } else {
-                    fprintf(stderr, "controller: Failed to save %s: error=%d (%s)\n", name, ret, gp_result_as_string(ret));
+                    int retries = record_failed_download(name);
+                    fprintf(stderr, "controller: Failed to save %s: error=%d (%s) [attempt %d/%d]\n",
+                            name, ret, gp_result_as_string(ret), retries, MAX_DOWNLOAD_RETRIES);
                     fprintf(stderr, "controller: Output path: %s, errno: %d (%s)\n", output_path, errno, strerror(errno));
 
                     // Check disk space
@@ -702,7 +1136,9 @@ static int check_and_download_all_files(Camera *camera, GPContext *context) {
                     }
                 }
             } else {
-                fprintf(stderr, "controller: Failed to download %s: error=%d (%s)\n", name, ret, gp_result_as_string(ret));
+                int retries = record_failed_download(name);
+                fprintf(stderr, "controller: Failed to download %s: error=%d (%s) [attempt %d/%d]\n",
+                        name, ret, gp_result_as_string(ret), retries, MAX_DOWNLOAD_RETRIES);
             }
 
             gp_file_free(file);
@@ -931,26 +1367,29 @@ static int capture_preview_frame(Camera *camera, GPContext *context) {
 static int do_capture(Camera *camera, GPContext *context) {
     CameraFilePath path;
     int ret;
+    struct timespec t0, t1, t2;
 
+    clock_gettime(CLOCK_MONOTONIC, &t0);
     fprintf(stderr, "controller: Triggering capture...\n");
     ret = gp_camera_capture(camera, GP_CAPTURE_IMAGE, &path, context);
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    fprintf(stderr, "controller: [TIMING] gp_camera_capture: %ldms\n",
+            (t1.tv_sec - t0.tv_sec) * 1000 + (t1.tv_nsec - t0.tv_nsec) / 1000000);
+
     if (ret < GP_OK) {
-        fprintf(stderr, "controller: Capture failed (Fuji quirk): %s\n", gp_result_as_string(ret));
-        /*
-         * Fuji X-H2 returns error but photo was taken.
-         * DON'T drain events - it causes "Access Denied" errors.
-         * Let the polling loop pick up the files instead.
-         */
-        return GP_OK;  /* Return success - photo was actually taken */
+        fprintf(stderr, "controller: Capture failed: %s\n", gp_result_as_string(ret));
+        return ret;  /* Return actual error - let caller handle it */
     }
 
     fprintf(stderr, "controller: Capture complete: %s/%s\n", path.folder, path.name);
 
     /* Download the file returned by gp_camera_capture directly */
     download_file(camera, context, path.folder, path.name);
+    clock_gettime(CLOCK_MONOTONIC, &t2);
+    fprintf(stderr, "controller: [TIMING] download_file: %ldms\n",
+            (t2.tv_sec - t1.tv_sec) * 1000 + (t2.tv_nsec - t1.tv_nsec) / 1000000);
 
-    /* Drain remaining events to pick up RAW+JPEG second file, etc. */
-    drain_camera_events(camera, context, 2000);
+    /* NOTE: Skipping drain - polling loop picks up any additional files (RAW+JPEG) */
 
     return GP_OK;
 }
@@ -1044,9 +1483,13 @@ int main(int argc, char *argv[]) {
                 cmd_buffer[cmd_len - 1] = '\0';
             }
 
-            fprintf(stderr, "controller: Got command: %s\n", cmd_buffer);
+            // fprintf(stderr, "controller: Got command: %s\n", cmd_buffer);
 
             if (strcmp(cmd_buffer, "CAPTURE") == 0) {
+                struct timespec ts_start, ts_open, ts_capture, ts_exit, ts_end;
+                clock_gettime(CLOCK_MONOTONIC, &ts_start);
+                fprintf(stderr, "controller: [TIMING] CAPTURE command received\n");
+
                 // If live view is active, exit it first
                 if (live_view_active && camera) {
                     fprintf(stderr, "controller: Exiting live view for capture...\n");
@@ -1057,12 +1500,7 @@ int main(int argc, char *argv[]) {
                 }
 
                 mode = MODE_CAPTURE;
-                if (g_status_fd >= 0) {
-                    ssize_t written = write(g_status_fd, "{\"mode\":\"capture\"}\n", 18);
-                    if (written < 0) {
-                        fprintf(stderr, "controller: Failed to write mode=capture to status pipe: %s\n", strerror(errno));
-                    }
-                }
+                /* NOTE: Not sending mode-only message - polling loop sends full status */
 
                 /* Open camera for capture with retry logic */
                 int capture_attempts = 0;
@@ -1079,25 +1517,56 @@ int main(int argc, char *argv[]) {
                         usleep(OPEN_RETRY_DELAY_MS * 1000);
                     }
                 }
+                clock_gettime(CLOCK_MONOTONIC, &ts_open);
+                fprintf(stderr, "controller: [TIMING] open_camera: %ldms\n",
+                        (ts_open.tv_sec - ts_start.tv_sec) * 1000 + (ts_open.tv_nsec - ts_start.tv_nsec) / 1000000);
 
                 if (camera) {
-                    do_capture(camera, context);
+                    int capture_ret = do_capture(camera, context);
+                    clock_gettime(CLOCK_MONOTONIC, &ts_capture);
+                    fprintf(stderr, "controller: [TIMING] do_capture: %ldms\n",
+                            (ts_capture.tv_sec - ts_open.tv_sec) * 1000 + (ts_capture.tv_nsec - ts_open.tv_nsec) / 1000000);
+
                     gp_camera_exit(camera, context);
+                    clock_gettime(CLOCK_MONOTONIC, &ts_exit);
+                    fprintf(stderr, "controller: [TIMING] gp_camera_exit: %ldms\n",
+                            (ts_exit.tv_sec - ts_capture.tv_sec) * 1000 + (ts_exit.tv_nsec - ts_capture.tv_nsec) / 1000000);
+
                     gp_camera_free(camera);
                     camera = NULL;
+
+                    /* Send capture error to frontend if capture failed */
+                    if (capture_ret < GP_OK && g_status_fd >= 0) {
+                        char error_event[256];
+                        snprintf(error_event, sizeof(error_event),
+                                "{\"type\":\"capture_error\",\"error\":\"%s\"}\n",
+                                gp_result_as_string(capture_ret));
+                        ssize_t written = write(g_status_fd, error_event, strlen(error_event));
+                        if (written < 0) {
+                            fprintf(stderr, "controller: Failed to write capture_error to status pipe: %s\n", strerror(errno));
+                        }
+                    }
                 } else {
                     fprintf(stderr, "controller: Failed to open camera for capture after %d attempts\n",
                             MAX_OPEN_RETRIES);
                     consecutive_open_failures++;
+
+                    /* Send error event for camera open failure */
+                    if (g_status_fd >= 0) {
+                        const char *error_event = "{\"type\":\"capture_error\",\"error\":\"Failed to open camera\"}\n";
+                        ssize_t written = write(g_status_fd, error_event, strlen(error_event));
+                        if (written < 0) {
+                            fprintf(stderr, "controller: Failed to write capture_error to status pipe: %s\n", strerror(errno));
+                        }
+                    }
                 }
 
                 mode = MODE_IDLE;
-                if (g_status_fd >= 0) {
-                    ssize_t written = write(g_status_fd, "{\"mode\":\"idle\"}\n", 17);
-                    if (written < 0) {
-                        fprintf(stderr, "controller: Failed to write mode=idle to status pipe: %s\n", strerror(errno));
-                    }
-                }
+                /* NOTE: Not sending mode-only message - polling loop sends full status */
+
+                clock_gettime(CLOCK_MONOTONIC, &ts_end);
+                fprintf(stderr, "controller: [TIMING] CAPTURE total: %ldms\n",
+                        (ts_end.tv_sec - ts_start.tv_sec) * 1000 + (ts_end.tv_nsec - ts_start.tv_nsec) / 1000000);
 
             } else if (strcmp(cmd_buffer, "STATUS") == 0) {
                 const char *mode_str = (mode == MODE_IDLE) ? "idle" :
@@ -1179,6 +1648,46 @@ int main(int argc, char *argv[]) {
                     }
                 }
 
+            } else if (strncmp(cmd_buffer, "SWITCH_CAMERA ", 14) == 0) {
+                int new_index = atoi(cmd_buffer + 14);
+                fprintf(stderr, "controller: Switching to camera %d (was %d)\n", new_index, camera_index);
+
+                /* Close current camera if open */
+                if (camera) {
+                    if (live_view_active) {
+                        fprintf(stderr, "controller: Stopping live view for camera switch\n");
+                        live_view_active = 0;
+                    }
+                    gp_camera_exit(camera, context);
+                    gp_camera_free(camera);
+                    camera = NULL;
+                }
+
+                /* Update camera index and reset state */
+                camera_index = new_index;
+                last_file_number = 0;
+                consecutive_open_failures = 0;
+                g_widgets_listed = 0;  /* Re-list widgets for new camera */
+                mode = MODE_IDLE;
+                g_last_camera_switch = time(NULL);  /* Set grace period timestamp */
+
+                /* Invalidate detection cache - force re-detection for new camera */
+                g_detection_valid = 0;
+                g_current_brand = BRAND_UNKNOWN;
+                g_last_logged_brand = BRAND_UNKNOWN;
+                fprintf(stderr, "controller: Invalidated detection cache for camera switch\n");
+
+                /* Send confirmation */
+                if (g_status_fd >= 0) {
+                    char switch_msg[128];
+                    snprintf(switch_msg, sizeof(switch_msg),
+                            "{\"type\":\"camera_switched\",\"camera_index\":%d}\n", new_index);
+                    ssize_t written = write(g_status_fd, switch_msg, strlen(switch_msg));
+                    if (written < 0) {
+                        fprintf(stderr, "controller: Failed to write camera_switched: %s\n", strerror(errno));
+                    }
+                }
+
             } else if (strcmp(cmd_buffer, "QUIT") == 0) {
                 fprintf(stderr, "controller: Quit command received\n");
                 g_running = 0;
@@ -1192,11 +1701,15 @@ int main(int argc, char *argv[]) {
          *
          * When in live view mode, skip polling entirely - camera stays open.
          *
-         * Retry logic with exponential backoff for camera open failures.
+         * For polling, use minimal retries (2) with short delay - fail fast to detect disconnect.
          */
         if (mode == MODE_IDLE && !live_view_active) {
+            struct timespec cycle_start, camera_open_end, camera_close_start, camera_close_end;
+            clock_gettime(CLOCK_MONOTONIC, &cycle_start);
+
+            #define POLL_RETRIES 2
             int poll_attempts = 0;
-            while (poll_attempts < MAX_OPEN_RETRIES && g_running) {
+            while (poll_attempts < POLL_RETRIES && g_running) {
                 camera = open_camera(camera_index, &ret);
                 if (camera) {
                     consecutive_open_failures = 0;  /* Reset counter on success */
@@ -1204,56 +1717,74 @@ int main(int argc, char *argv[]) {
                 }
                 poll_attempts++;
                 fprintf(stderr, "controller: Camera open failed for polling (attempt %d/%d): %s\n",
-                        poll_attempts, MAX_OPEN_RETRIES, gp_result_as_string(ret));
+                        poll_attempts, POLL_RETRIES, gp_result_as_string(ret));
 
-                if (poll_attempts < MAX_OPEN_RETRIES) {
-                    /* Exponential backoff: 2s, 4s, 8s, 16s, 32s */
-                    int backoff_ms = OPEN_RETRY_DELAY_MS * (1 << (poll_attempts - 1));
-                    fprintf(stderr, "controller: Waiting %d ms before retry...\n", backoff_ms);
-                    usleep(backoff_ms * 1000);
+                if (poll_attempts < POLL_RETRIES) {
+                    usleep(500000);  /* 500ms before retry */
                 }
             }
 
             if (camera) {
+                clock_gettime(CLOCK_MONOTONIC, &camera_open_end);
+                long camera_open_ms = (camera_open_end.tv_sec - cycle_start.tv_sec) * 1000 +
+                                     (camera_open_end.tv_nsec - cycle_start.tv_nsec) / 1000000;
+
+                /* Successfully connected - clear grace period */
+                g_last_camera_switch = 0;
+
                 // List all available widgets once (for debugging widget names)
                 if (!g_widgets_listed) {
                     list_all_widgets(camera, context);
                     g_widgets_listed = 1;
                 }
 
+                // Periodically reset old failed file entries (allows retry after timeout)
+                reset_old_failed_files();
+
+                struct timespec poll_start, poll_end;
+                clock_gettime(CLOCK_MONOTONIC, &poll_start);
+
                 int new_num = check_and_download_all_files(camera, context);
                 if (new_num > last_file_number) {
                     last_file_number = new_num;
                 }
 
-                // Fetch battery, ISO, aperture, shutter, EV, white balance, and shooting mode
-                char *battery = get_single_config_value(camera, context, "d36b");
-                char *iso = get_single_config_value(camera, context, "iso");
-                char *aperture = get_single_config_value(camera, context, "f-number");
-                char *shutter = get_single_config_value(camera, context, "shutterspeed");
-                char *ev = get_single_config_value(camera, context, "exposurecompensation");
-                char *wb = get_single_config_value(camera, context, "whitebalance");
+                struct timespec files_check_end;
+                clock_gettime(CLOCK_MONOTONIC, &files_check_end);
+                long files_check_ms = (files_check_end.tv_sec - poll_start.tv_sec) * 1000 +
+                                     (files_check_end.tv_nsec - poll_start.tv_nsec) / 1000000;
 
-                // Try multiple possible widget names for shooting mode
-                char *shootingmode = get_single_config_value(camera, context, "expprogram");
+                // Fetch status using brand-specific widget names
+                const BrandWidgets *widgets = get_widgets_for_brand(g_current_brand);
+
+                char *battery = get_single_config_value(camera, context, widgets->battery);
+                char *iso = get_single_config_value(camera, context, widgets->iso);
+                char *aperture = get_single_config_value(camera, context, widgets->aperture);
+                char *shutter = get_single_config_value(camera, context, widgets->shutter);
+                char *ev = get_single_config_value(camera, context, widgets->ev);
+                char *wb = get_single_config_value(camera, context, widgets->wb);
+                char *shootingmode = get_single_config_value(camera, context, widgets->mode);
+
+                // Fallback: if primary mode widget fails, try alternatives
+                if (!shootingmode && g_current_brand != BRAND_FUJI) {
+                    shootingmode = get_single_config_value(camera, context, "expprogram");
+                }
                 if (!shootingmode) {
                     shootingmode = get_single_config_value(camera, context, "exposureprogram");
                 }
                 if (!shootingmode) {
                     shootingmode = get_single_config_value(camera, context, "exposuremode");
                 }
-                if (!shootingmode) {
-                    shootingmode = get_single_config_value(camera, context, "capturemode");
-                }
 
-                fprintf(stderr, "controller: Mode: %s | Battery: %s | ISO: %s | Aperture: %s | Shutter: %s | EV: %s | WB: %s\n",
-                        shootingmode ? shootingmode : "N/A",
-                        battery ? battery : "N/A",
-                        iso ? iso : "N/A",
-                        aperture ? aperture : "N/A",
-                        shutter ? shutter : "N/A",
-                        ev ? ev : "N/A",
-                        wb ? wb : "N/A");
+                // Verbose status logging disabled
+                // fprintf(stderr, "controller: Mode: %s | Battery: %s | ISO: %s | Aperture: %s | Shutter: %s | EV: %s | WB: %s\n",
+                //         shootingmode ? shootingmode : "N/A",
+                //         battery ? battery : "N/A",
+                //         iso ? iso : "N/A",
+                //         aperture ? aperture : "N/A",
+                //         shutter ? shutter : "N/A",
+                //         ev ? ev : "N/A",
+                //         wb ? wb : "N/A");
 
                 if (g_status_fd >= 0) {
                     char status_msg[1536];
@@ -1272,6 +1803,12 @@ int main(int argc, char *argv[]) {
                     }
                 }
 
+                clock_gettime(CLOCK_MONOTONIC, &poll_end);
+                long config_fetch_ms = (poll_end.tv_sec - files_check_end.tv_sec) * 1000 +
+                                       (poll_end.tv_nsec - files_check_end.tv_nsec) / 1000000;
+                long ops_total_ms = (poll_end.tv_sec - poll_start.tv_sec) * 1000 +
+                                    (poll_end.tv_nsec - poll_start.tv_nsec) / 1000000;
+
                 if (battery) free(battery);
                 if (iso) free(iso);
                 if (aperture) free(aperture);
@@ -1280,24 +1817,44 @@ int main(int argc, char *argv[]) {
                 if (wb) free(wb);
                 if (shootingmode) free(shootingmode);
 
+                clock_gettime(CLOCK_MONOTONIC, &camera_close_start);
                 gp_camera_exit(camera, context);
                 gp_camera_free(camera);
                 camera = NULL;
+                clock_gettime(CLOCK_MONOTONIC, &camera_close_end);
+
+                long camera_close_ms = (camera_close_end.tv_sec - camera_close_start.tv_sec) * 1000 +
+                                      (camera_close_end.tv_nsec - camera_close_start.tv_nsec) / 1000000;
+                long cycle_total_ms = (camera_close_end.tv_sec - cycle_start.tv_sec) * 1000 +
+                                     (camera_close_end.tv_nsec - cycle_start.tv_nsec) / 1000000;
+
+                fprintf(stderr, "controller: [CYCLE TIMING] Open: %ldms | Files: %ldms | Config: %ldms | Ops: %ldms | Close: %ldms | CYCLE TOTAL: %ldms\n",
+                        camera_open_ms, files_check_ms, config_fetch_ms, ops_total_ms, camera_close_ms, cycle_total_ms);
             } else {
                 consecutive_open_failures++;
-                fprintf(stderr, "controller: Failed to open camera for polling after %d attempts (consecutive failures: %d)\n",
-                        MAX_OPEN_RETRIES, consecutive_open_failures);
+                fprintf(stderr, "controller: Camera disconnected (consecutive failures: %d)\n",
+                        consecutive_open_failures);
 
-                /* If we've had too many consecutive failures, wait longer before next poll */
-                if (consecutive_open_failures > 3) {
-                    fprintf(stderr, "controller: Multiple consecutive failures, waiting 10 seconds...\n");
-                    sleep(10);
+                /* Only send disconnected status if we're outside the grace period after a camera switch */
+                time_t now = time(NULL);
+                if (now - g_last_camera_switch >= CAMERA_SWITCH_GRACE_SEC) {
+                    /* Send disconnected status to frontend */
+                    if (g_status_fd >= 0) {
+                        const char *disconnected_msg = "{\"type\":\"camera_disconnected\"}\n";
+                        ssize_t written = write(g_status_fd, disconnected_msg, strlen(disconnected_msg));
+                        if (written < 0) {
+                            fprintf(stderr, "controller: Failed to write disconnected status: %s\n", strerror(errno));
+                        }
+                    }
+                } else {
+                    fprintf(stderr, "controller: In grace period after camera switch (%ld sec remaining), suppressing disconnect\n",
+                            (long)(CAMERA_SWITCH_GRACE_SEC - (now - g_last_camera_switch)));
                 }
             }
         }
 
-        /* Sleep 2 seconds between polls — camera is free during this time */
-        sleep(2);
+        /* Sleep 1.5 seconds between polls — camera is free during this time */
+        usleep(1500000);
     }
 
     /* Cleanup */
@@ -1309,6 +1866,15 @@ int main(int argc, char *argv[]) {
         gp_camera_exit(camera, context);
         gp_camera_free(camera);
     }
+
+    /* Free cached detection lists */
+    if (g_cached_abilities_list) {
+        gp_abilities_list_free(g_cached_abilities_list);
+    }
+    if (g_cached_port_info_list) {
+        gp_port_info_list_free(g_cached_port_info_list);
+    }
+
     gp_context_unref(context);
     if (cmd_fd >= 0) close(cmd_fd);
     if (g_status_fd >= 0) close(g_status_fd);

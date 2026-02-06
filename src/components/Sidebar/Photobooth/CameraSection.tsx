@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronRight, ChevronUp, Camera, RefreshCw, Plug } from "lucide-react";
 import Icon from '@mdi/react';
+import * as Slider from "@radix-ui/react-slider";
 import {
   mdiCameraMeteringMatrix,
   mdiCameraMeteringPartial,
@@ -16,10 +17,20 @@ import {
   mdiBattery70,
   mdiBattery80,
   mdiBattery90,
-  mdiBatteryAlert
+  mdiBatteryAlert,
+  mdiWhiteBalanceSunny,
+  mdiCloud ,
+  mdiThermometer,
+  mdiLightbulb,
+  mdiWater,
+  mdiNumeric1,
+  mdiNumeric2,
+  mdiNumeric3,
+  mdiWhiteBalanceAuto,
+  mdiFlower,
+  mdiRefresh
 } from '@mdi/js';
-import * as Slider from "@radix-ui/react-slider";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useCamera } from "../../../contexts/CameraContext";
 import { detectBrand, normalizeMode, isSettingAdjustable, type CameraBrand } from "../../../services/cameraBrands";
 import { getCameraSettingsService } from "../../../services/cameraSettingsService";
@@ -116,8 +127,10 @@ interface CameraSectionProps {
   onSetWbValue: (value: string) => void;
   onSetMeteringValue: (value: string) => void;
   onSetActiveSetting: (setting: SettingType) => void;
-  onCameraOptionsLoaded?: (options: { iso: string[]; aperture: string[]; shutterspeed: string[]; whitebalance: string[]; '5010'?: string[] }) => void;
+  onCameraOptionsLoaded?: (options: { iso: string[]; aperture: string[]; shutterspeed: string[]; whitebalance: string[]; ev?: string[] }) => void;
   pendingSettings?: Record<string, string>;
+  /** Callback when camera selection/connection state changes */
+  onConnectionChange?: (isConnected: boolean, hasSelectedCamera: boolean) => void;
 }
 
 export function CameraSection({
@@ -144,6 +157,7 @@ export function CameraSection({
   onSetActiveSetting,
   onCameraOptionsLoaded,
   pendingSettings,
+  onConnectionChange,
 }: CameraSectionProps) {
   // Camera connection state
   const [availableCameras, setAvailableCameras] = useState<CameraInfo[]>([]);
@@ -157,7 +171,7 @@ export function CameraSection({
   const [cameraBrand, setCameraBrand] = useState<CameraBrand>(detectBrand('', '')); // Default to Fuji
 
   // Camera status from centralized WebSocket context
-  const { batteryLevel, shootingMode } = useCamera();
+  const { batteryLevel, shootingMode, setConnecting } = useCamera();
 
   // Normalize shooting mode for display and logic using brand framework
   const normalizedMode = normalizeMode(shootingMode, cameraBrand);
@@ -182,7 +196,7 @@ export function CameraSection({
     shutterspeed2: string[];
     whitebalance: string[];
     exposurecompensation: string[];
-    '5010'?: string[]; // Fuji EV compensation (PTP property)
+    ev?: string[]; // Brand-specific EV compensation (e.g., '5010' for Fuji, 'exposurecompensation' for Canon)
   }>({ iso: [], aperture: [], shutterspeed: [], shutterspeed2: [], whitebalance: [], exposurecompensation: [] });
 
   // Fetch available cameras on mount
@@ -198,24 +212,15 @@ export function CameraSection({
     setEvPreview(null);
   }, [shutterValue, apertureIndex, isoIndex, evIndex]);
 
-  // Close control panels when switching to a mode where they're not applicable
+  // Notify parent of connection state changes
   useEffect(() => {
-    if (activeSetting === 'shutter' && !isSettingAdjustable(shootingMode, 'shutter', cameraBrand)) {
-      onSetActiveSetting(null);
-    }
-    if (activeSetting === 'aperture' && !isSettingAdjustable(shootingMode, 'aperture', cameraBrand)) {
-      onSetActiveSetting(null);
-    }
-    if (activeSetting === 'ev' && !isSettingAdjustable(shootingMode, 'ev', cameraBrand)) {
-      onSetActiveSetting(null);
-    }
-  }, [shootingMode, activeSetting, onSetActiveSetting, cameraBrand]);
+    onConnectionChange?.(isConnected, selectedCamera !== null);
+  }, [isConnected, selectedCamera, onConnectionChange]);
 
   const fetchCameras = async () => {
     setIsLoadingCameras(true);
     try {
       const response = await fetch(`${API_BASE}/api/cameras`);
-
       if (response.ok) {
         const cameras = await response.json();
         setAvailableCameras(cameras);
@@ -228,6 +233,7 @@ export function CameraSection({
   };
 
   const handleConnectCamera = async (camera: CameraInfo) => {
+    setConnecting(true);
     setSelectedCamera(camera);
     setIsConnected(true);
     setShowCameraDropdown(false);
@@ -240,6 +246,14 @@ export function CameraSection({
 
     // Update the global camera settings service
     cameraSettingsService.setCamera(camera.id, camera.manufacturer, camera.model);
+
+    // Tell controller to track this camera for polling/disconnect detection
+    try {
+      await fetch(`${API_BASE}/api/controller/switch?camera=${camera.id}`, { method: 'POST' });
+      console.log(`Controller switched to camera ${camera.id}`);
+    } catch (error) {
+      console.warn('Failed to switch controller camera:', error);
+    }
 
     // Fetch initial status and config
     try {
@@ -264,27 +278,28 @@ export function CameraSection({
         // Note: Some cameras use 'f-number' instead of 'aperture' for the widget name
         const apertureConfig = config['f-number']?.choices || config.aperture?.choices || [];
 
-        // Convert Fuji "5010" EV choices from ×1000 format to standard EV format
-        // e.g., "-5000" → "-5.0", "1000" → "+1.0"
-        let ev5010Choices: string[] | undefined;
-        if (config['5010']?.choices && Array.isArray(config['5010'].choices)) {
-          ev5010Choices = config['5010'].choices.map((v: string) => {
-            const num = parseInt(v, 10);
-            const ev = num / 1000;
-            // Format with + for positive values
-            return ev > 0 ? `+${ev.toFixed(3)}` : ev.toFixed(3);
-          });
-          console.log('Converted 5010 EV choices:', ev5010Choices);
+        // Convert camera EV choices to display format using the service
+        // Use brand-specific EV setting name (e.g., '5010' for Fuji, 'exposurecompensation' for Canon)
+        const evSettingName = cameraSettingsService.getEvSettingName();
+        let evChoices: string[] | undefined;
+        if (config[evSettingName]?.choices && Array.isArray(config[evSettingName].choices)) {
+          evChoices = cameraSettingsService.convertEvChoicesToDisplay(config[evSettingName].choices);
+          console.log(`Converted ${evSettingName} EV choices:`, evChoices);
         }
 
+        // Convert camera ISO choices to display format (e.g., "-1" -> "Auto 1" for Fuji)
+        const isoChoices = config.iso?.choices || [];
+        const convertedIsoChoices = cameraSettingsService.convertIsoChoicesToDisplay(isoChoices);
+        console.log('Converted ISO choices:', convertedIsoChoices);
+
         const newOptions: typeof cameraSettingOptions = {
-          iso: config.iso?.choices || [],
+          iso: convertedIsoChoices,
           aperture: apertureConfig,
           shutterspeed: config.shutterspeed?.choices || [],
           shutterspeed2: config.shutterspeed2?.choices || [],
           whitebalance: config.whitebalance?.choices || [],
           exposurecompensation: config.exposurecompensation?.choices || [],
-          '5010': ev5010Choices,
+          ev: evChoices,
         };
         setCameraSettingOptions(newOptions);
         console.log('Camera setting options:', newOptions);
@@ -307,6 +322,8 @@ export function CameraSection({
       }
     } catch (error) {
       console.error('Error fetching camera info:', error);
+    } finally {
+      setConnecting(false);
     }
   };
 
@@ -362,7 +379,11 @@ export function CameraSection({
 
   // Send setting to camera
   const setCameraSetting = async (setting: string, value: string) => {
-    if (!selectedCamera) return;
+    console.log('[CameraSection] setCameraSetting:', setting, value, 'selectedCamera:', selectedCamera);
+    if (!selectedCamera) {
+      console.warn('[CameraSection] No selected camera, skipping setting');
+      return;
+    }
 
     try {
       const response = await fetch(`${API_BASE}/api/camera/config?camera=${selectedCamera.id}`, {
@@ -375,9 +396,14 @@ export function CameraSection({
 
       if (!response.ok) {
         console.error(`Failed to set ${setting} to ${value}:`, response.statusText);
+        return false;
       }
+
+      console.log(`[CameraSection] Successfully set ${setting} to ${value}`);
+      return true;
     } catch (error) {
-      console.error(`Error setting ${setting}:`, error);
+      console.error(`[CameraSection] Error setting ${setting}:`, error);
+      return false;
     }
   };
 
@@ -398,80 +424,115 @@ export function CameraSection({
     showArrows?: boolean,
     onCommit?: (value: string) => void,
     disabled?: boolean,
-    isShortTick?: (optionValue: string) => boolean
-  ) => (
-    <div className="setting-control-panel">
-      <div className="setting-control-header">
-        <span className="setting-control-title">{title}</span>
-        <button
-          className="setting-control-close"
-          onClick={() => onSetActiveSetting(null)}
-        >
-          <ChevronDown size={14} />
-        </button>
-      </div>
-      <div className="shutter-dial-container">
-        <div className="shutter-dial-viewport">
-          {/* Fixed indicator in center */}
-          <div className="shutter-indicator-fixed">
-            <div className="shutter-indicator-triangle" />
-          </div>
+    isShortTick?: (optionValue: string) => boolean,
+    previewState?: number | null,
+    setPreviewState?: (value: number | null) => void
+  ) => {
+    // Use preview state if provided, otherwise use the value directly
+    const displayValue = previewState !== null && previewState !== undefined ? previewState : value;
 
-          {/* Tick marks overlay - moves with slider */}
-          <div
-            className="shutter-ticks-container"
-            style={{
-              transform: `translateX(${50 - (value / (options.length - 1)) * 100}%)`
-            }}
+    const handlePointerDown = (e: React.PointerEvent) => {
+      if (disabled) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      const startX = e.clientX;
+      const startValue = displayValue;
+      const viewportWidth = (e.currentTarget as HTMLElement).offsetWidth;
+      const optionsRange = options.length - 1;
+      let isDragging = true;
+      let currentDragValue = startValue; // Track the current drag value
+
+      const handlePointerMove = (moveEvent: PointerEvent) => {
+        if (!isDragging) return;
+        const deltaX = moveEvent.clientX - startX;
+        const indexDelta = (deltaX / viewportWidth) * optionsRange;
+        const newValue = Math.max(0, Math.min(optionsRange, startValue - indexDelta));
+        currentDragValue = newValue; // Update the tracked value
+        if (setPreviewState) {
+          setPreviewState(newValue);
+        }
+      };
+
+      const handlePointerUp = () => {
+        isDragging = false;
+        const finalValue = Math.round(currentDragValue); // Use the tracked drag value
+        if (setPreviewState) {
+          setPreviewState(null); // Clear preview state
+        }
+        onChange(finalValue);
+        onCommit?.(options[finalValue]);
+        window.removeEventListener('pointermove', handlePointerMove);
+        window.removeEventListener('pointerup', handlePointerUp);
+      };
+
+      window.addEventListener('pointermove', handlePointerMove);
+      window.addEventListener('pointerup', handlePointerUp);
+    };
+
+    return (
+      <div className="setting-control-panel">
+        <div className="setting-control-header">
+          <span className="setting-control-title">{title}</span>
+          <button
+            className="setting-control-close"
+            onClick={() => onSetActiveSetting(null)}
           >
-            {options.map((option, index) => {
-              const position = (index / (options.length - 1)) * 100;
-              const isActive = Math.abs(index - value) < 0.5;
-              const isShort = isShortTick?.(option);
-
-              return (
-                <div
-                  key={index}
-                  className={`shutter-tick ${isActive ? 'shutter-tick-active' : ''} ${isShort ? 'shutter-tick-short' : ''}`}
-                  style={{ left: `${position}%` }}
-                />
-              );
-            })}
-          </div>
-
-          {/* Radix Slider (invisible interaction layer) */}
-          <Slider.Root
-            className="shutter-slider-root"
-            value={[value]}
-            onValueChange={(val) => onChange(val[0])}
-            onValueCommit={onCommit ? (val) => onCommit(options[val[0]]) : undefined}
-            min={0}
-            max={options.length - 1}
-            step={1}
-            inverted={true}
-            disabled={disabled}
-          >
-            <Slider.Track className="shutter-slider-track">
-              <Slider.Range className="shutter-slider-range" />
-            </Slider.Track>
-            <Slider.Thumb className="shutter-slider-thumb" />
-          </Slider.Root>
+            <ChevronDown size={14} />
+          </button>
         </div>
-      </div>
+        <div className="shutter-dial-container">
+          <div className="shutter-dial-viewport" onPointerDown={handlePointerDown}>
+            {/* Fixed indicator in center */}
+            <div className="shutter-indicator-fixed">
+              <div className="shutter-indicator-triangle" />
+            </div>
+
+            {/* Tick marks overlay - moves with slider */}
+            <div
+              className="shutter-ticks-container"
+              style={{
+                transform: `translateX(${50 - (displayValue / (options.length - 1)) * 100}%)`
+              }}
+            >
+              {options.map((option, index) => {
+                const position = (index / (options.length - 1)) * 100;
+                const isActive = Math.abs(index - displayValue) < 0.5;
+                const isShort = isShortTick?.(option);
+
+                return (
+                  <div
+                    key={index}
+                    className={`shutter-tick ${isActive ? 'shutter-tick-active' : ''} ${isShort ? 'shutter-tick-short' : ''}`}
+                    style={{ left: `${position}%` }}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        </div>
       {showArrows !== false && (
         <>
           <div className="shutter-dial-controls">
             <button
               className="shutter-dial-arrow"
-              onClick={() => onChange(Math.max(0, value - 1))}
+              onClick={() => {
+                const newValue = Math.max(0, value - 1);
+                onChange(newValue);
+                onCommit?.(options[newValue]);
+              }}
               disabled={value === 0 || disabled}
             >
               <ChevronDown size={16} style={{ transform: 'rotate(90deg)' }} />
             </button>
-            <div className="shutter-dial-label">{options[value]}</div>
+            <div className="shutter-dial-label">{options[Math.round(displayValue)]}</div>
             <button
               className="shutter-dial-arrow"
-              onClick={() => onChange(Math.min(options.length - 1, value + 1))}
+              onClick={() => {
+                const newValue = Math.min(options.length - 1, value + 1);
+                onChange(newValue);
+                onCommit?.(options[newValue]);
+              }}
               disabled={value === options.length - 1 || disabled}
             >
               <ChevronDown size={16} style={{ transform: 'rotate(-90deg)' }} />
@@ -484,7 +545,8 @@ export function CameraSection({
         </>
       )}
     </div>
-  );
+    );
+  };
 
   return (
     <div className="collapsible-section">
@@ -760,7 +822,10 @@ export function CameraSection({
             'Closed',
             true,
             (value) => setCameraSetting('f-number', value),
-            !isSettingAdjustable(shootingMode, 'aperture', cameraBrand)
+            !isSettingAdjustable(shootingMode, 'aperture', cameraBrand),
+            undefined,
+            aperturePreview,
+            setAperturePreview
           )}
 
           {activeSetting === 'iso' && createDialControl(
@@ -771,7 +836,11 @@ export function CameraSection({
             'Low',
             'High',
             true,
-            (value) => setCameraSetting('iso', value)
+            (value) => setCameraSetting('iso', value),
+            !isSettingAdjustable(shootingMode, 'iso', cameraBrand),
+            undefined,
+            isoPreview,
+            setIsoPreview
           )}
 
           {activeSetting === 'ev' && createDialControl(
@@ -782,9 +851,11 @@ export function CameraSection({
             'Dark',
             'Bright',
             true,
-            undefined,
+            (value) => cameraSettingsService.setEvFromDisplay(value),
             !isSettingAdjustable(shootingMode, 'ev', cameraBrand),
-            isEvShortTick
+            isEvShortTick,
+            evPreview,
+            setEvPreview
           )}
 
           {activeSetting === 'wb' && (
@@ -798,16 +869,80 @@ export function CameraSection({
                   <ChevronDown size={14} />
                 </button>
               </div>
-              <div className="setting-options-grid">
-                {(cameraSettingOptions.whitebalance.length > 0 ? cameraSettingOptions.whitebalance : ['Auto', 'Daylight', 'Cloudy', 'Tungsten', 'Fluorescent', 'Flash', 'Custom']).map((option) => (
-                  <button
-                    key={option}
-                    className="setting-option-btn"
-                    onClick={() => onSetWbValue(option)}
-                  >
-                    {option}
-                  </button>
-                ))}
+              <div className="wb-options-vertical">
+                {(() => {
+                  const wbLabels = cameraBrand.quirks.whiteBalanceLabels || {};
+                  const cameraChoices = cameraSettingOptions.whitebalance;
+
+                  // Icons for white balance options
+                  const wbIcons: Record<string, string> = {
+                    'Auto': mdiWhiteBalanceAuto,
+                    'Daylight': mdiWhiteBalanceSunny,
+                    'Shade': mdiCloud,
+                    'K': mdiThermometer,
+                    'Incandescent': mdiLightbulb,
+                    'Tungsten': mdiLightbulb,
+                    'Fluorescent 1': mdiLightbulb,
+                    'Fluorescent 2': mdiLightbulb,
+                    'Fluorescent 3': mdiLightbulb,
+                    'Underwater': mdiWater,
+                    'C1': mdiNumeric1,
+                    'C2': mdiNumeric2,
+                    'C3': mdiNumeric3,
+                    'White Priority': mdiWhiteBalanceAuto,
+                    'Ambient Priority': mdiWhiteBalanceAuto,
+                  };
+
+                  // Build the list of WB options to display
+                  let wbOptions: [string, string][]; // [cameraValue, displayLabel]
+
+                  if (cameraChoices.length > 0) {
+                    // Use camera-reported choices, map to display labels
+                    wbOptions = cameraChoices.map((cameraValue) => {
+                      const mapped = wbLabels[cameraValue];
+                      return [cameraValue, mapped || cameraValue];
+                    });
+                  } else if (Object.keys(wbLabels).length > 0) {
+                    // Fallback: use the label mapping
+                    wbOptions = Object.entries(wbLabels).map(([cameraValue, displayLabel]) => [
+                      cameraValue,
+                      displayLabel
+                    ]);
+                  } else {
+                    // Final fallback: generic options
+                    wbOptions = [
+                      ['Auto', 'Auto'],
+                      ['Daylight', 'Daylight'],
+                      ['Cloudy', 'Cloudy'],
+                      ['Tungsten', 'Tungsten'],
+                      ['Fluorescent', 'Fluorescent'],
+                      ['Flash', 'Flash'],
+                      ['Custom', 'Custom'],
+                    ];
+                  }
+
+                  return wbOptions.map(([cameraValue, displayLabel]) => {
+                    const isSelected = wbValue === displayLabel;
+                    const iconPath = wbIcons[displayLabel];
+
+                    return (
+                      <button
+                        key={cameraValue}
+                        className={`wb-option-vertical-btn ${isSelected ? 'wb-selected' : ''}`}
+                        data-wb={displayLabel}
+                        onClick={() => {
+                          cameraSettingsService.setWhiteBalance(displayLabel);
+                          onSetWbValue(displayLabel);
+                        }}
+                      >
+                        <div className="wb-option-icon-wrapper">
+                          {iconPath && <Icon path={iconPath} size={1.1} className="wb-option-icon" />}
+                        </div>
+                        <span className="wb-option-label">{displayLabel}</span>
+                      </button>
+                    );
+                  });
+                })()}
               </div>
             </div>
           )}
@@ -832,7 +967,7 @@ export function CameraSection({
                 ].map((option) => (
                   <button
                     key={option.label}
-                    className="setting-option-btn"
+                    className={`setting-option-btn ${meteringValue === option.label ? 'setting-option-selected' : ''}`}
                     onClick={() => onSetMeteringValue(option.label)}
                   >
                     {option.icon}

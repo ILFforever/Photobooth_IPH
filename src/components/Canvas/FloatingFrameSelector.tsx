@@ -133,6 +133,19 @@ const FloatingFrameSelector = () => {
     }
   }, [background]);
 
+  // When auto-match is enabled (or when component mounts with auto enabled),
+  // recalculate to ensure backgroundDimensions and canvasSize are in sync
+  useEffect(() => {
+    if (autoMatchBackground && background) {
+      // Clear any stale dimensions and recalculate to ensure sync
+      setBackgroundDimensions(null);
+      // Small delay to ensure state update propagates
+      setTimeout(() => {
+        handleMatchBackground();
+      }, 0);
+    }
+  }, [autoMatchBackground]);
+
   // Update pill bar position on mount and window resize
   useEffect(() => {
     const updatePillBarPosition = () => {

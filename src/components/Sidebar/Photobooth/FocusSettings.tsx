@@ -5,9 +5,10 @@ import "./PhotoboothSidebar.css";
 interface FocusSettingsProps {
   isExpanded: boolean;
   onToggle: () => void;
+  cameraConnected?: boolean;
 }
 
-export function FocusSettings({ isExpanded, onToggle }: FocusSettingsProps) {
+export function FocusSettings({ isExpanded, onToggle, cameraConnected = true }: FocusSettingsProps) {
   const [activeSetting, setActiveSetting] = useState<string | null>(null);
 
   const settings = [
@@ -39,6 +40,8 @@ export function FocusSettings({ isExpanded, onToggle }: FocusSettingsProps) {
   const selectOption = (label: string, option: string) => {
     setSettingValues(prev => ({ ...prev, [label]: option }));
   };
+
+  if (!cameraConnected) return null;
 
   return (
     <div className="collapsible-section">
