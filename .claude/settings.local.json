@@ -56,7 +56,9 @@
       "Bash(git checkout:*)",
       "Bash(npm run)",
       "Bash(./build.sh:*)",
-      "WebFetch(domain:raw.githubusercontent.com)"
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(gh repo clone:*)",
+      "Bash(ffmpeg:*)"
     ]
   }
 }

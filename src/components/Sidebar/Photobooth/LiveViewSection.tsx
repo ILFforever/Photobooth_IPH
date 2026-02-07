@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronRight, HdmiPort, Usb, AlertTriangle, Info, X } from "lucide-react";
 import "./PhotoboothSidebar.css";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useLiveView } from "../../../contexts/LiveViewContext";
 
 type CollapsibleSection = 'camera' | 'liveview' | 'folder' | 'photobooth';
@@ -12,149 +12,48 @@ interface LiveViewSectionProps {
 }
 
 export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSectionProps) {
-  const { liveViewStream, setLiveViewStream, selectedDevice, setSelectedDevice } = useLiveView();
+  const {
+    stream: liveViewStream,
+    devices,
+    selectedDeviceId,
+    isLoadingDevices,
+    permissionError,
+    startStream,
+    stopStream,
+    setSelectedDevice,
+  } = useLiveView();
+
   const [captureMethod, setCaptureMethod] = useState<CaptureMethod>('hdmi');
   const [showUsbWarning, setShowUsbWarning] = useState(false);
   const [showInfoModal, setShowInfoModal] = useState(false);
   const [showDeviceDropdown, setShowDeviceDropdown] = useState(false);
   const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
-  const [captureDevices, setCaptureDevices] = useState<Array<{ id: string; name: string }>>([]);
-  const [isLoadingDevices, setIsLoadingDevices] = useState(true);
-  const [permissionError, setPermissionError] = useState<string | null>(null);
+  const [videoStretch, setVideoStretch] = useState(100);
+  const [isDragging, setIsDragging] = useState(false);
   const dropdownButtonRef = useRef<HTMLButtonElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const sliderRef = useRef<HTMLDivElement>(null);
 
-  // Load capture devices on mount
-  useEffect(() => {
-    const loadDevices = async () => {
-      setIsLoadingDevices(true);
-      setPermissionError(null);
-      try {
-        // Check if mediaDevices API is available
-        if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
-          throw new Error('MediaDevices API not supported');
-        }
+  // Callback ref: attaches srcObject whenever the <video> DOM node mounts
+  // (covers initial mount AND conditional re-mount when section collapses/expands)
+  const liveViewStreamRef = useRef<MediaStream | null>(liveViewStream);
+  liveViewStreamRef.current = liveViewStream;
 
-        // Request permission first to get device labels
-        console.log('Requesting media permission...');
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        console.log('Permission granted, stopping initial stream...');
-
-        // Stop the initial stream
-        stream.getTracks().forEach(track => track.stop());
-
-        // Enumerate devices
-        console.log('Enumerating devices...');
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        console.log('All devices:', devices);
-
-        const videoDevices = devices
-          .filter(device => device.kind === 'videoinput')
-          .map(device => ({
-            id: device.deviceId,
-            name: device.label || `Camera ${device.deviceId.slice(0, 8)}`,
-          }));
-
-        console.log('Video devices found:', videoDevices);
-
-        setCaptureDevices([
-          { id: '', name: 'Select capture device...' },
-          ...videoDevices,
-        ]);
-
-        if (videoDevices.length === 0) {
-          setPermissionError('No video devices found');
-        }
-      } catch (error) {
-        console.error('Error accessing media devices:', error);
-        if (error instanceof Error) {
-          setPermissionError(error.message);
-        } else {
-          setPermissionError('Failed to access camera devices');
-        }
-      } finally {
-        setIsLoadingDevices(false);
-      }
-    };
-
-    loadDevices();
-
-    // Listen for device changes
-    const handleDeviceChange = () => {
-      console.log('Device change detected, reloading...');
-      loadDevices();
-    };
-
-    navigator.mediaDevices?.addEventListener('devicechange', handleDeviceChange);
-
-    return () => {
-      navigator.mediaDevices?.removeEventListener('devicechange', handleDeviceChange);
-    };
+  const videoCallbackRef = useCallback((node: HTMLVideoElement | null) => {
+    if (node && liveViewStreamRef.current) {
+      node.srcObject = liveViewStreamRef.current;
+    }
   }, []);
 
-  // Start video stream when device is selected and panel is expanded
+  // Start/stop stream when device selection or panel state changes.
+  // Thanks to the same-device guard in startStream, calling this repeatedly
+  // with the same deviceId is a no-op (no teardown/restart).
   useEffect(() => {
-    if (selectedDevice && captureMethod === 'hdmi' && expandedSections.liveview) {
-      const startVideo = async () => {
-        try {
-          console.log('[LiveView] Starting video stream for device:', selectedDevice);
-          const stream = await navigator.mediaDevices.getUserMedia({
-          video: { deviceId: { exact: selectedDevice } }
-        });
-        console.log('[LiveView] Stream obtained:', stream);
-        console.log('[LiveView] Stream tracks:', stream.getTracks());
-        console.log('[LiveView] Stream ID:', stream.id);
-
-        const videoTrack = stream.getVideoTracks()[0];
-        if (videoTrack) {
-          console.log('[LiveView] Video track:', videoTrack);
-          console.log('[LiveView] Video track settings:', videoTrack.getSettings());
-          console.log('[LiveView] Video track capabilities:', videoTrack.getCapabilities());
-        }
-
-        // Update shared stream state
-        setLiveViewStream(stream);
-      } catch (error) {
-        console.error('[LiveView] Error starting video stream:', error);
-      }
-    };
-
-      startVideo();
-
-      // Cleanup function - stream cleanup is handled by context
-      return () => {
-        console.log('[LiveView] Cleaning up video stream');
-        setLiveViewStream(null);
-      };
+    if (selectedDeviceId && captureMethod === 'hdmi' && expandedSections.liveview) {
+      startStream(selectedDeviceId);
     } else {
-      // Stop video stream when switching away from HDMI, no device selected, or panel collapsed
-      console.log('[LiveView] Stopping video stream (method:', captureMethod, 'device:', selectedDevice, 'expanded:', expandedSections.liveview, ')');
-      setLiveViewStream(null);
-      if (videoRef.current) {
-        videoRef.current.srcObject = null;
-      }
+      stopStream();
     }
-  }, [selectedDevice, captureMethod, expandedSections.liveview, setLiveViewStream]);
-
-  // Separate effect to set video element when stream changes
-  useEffect(() => {
-    if (liveViewStream && videoRef.current) {
-      console.log('[LiveView] Setting srcObject on video element (from stream effect)');
-      videoRef.current.srcObject = liveViewStream;
-      console.log('[LiveView] Video element currentSrc:', videoRef.current.currentSrc);
-      console.log('[LiveView] Video element videoWidth:', videoRef.current.videoWidth);
-      console.log('[LiveView] Video element videoHeight:', videoRef.current.videoHeight);
-
-      videoRef.current.onloadedmetadata = () => {
-        console.log('[LiveView] Video metadata loaded');
-        console.log('[LiveView] Video dimensions:', videoRef.current?.videoWidth, 'x', videoRef.current?.videoHeight);
-      };
-
-      videoRef.current.onplay = () => {
-        console.log('[LiveView] Video started playing');
-      };
-    }
-  }, [liveViewStream]);
+  }, [selectedDeviceId, captureMethod, expandedSections.liveview, startStream, stopStream]);
 
   const handleCaptureMethodChange = (method: CaptureMethod) => {
     if (method === 'usbc' && captureMethod === 'hdmi') {
@@ -163,6 +62,45 @@ export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSec
     setCaptureMethod(method);
     setSelectedDevice('');
   };
+
+  // Handle video stretch slider drag
+  const handleSliderChange = (clientX: number) => {
+    if (!sliderRef.current) return;
+
+    const rect = sliderRef.current.getBoundingClientRect();
+    const x = Math.max(0, Math.min(clientX - rect.left, rect.width));
+    const percentage = x / rect.width;
+
+    // Map 0-100% to stretch values (50% to 150%)
+    const minStretch = 50;
+    const maxStretch = 150;
+    const newStretch = Math.round(minStretch + (maxStretch - minStretch) * percentage);
+
+    setVideoStretch(newStretch);
+
+    // Update CSS custom property for video stretch
+    document.documentElement.style.setProperty('--video-stretch', (newStretch / 100).toString());
+  };
+
+  const handleSliderMouseDown = (e: React.MouseEvent) => {
+    setIsDragging(true);
+    handleSliderChange(e.clientX);
+
+    const handleMouseMove = (e: MouseEvent) => handleSliderChange(e.clientX);
+    const handleMouseUp = () => {
+      setIsDragging(false);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  // Initialize CSS variable on mount
+  useEffect(() => {
+    document.documentElement.style.setProperty('--video-stretch', (videoStretch / 100).toString());
+  }, []);
 
   useEffect(() => {
     if (showDeviceDropdown && dropdownButtonRef.current) {
@@ -192,7 +130,7 @@ export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSec
             <div className="liveview-frame">
               {captureMethod === 'hdmi' && liveViewStream ? (
                 <video
-                  ref={videoRef}
+                  ref={videoCallbackRef}
                   autoPlay
                   playsInline
                   muted
@@ -263,8 +201,8 @@ export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSec
                       onClick={() => setShowDeviceDropdown(!showDeviceDropdown)}
                     >
                       <span className="device-dropdown-text">
-                        {selectedDevice
-                          ? captureDevices.find(d => d.id === selectedDevice)?.name
+                        {selectedDeviceId
+                          ? devices.find(d => d.id === selectedDeviceId)?.name
                           : 'Select capture device...'}
                       </span>
                       <ChevronDown size={14} className={`device-dropdown-icon ${showDeviceDropdown ? 'open' : ''}`} />
@@ -278,15 +216,15 @@ export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSec
                           width: `${dropdownPosition.width}px`,
                         }}
                       >
-                        {captureDevices.length === 1 ? (
+                        {devices.length === 0 ? (
                           <div className="device-dropdown-item" style={{ cursor: 'default', opacity: 0.7 }}>
                             No devices found
                           </div>
                         ) : (
-                          captureDevices.map((device) => (
+                          devices.map((device) => (
                             <button
                               key={device.id}
-                              className={`device-dropdown-item ${selectedDevice === device.id ? 'selected' : ''}`}
+                              className={`device-dropdown-item ${selectedDeviceId === device.id ? 'selected' : ''}`}
                               onClick={() => {
                                 setSelectedDevice(device.id);
                                 setShowDeviceDropdown(false);
@@ -311,6 +249,28 @@ export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSec
                 </div>
               </div>
             )}
+
+            {/* Video Stretch Slider */}
+            <div className="video-stretch-control">
+              <div className="stretch-control-header">
+                <span className="stretch-control-title">Horizontal Stretch</span>
+                <span className="stretch-control-value">{videoStretch}%</span>
+              </div>
+              <div
+                ref={sliderRef}
+                className={`stretch-slider ${isDragging ? 'dragging' : ''}`}
+                onMouseDown={handleSliderMouseDown}
+              >
+                <div
+                  className="stretch-slider-fill"
+                  style={{ width: `${((videoStretch - 50) / 100) * 100}%` }}
+                />
+                <div
+                  className="stretch-slider-thumb"
+                  style={{ left: `${((videoStretch - 50) / 100) * 100}%` }}
+                />
+              </div>
+            </div>
           </div>
         </div>
       )}

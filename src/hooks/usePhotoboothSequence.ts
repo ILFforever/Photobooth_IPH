@@ -26,6 +26,7 @@ interface UsePhotoboothSequenceReturn {
   stopIfActive: () => void;
   togglePause: () => void;
   captureNow: () => void;  // Trigger immediate capture
+  notifyCaptureComplete: () => void;  // Call when photo_downloaded WS event arrives
 
   // Derived
   isActive: boolean;
@@ -76,8 +77,13 @@ export function usePhotoboothSequence(config: SequenceConfig): UsePhotoboothSequ
   // Trigger immediate capture (for manual capture button)
   const captureNow = useCallback(() => {
     console.log('[PhotoboothSequence] captureNow called, sequenceState:', sequenceState);
-    // If idle, just trigger a single capture without starting sequence
-    if (sequenceState === 'idle') {
+    // If idle or complete, just trigger a single capture without starting sequence
+    if (sequenceState === 'idle' || sequenceState === 'complete') {
+      if (sequenceState === 'complete') {
+        setSequenceState('idle');
+        setPhotosTaken(0);
+        setCurrentCountdown(config.delayBeforeFirstPhoto);
+      }
       console.log('[PhotoboothSequence] Triggering immediate capture...');
       triggerCapture().then((response) => {
         console.log('[PhotoboothSequence] Capture response:', response);
@@ -97,7 +103,7 @@ export function usePhotoboothSequence(config: SequenceConfig): UsePhotoboothSequ
     } else {
       console.log('[PhotoboothSequence] Skipping capture - not idle');
     }
-  }, [sequenceState, config.onPhotoCaptured]);
+  }, [sequenceState, config.onPhotoCaptured, config.delayBeforeFirstPhoto]);
 
   // ========== STATE MACHINE ==========
 
@@ -136,9 +142,31 @@ export function usePhotoboothSequence(config: SequenceConfig): UsePhotoboothSequ
     }
   }, [sequenceState, isPaused]);
 
-  // Capturing: trigger camera capture, wait for download, then show "--"
+  // Capturing: trigger camera capture, advance when notifyCaptureComplete is called
   const capturingRef = useRef(false);
   const photoNumberRef = useRef(1);
+
+  // Called by workspace when photo_downloaded WS event arrives
+  const notifyCaptureComplete = useCallback(() => {
+    if (sequenceState !== 'capturing' && capturingRef.current === false) {
+      // Manual capture (idle/complete) — just notify callback
+      console.log('[PhotoboothSequence] notifyCaptureComplete (manual mode)');
+      return;
+    }
+
+    console.log('[PhotoboothSequence] notifyCaptureComplete — advancing state machine');
+    const newTaken = photosTaken + 1;
+    setPhotosTaken(newTaken);
+    capturingRef.current = false;
+
+    if (config.onPhotoCaptured) {
+      config.onPhotoCaptured(photoNumberRef.current);
+    }
+    photoNumberRef.current += 1;
+
+    setSequenceState('photoConfirm');
+  }, [sequenceState, photosTaken, config.onPhotoCaptured]);
+
   useEffect(() => {
     if (sequenceState === 'capturing' && !capturingRef.current) {
       capturingRef.current = true;
@@ -152,25 +180,23 @@ export function usePhotoboothSequence(config: SequenceConfig): UsePhotoboothSequ
         console.error('[PhotoboothSequence] Capture error:', error);
       });
 
-      // Wait for photo to be downloaded (simulate for now, will be updated by WebSocket event)
-      const captureTimeout = setTimeout(() => {
-        const newTaken = photosTaken + 1;
-        setPhotosTaken(newTaken);
-        capturingRef.current = false;
+      // Safety timeout: if no photo_downloaded arrives within 15s, advance anyway
+      const safetyTimeout = setTimeout(() => {
+        if (capturingRef.current) {
+          console.warn('[PhotoboothSequence] Safety timeout — advancing state machine after 15s');
+          const newTaken = photosTaken + 1;
+          setPhotosTaken(newTaken);
+          capturingRef.current = false;
 
-        // Call the callback to notify that a photo was captured
-        if (config.onPhotoCaptured) {
-          config.onPhotoCaptured(photoNumberRef.current);
+          if (config.onPhotoCaptured) {
+            config.onPhotoCaptured(photoNumberRef.current);
+          }
+          photoNumberRef.current += 1;
+          setSequenceState('photoConfirm');
         }
-        photoNumberRef.current += 1;
+      }, 15000);
 
-        if (newTaken >= config.autoCount) {
-          setSequenceState('photoConfirm'); // Will go to complete
-        } else {
-          setSequenceState('photoConfirm'); // Will go to review
-        }
-      }, 1500); // Give more time for actual capture and download
-      return () => clearTimeout(captureTimeout);
+      return () => clearTimeout(safetyTimeout);
     }
   }, [sequenceState, photosTaken, config.autoCount, config.onPhotoCaptured]);
 
@@ -248,6 +274,7 @@ export function usePhotoboothSequence(config: SequenceConfig): UsePhotoboothSequ
     stopIfActive,
     togglePause,
     captureNow,
+    notifyCaptureComplete,
     isActive,
     isComplete: sequenceState === 'complete',
   };

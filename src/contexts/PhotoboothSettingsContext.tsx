@@ -9,6 +9,7 @@ export interface PhotoboothSessionInfo {
   shotCount: number;
   createdAt: string;
   lastUsedAt: string;
+  thumbnails: string[]; // Thumbnail URLs for the session's photos
 }
 
 // Photo entry in a session
@@ -47,6 +48,8 @@ interface PhotoboothSettingsContextType {
   createNewSession: (name: string) => Promise<PhotoboothSessionInfo>;
   loadSession: (sessionId: string) => Promise<void>;
   setCurrentSession: (sessionId: string) => Promise<void>;
+  updateSessionShotCount: (sessionId: string, shotCount: number) => void;
+  updateCurrentSessionFromDownload: (ptbSession: PhotoboothSession) => void;
   isLoadingSessions: boolean;
 }
 
@@ -81,10 +84,10 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
       });
 
       if (currentSessionInfo) {
-        // Load the full session data
-        const sessionPath = `${workingFolder}/${currentSessionInfo.folderName}`;
-        const ptbSession = await invoke<any>('load_ptb_session', {
-          folderPath: sessionPath,
+        // Load the full session data from root .ptb file
+        const ptbSession = await invoke<any>('get_session_data', {
+          folderPath: workingFolder,
+          sessionId: currentSessionInfo.id,
         });
         setCurrentSession({
           id: ptbSession.id,
@@ -122,9 +125,9 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
     if (!workingFolder) return;
 
     try {
-      const sessionPath = `${workingFolder}/${sessionId}`;
-      const ptbSession = await invoke<any>('load_ptb_session', {
-        folderPath: sessionPath,
+      const ptbSession = await invoke<any>('get_session_data', {
+        folderPath: workingFolder,
+        sessionId,
       });
 
       setCurrentSession({
@@ -159,6 +162,23 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
     await refreshSessions();
   }, [workingFolder, refreshSessions]);
 
+  // Update a session's shot count in the sessions list (avoids full refresh)
+  const updateSessionShotCount = useCallback((sessionId: string, shotCount: number) => {
+    setSessions(prev => prev.map(s =>
+      s.id === sessionId ? { ...s, shotCount, lastUsedAt: new Date().toISOString() } : s
+    ));
+  }, []);
+
+  // Update current session from download response (avoids full refresh)
+  const updateCurrentSessionFromDownload = useCallback((ptbSession: PhotoboothSession) => {
+    setCurrentSession(ptbSession);
+    setSessions(prev => prev.map(s =>
+      s.id === ptbSession.id
+        ? { ...s, shotCount: ptbSession.shotCount, lastUsedAt: ptbSession.lastUsedAt }
+        : s
+    ));
+  }, []);
+
   // Refresh sessions when working folder changes
   useEffect(() => {
     if (workingFolder) {
@@ -185,6 +205,8 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
         createNewSession,
         loadSession,
         setCurrentSession: setCurrentSessionId,
+        updateSessionShotCount,
+        updateCurrentSessionFromDownload,
         isLoadingSessions,
       }}
     >

@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
-import { ChevronDown, ChevronRight, Check, Layers, FolderOpen, Plus, Calendar, Image as ImageIcon } from "lucide-react";
+import { ChevronDown, ChevronRight, Check, Layers, FolderOpen, Plus, Calendar, Image as ImageIcon, X, RefreshCw, AlertCircle } from "lucide-react";
 import * as Slider from "@radix-ui/react-slider";
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
@@ -7,9 +7,13 @@ import { CameraSection } from "./CameraSection";
 import { LiveViewSection } from "./LiveViewSection";
 import { ImageQuality } from "./ImageQuality";
 import { FocusSettings } from "./FocusSettings";
+import ConnectionLostModal from "../../Modals/ConnectionLostModal";
 import { useCamera } from "../../../contexts/CameraContext";
+import { useVM } from "../../../contexts/VMContext";
 import { usePhotoboothSettings, type PhotoboothSessionInfo } from "../../../contexts/PhotoboothSettingsContext";
+import { useToast } from "../../../contexts/ToastContext";
 import type { CameraStatus } from "../../../services/cameraWebSocket";
+import type { ConnectionState } from "../../../types/connection";
 import { getCameraSettingsService } from "../../../services/cameraSettingsService";
 import type { CustomSet, CustomSetPreview } from "../../../types/customSet";
 
@@ -31,8 +35,30 @@ type PhotoboothTab = 'camera' | 'settings';
 type CollapsibleSection = 'camera' | 'liveview' | 'folder' | 'photobooth' | 'frame' | 'session';
 type SettingType = 'shutter' | 'aperture' | 'iso' | 'ev' | 'wb' | 'metering' | 'folder' | 'mode' | null;
 
+// VM Log Entry type
+interface VmLogEntry {
+  timestamp: string;
+  level: 'info' | 'warning' | 'error' | 'success';
+  message: string;
+}
+
 export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
-  const { addStatusListener, removeStatusListener, isCameraConnected } = useCamera();
+  const {
+    addStatusListener,
+    removeStatusListener,
+    isCameraConnected,
+    connectionState,
+    reconnect,
+    disconnect,
+  } = useCamera();
+  const { isVmOnline } = useVM();
+  const { showToast } = useToast();
+
+  // VM Logs modal state
+  const [showVmLogs, setShowVmLogs] = useState(false);
+  const [vmLogs, setVmLogs] = useState<VmLogEntry[]>([]);
+  const [isLoadingLogs, setIsLoadingLogs] = useState(false);
+  const [logsError, setLogsError] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<PhotoboothTab>('camera');
   const [expandedSections, setExpandedSections] = useState<Record<CollapsibleSection, boolean>>({
@@ -48,11 +74,27 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
   // Track whether user has selected a camera in CameraSection
   const [hasSelectedCamera, setHasSelectedCamera] = useState(false);
 
+  // Store last received camera status to apply when options are loaded
+  const lastCameraStatusRef = useRef<CameraStatus | null>(null);
+  // Track if we're initializing from config (to ignore WebSocket status during init)
+  const isInitializingFromConfigRef = useRef(false);
+
   // Handle connection change callback from CameraSection
   const handleConnectionChange = useCallback((isConnected: boolean, hasSelected: boolean) => {
     console.log('[PhotoboothSidebar] Connection change:', isConnected, hasSelected);
     setHasSelectedCamera(hasSelected);
   }, []);
+
+  // Show toast on reconnection success
+  const previousConnectionStateRef = useRef<ConnectionState>('NC');
+  useEffect(() => {
+    if (connectionState !== previousConnectionStateRef.current) {
+      if (connectionState === 'Connected' && previousConnectionStateRef.current === 'Reconnecting') {
+        showToast('Reconnected successfully!', 'success', 3000);
+      }
+      previousConnectionStateRef.current = connectionState;
+    }
+  }, [connectionState, showToast]);
 
   // Default shutter speeds (fast to slow) - will be reversed for the dial
   const defaultShutterSpeeds = [
@@ -202,6 +244,59 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
     }
   };
 
+  // Fetch VM logs from file via Tauri
+  const fetchVmLogs = useCallback(async () => {
+    setIsLoadingLogs(true);
+    setLogsError(null);
+
+    try {
+      const response = await invoke<{ logs: string[]; lineCount: number }>('get_vm_logs', {
+        lines: 100,
+      });
+
+      // Parse logs into structured format
+      const parsedLogs: VmLogEntry[] = response.logs.map((log) => {
+        // Try to parse log level from message
+        let level: VmLogEntry['level'] = 'info';
+        if (log.toLowerCase().includes('error') || log.toLowerCase().includes('failed')) {
+          level = 'error';
+        } else if (log.toLowerCase().includes('warning') || log.toLowerCase().includes('warn')) {
+          level = 'warning';
+        } else if (log.toLowerCase().includes('success') || log.toLowerCase().includes('connected')) {
+          level = 'success';
+        }
+
+        return {
+          timestamp: '', // Log file doesn't include timestamps, could add if needed
+          level,
+          message: log,
+        };
+      });
+
+      setVmLogs(parsedLogs);
+    } catch (error) {
+      console.error('Failed to fetch VM logs:', error);
+      setLogsError(error instanceof Error ? error.message : 'Failed to fetch logs');
+      setVmLogs([]);
+    } finally {
+      setIsLoadingLogs(false);
+    }
+  }, []);
+
+  // Open VM logs modal and fetch logs
+  const handleOpenVmLogs = () => {
+    setShowVmLogs(true);
+    fetchVmLogs();
+  };
+
+  // Auto-refresh logs every 3 seconds when modal is open
+  useEffect(() => {
+    if (showVmLogs) {
+      const interval = setInterval(fetchVmLogs, 3000);
+      return () => clearInterval(interval);
+    }
+  }, [showVmLogs, fetchVmLogs]);
+
   const toggleSetting = (setting: SettingType) => {
     setActiveSetting(prev => prev === setting ? null : setting);
   };
@@ -325,8 +420,19 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
   }, [shutterSpeeds, apertureOptions, isoOptions, evOptions]);
 
   const handleWsStatus = useCallback((data: CameraStatus) => {
-    // console.log('[PhotoboothSidebar] WebSocket status received:', data); // Verbose - disabled
+    // Store the last status for later use when options are loaded
+    lastCameraStatusRef.current = data;
+
+    // If we're initializing from config, ignore WebSocket status for a brief period
+    // The config values are the source of truth during initialization
+    if (isInitializingFromConfigRef.current) {
+      console.log('[PhotoboothSidebar] Ignoring WebSocket status during config initialization');
+      return;
+    }
+
+    console.log('[PhotoboothSidebar] WebSocket status received:', data);
     const opts = optionsRef.current;
+    // console.log('[PhotoboothSidebar] Current options - iso:', opts.isoOptions.length, 'aperture:', opts.apertureOptions.length, 'shutter:', opts.shutterSpeeds.length);
 
     if (data.iso && opts.isoOptions.length > 0) {
       // Convert camera ISO value (e.g., "-1") to display value (e.g., "Auto 1") before lookup
@@ -363,7 +469,7 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
         console.warn('[PhotoboothSidebar] EV value could not be mapped:', data.ev);
       }
     } else {
-      console.log('[PhotoboothSidebar] EV update: data.ev=', data.ev, 'opts.evOptions.length=', opts.evOptions.length);
+      //console.log('[PhotoboothSidebar] EV update: data.ev=', data.ev, 'opts.evOptions.length=', opts.evOptions.length);
     }
     if (data.wb) {
       // Convert camera WB value to display label (e.g., "Automatic" -> "Auto")
@@ -385,8 +491,12 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
 
   // Handle camera options loaded from camera config
   // Memoized with useCallback to prevent WebSocket reconnection loops
-  const handleCameraOptionsLoaded = useCallback((options: { iso: string[]; aperture: string[]; shutterspeed: string[]; whitebalance: string[]; ev?: string[] }) => {
-    console.log('Camera options loaded:', options);
+  const handleCameraOptionsLoaded = useCallback((
+    options: { iso: string[]; aperture: string[]; shutterspeed: string[]; whitebalance: string[]; ev?: string[] },
+    skipStatusApply: boolean = false,
+    initialConfigValues?: { shutter?: string; aperture?: string; iso?: string; ev?: string; wb?: string; metering?: string; battery?: string }
+  ) => {
+    console.log('Camera options loaded:', options, 'skipStatusApply:', skipStatusApply, 'initialConfigValues:', initialConfigValues);
     setCameraApertureOptions(options.aperture);
     setCameraIsoOptions(options.iso);
     setCameraShutterOptions(options.shutterspeed);
@@ -396,18 +506,194 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
       setCameraEvOptions(options.ev);
     }
 
-    // Reset indexes to safe defaults when options change
-    setApertureIndex(0);
-    setIsoIndex(2);
-    if (options.shutterspeed.length > 0) {
-      setShutterValue(Math.floor(options.shutterspeed.length / 2));
+    // If skipping status apply, use the provided initial config values
+    if (skipStatusApply) {
+      if (initialConfigValues) {
+        console.log('[handleCameraOptionsLoaded] Applying initial config values:', initialConfigValues);
+
+        // Set flag to ignore WebSocket status during initialization
+        isInitializingFromConfigRef.current = true;
+        setTimeout(() => {
+          isInitializingFromConfigRef.current = false;
+          console.log('[PhotoboothSidebar] Config initialization complete, WebSocket status will be processed again');
+        }, 500);
+
+        if (initialConfigValues.shutter && options.shutterspeed.length > 0) {
+          const idx = options.shutterspeed.findIndex(opt => opt === initialConfigValues.shutter);
+          if (idx !== -1) {
+            setShutterValue(idx);
+            console.log('Set shutter from config value:', idx, initialConfigValues.shutter);
+          }
+        }
+        if (initialConfigValues.aperture && options.aperture.length > 0) {
+          const idx = options.aperture.findIndex(opt => opt === initialConfigValues.aperture);
+          if (idx !== -1) {
+            setApertureIndex(idx);
+            console.log('Set aperture from config value:', idx, initialConfigValues.aperture);
+          }
+        }
+        if (initialConfigValues.iso && options.iso.length > 0) {
+          const displayIso = cameraSettingsService.convertIsoToDisplay(initialConfigValues.iso);
+          const idx = options.iso.findIndex(opt => opt === displayIso);
+          if (idx !== -1) {
+            setIsoIndex(idx);
+            console.log('Set ISO from config value:', idx, displayIso);
+          }
+        }
+        if (initialConfigValues.ev && options.ev && options.ev.length > 0) {
+          const idx = cameraSettingsService.mapEvToIndex(initialConfigValues.ev, options.ev);
+          if (idx !== -1) {
+            setEvIndex(idx);
+            console.log('Set EV from config value:', idx, options.ev[idx]);
+          }
+        }
+        if (initialConfigValues.wb) {
+          const displayWb = cameraSettingsService.convertWhiteBalanceToDisplay(initialConfigValues.wb);
+          setWbValue(displayWb);
+          console.log('Set WB from config value:', displayWb);
+        }
+        if (initialConfigValues.metering) {
+          const displayMetering = cameraSettingsService.convertMeteringToDisplay(initialConfigValues.metering);
+          setMeteringValue(displayMetering);
+          console.log('Set metering from config value:', displayMetering);
+        }
+      }
+      return;
+    }
+
+    // Only apply status values if we're not skipping (when we have fresh config values coming)
+    // Apply values from the last received status instead of defaults
+    const lastStatus = lastCameraStatusRef.current;
+    if (lastStatus) {
+      console.log('[handleCameraOptionsLoaded] Last status available, applying:', lastStatus);
+
+      if (lastStatus.iso && options.iso.length > 0) {
+        const displayIso = cameraSettingsService.convertIsoToDisplay(lastStatus.iso);
+        const idx = options.iso.findIndex(opt => opt === displayIso);
+        if (idx !== -1) {
+          setIsoIndex(idx);
+          console.log('Set ISO index from status:', idx, displayIso);
+        }
+      }
+      if (lastStatus.aperture && options.aperture.length > 0) {
+        const idx = options.aperture.findIndex(opt => opt === lastStatus.aperture);
+        if (idx !== -1) {
+          setApertureIndex(idx);
+          console.log('Set aperture index from status:', idx, lastStatus.aperture);
+        }
+      }
+      if (lastStatus.shutter && options.shutterspeed.length > 0) {
+        const idx = options.shutterspeed.findIndex(opt => opt === lastStatus.shutter);
+        if (idx !== -1) {
+          setShutterValue(idx);
+          console.log('Set shutter index from status:', idx, lastStatus.shutter);
+        }
+      }
+      if (lastStatus.ev && options.ev && options.ev.length > 0) {
+        const idx = cameraSettingsService.mapEvToIndex(lastStatus.ev, options.ev);
+        if (idx !== -1) {
+          setEvIndex(idx);
+          console.log('Set EV index from status:', idx, options.ev[idx]);
+        }
+      }
+      if (lastStatus.wb) {
+        const displayWb = cameraSettingsService.convertWhiteBalanceToDisplay(lastStatus.wb);
+        setWbValue(displayWb);
+        console.log('Set WB from status:', displayWb);
+      }
+      if (lastStatus.metering) {
+        const displayMetering = cameraSettingsService.convertMeteringToDisplay(lastStatus.metering);
+        setMeteringValue(displayMetering);
+        console.log('Set metering from status:', displayMetering);
+      }
+    } else {
+      // No status received yet, use safe defaults
+      console.log('No last status available, using defaults');
+      setApertureIndex(0);
+      setIsoIndex(2);
+      if (options.shutterspeed.length > 0) {
+        setShutterValue(Math.floor(options.shutterspeed.length / 2));
+      }
     }
   }, []);
 
+  // Handle initial config values loaded from camera (for setting dial positions)
+  const handleConfigValuesLoaded = useCallback((values: { shutter?: string; aperture?: string; iso?: string; ev?: string; wb?: string; metering?: string; battery?: string }) => {
+    console.log('[PhotoboothSidebar] Config values loaded:', values);
+
+    // Set flag to ignore WebSocket status during initialization (shorter timeout to allow quicker updates)
+    isInitializingFromConfigRef.current = true;
+
+    // Clear the flag after a short delay to allow WebSocket status to resume
+    setTimeout(() => {
+      isInitializingFromConfigRef.current = false;
+      console.log('[PhotoboothSidebar] Config initialization complete, WebSocket status will be processed again');
+    }, 500); // Reduced from 2000ms to 500ms
+
+    // Get current options
+    const opts = {
+      shutterSpeeds,
+      apertureOptions,
+      isoOptions,
+      evOptions,
+    };
+
+    // Apply values based on current options
+    if (values.shutter && opts.shutterSpeeds.length > 0) {
+      const idx = opts.shutterSpeeds.findIndex(opt => opt === values.shutter);
+      if (idx !== -1) {
+        setShutterValue(idx);
+        console.log('Set shutter from config value:', idx, values.shutter);
+      }
+    }
+    if (values.aperture && opts.apertureOptions.length > 0) {
+      const idx = opts.apertureOptions.findIndex(opt => opt === values.aperture);
+      if (idx !== -1) {
+        setApertureIndex(idx);
+        console.log('Set aperture from config value:', idx, values.aperture);
+      }
+    }
+    if (values.iso && opts.isoOptions.length > 0) {
+      const displayIso = cameraSettingsService.convertIsoToDisplay(values.iso);
+      const idx = opts.isoOptions.findIndex(opt => opt === displayIso);
+      if (idx !== -1) {
+        setIsoIndex(idx);
+        console.log('Set ISO from config value:', idx, displayIso);
+      }
+    }
+    if (values.ev && opts.evOptions.length > 0) {
+      const idx = cameraSettingsService.mapEvToIndex(values.ev, opts.evOptions);
+      if (idx !== -1) {
+        setEvIndex(idx);
+        console.log('Set EV from config value:', idx, opts.evOptions[idx]);
+      }
+    }
+    if (values.wb) {
+      const displayWb = cameraSettingsService.convertWhiteBalanceToDisplay(values.wb);
+      setWbValue(displayWb);
+      console.log('Set WB from config value:', displayWb);
+    }
+    if (values.metering) {
+      const displayMetering = cameraSettingsService.convertMeteringToDisplay(values.metering);
+      setMeteringValue(displayMetering);
+      console.log('Set metering from config value:', displayMetering);
+    }
+  }, [shutterSpeeds, apertureOptions, isoOptions, evOptions]);
+
   return (
+    <>
     <div className="photobooth-sidebar">
       <div className="sidebar">
-        <h2 className="sidebar-title">Control Center</h2>
+        <div className="sidebar-title-row">
+          <h2 className="sidebar-title">Control Center</h2>
+          <div
+            className={`vm-status-led ${isVmOnline ? 'online' : 'offline'}`}
+            title={`Linux VM is ${isVmOnline ? 'online (click for logs)' : 'offline (click for logs)'}`}
+            onClick={handleOpenVmLogs}
+          >
+            <div className="vm-status-led-inner" />
+          </div>
+        </div>
 
         <div className="sidebar-divider" />
 
@@ -456,10 +742,14 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
                 onCameraOptionsLoaded={handleCameraOptionsLoaded}
                 pendingSettings={pendingSettings}
                 onConnectionChange={handleConnectionChange}
+                onConfigValuesLoaded={handleConfigValuesLoaded}
               />
 
               {/* Live View, Image Quality, and Focus Settings - Only show when camera is selected AND connected */}
-              {hasSelectedCamera && isCameraConnected && (
+              {(() => {
+                //console.log('[PhotoboothSidebar] Rendering check - hasSelectedCamera:', hasSelectedCamera, 'isCameraConnected:', isCameraConnected);
+                return hasSelectedCamera && isCameraConnected;
+              })() && (
                 <>
                   {/* Live View Section */}
                   <LiveViewSection
@@ -601,117 +891,6 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
                       <button className="folder-browse-btn" onClick={handleBrowseFolder}>
                         Browse...
                       </button>
-                    </div>
-                  )}
-                </div>
-
-                {/* Session Management Section */}
-                <div className="collapsible-section">
-                  <button
-                    className="collapsible-header"
-                    onClick={() => toggleSection('session')}
-                  >
-                    <div className="collapsible-header-left">
-                      {expandedSections.session ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                      <span className="collapsible-title">Sessions</span>
-                    </div>
-                    {currentSession && (
-                      <span className="collapsible-badge">
-                        {currentSession.shotCount} photos
-                      </span>
-                    )}
-                  </button>
-                  {expandedSections.session && (
-                    <div className="collapsible-content">
-                      {!workingFolder ? (
-                        <div className="session-empty-state">
-                          <p>Select a working folder first to manage sessions.</p>
-                        </div>
-                      ) : (
-                        <>
-                          {/* Current Session Info */}
-                          {currentSession && (
-                            <div className="current-session-info">
-                              <div className="session-info-header">
-                                <span className="session-info-title">Current Session</span>
-                                <span className="session-info-name">{currentSession.name}</span>
-                              </div>
-                              <div className="session-info-stats">
-                                <div className="session-stat">
-                                  <ImageIcon size={12} />
-                                  <span>{currentSession.shotCount} photos</span>
-                                </div>
-                                <div className="session-stat">
-                                  <FolderOpen size={12} />
-                                  <span>{currentSession.id}</span>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Create New Session Button */}
-                          <button
-                            className="create-session-btn"
-                            onClick={async () => {
-                              try {
-                                const defaultName = workingFolder ? workingFolder.split(/[/\\]/).pop() || 'Session' : 'Session';
-                                const timestamp = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-                                await createNewSession(`${defaultName} ${timestamp}`);
-                              } catch (error) {
-                                console.error('Failed to create session:', error);
-                              }
-                            }}
-                          >
-                            <Plus size={14} />
-                            <span>New Session</span>
-                          </button>
-
-                          {/* Session List */}
-                          <div className="session-list">
-                            {isLoadingSessions ? (
-                              <div className="sessions-loading">Loading sessions...</div>
-                            ) : sessions.length === 0 ? (
-                              <div className="sessions-empty">
-                                <p>No sessions yet</p>
-                                <p className="sessions-empty-hint">Create a session to start capturing photos</p>
-                              </div>
-                            ) : (
-                              sessions.map((session) => (
-                                <div
-                                  key={session.id}
-                                  className={`session-item ${currentSession?.id === session.id ? 'active' : ''}`}
-                                  onClick={() => loadSession(session.id)}
-                                >
-                                  <div className="session-item-left">
-                                    <FolderOpen size={14} className={currentSession?.id === session.id ? 'session-icon-active' : ''} />
-                                    <div className="session-item-info">
-                                      <span className="session-item-name">{session.name}</span>
-                                      <span className="session-item-folder">{session.folderName}</span>
-                                    </div>
-                                  </div>
-                                  <div className="session-item-right">
-                                    <div className="session-item-stats">
-                                      <span className="session-stat-item">
-                                        <ImageIcon size={10} />
-                                        {session.shotCount}
-                                      </span>
-                                      <span className="session-stat-item">
-                                        <Calendar size={10} />
-                                        {new Date(session.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                                      </span>
-                                    </div>
-                                    {currentSession?.id === session.id && (
-                                      <div className="session-check">
-                                        <Check size={12} />
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              ))
-                            )}
-                          </div>
-                        </>
-                      )}
                     </div>
                   )}
                 </div>
@@ -908,5 +1087,64 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
           </div>
         </div>
       </div>
+
+      {/* Connection Lost Modal */}
+      <ConnectionLostModal
+        show={connectionState === 'Reconnecting'}
+        onReconnect={reconnect}
+        onDisconnect={disconnect}
+      />
+
+      {/* VM Logs Modal */}
+      {showVmLogs && (
+        <div className="vm-logs-modal-overlay" onClick={() => setShowVmLogs(false)}>
+          <div className="vm-logs-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="vm-logs-modal-header">
+              <h3 className="vm-logs-modal-title">
+                <div className={`vm-logs-status-indicator ${isVmOnline ? 'online' : 'offline'}`} />
+                Linux VM Logs
+              </h3>
+              <button className="vm-logs-modal-close" onClick={() => setShowVmLogs(false)}>
+                <X size={18} />
+              </button>
+            </div>
+            <div className="vm-logs-modal-body">
+              {logsError ? (
+                <div className="vm-logs-error">
+                  <AlertCircle size={32} />
+                  <span>{logsError}</span>
+                </div>
+              ) : isLoadingLogs && vmLogs.length === 0 ? (
+                <div className="vm-logs-empty">Loading logs...</div>
+              ) : vmLogs.length === 0 ? (
+                <div className="vm-logs-empty">No logs available</div>
+              ) : (
+                <div className="vm-logs-content">
+                  {vmLogs.map((log, index) => (
+                    <div key={index} className="vm-logs-entry">
+                      {log.timestamp && <span className="vm-logs-timestamp">{log.timestamp}</span>}
+                      <span className={`vm-logs-message ${log.level}`}>{log.message}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="vm-logs-footer">
+              <span className="vm-logs-status-text">
+                {isVmOnline ? 'Connected' : 'Disconnected'} • {vmLogs.length} entries
+              </span>
+              <button
+                className={`vm-logs-refresh-btn ${isLoadingLogs ? 'spinning' : ''}`}
+                onClick={fetchVmLogs}
+                disabled={!isVmOnline || isLoadingLogs}
+              >
+                <RefreshCw size={14} />
+                Refresh
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

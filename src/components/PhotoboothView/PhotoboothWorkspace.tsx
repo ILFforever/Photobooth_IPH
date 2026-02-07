@@ -1,15 +1,17 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  ChevronDown, ChevronRight, Calendar, Clock, Image as ImageIcon,
-  ExternalLink, Camera, Grid3x3, Layers, Aperture, QrCode, Printer, Check, ArrowLeft, AlertTriangle, X, WifiOff, RefreshCw, FolderOpen
+  Image as ImageIcon, ExternalLink, Camera, Grid3x3, Layers, AlertTriangle, X
 } from "lucide-react";
 import { usePhotoboothSettings, type PhotoboothSessionInfo, type SessionPhoto } from "../../contexts/PhotoboothSettingsContext";
 import { usePhotoboothSequence } from "../../hooks/usePhotoboothSequence";
 import { useCamera } from "../../contexts/CameraContext";
 import { useLiveView } from "../../contexts/LiveViewContext";
+import { useCollage } from "../../contexts/CollageContext";
 import { PhotoboothControls } from "./PhotoboothControls";
 import DisplayContent from "./DisplayContent";
+import CurrentSetPhotoStrip from "./CurrentSetPhotoStrip";
+import PhotoSessionsSidebar from "./PhotoSessionsSidebar";
 import { type PhotoDownloadedEvent } from "../../services/cameraWebSocket";
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
@@ -41,7 +43,7 @@ interface CurrentSetPhoto {
   timestamp: string;
 }
 
-type WorkflowStep = 'select' | 'preview';
+
 
 // PtbSession type matching Rust struct
 interface PtbSession {
@@ -66,10 +68,13 @@ export default function PhotoboothWorkspace() {
     photoReviewTime,
     workingFolder,
     sessions,
-    currentSession
+    currentSession,
+    loadSession,
+    updateCurrentSessionFromDownload
   } = usePhotoboothSettings();
   const { captureError, clearCaptureError, isCameraConnected, hasEverConnected, isConnecting, addPhotoDownloadedListener, removePhotoDownloadedListener } = useCamera();
-  const { liveViewStream } = useLiveView();
+  const { stream: liveViewStream } = useLiveView();
+  const { currentFrame } = useCollage();
 
   const [selectedSetId, setSelectedSetId] = useState<string | null>(null);
   const [expandedSets, setExpandedSets] = useState<Set<string>>(new Set());
@@ -78,7 +83,6 @@ export default function PhotoboothWorkspace() {
   const [currentSetPhotos, setCurrentSetPhotos] = useState<CurrentSetPhoto[]>([]);
 
   // Workflow state
-  const [workflowStep, setWorkflowStep] = useState<WorkflowStep>('select');
   const [selectedPhotos, setSelectedPhotos] = useState<Set<string>>(new Set());
   const frameZoneCount = 3; // TODO: Get from selected custom set
 
@@ -87,6 +91,31 @@ export default function PhotoboothWorkspace() {
   // No camera warning state
   const [showNoCameraWarning, setShowNoCameraWarning] = useState(false);
   const [ptbSession, setPtbSession] = useState<PtbSession | null>(null);
+
+  // Auto-load latest session when working folder changes
+  useEffect(() => {
+    const loadLatestSession = async () => {
+      if (!workingFolder || sessions.length === 0) return;
+
+      // If no current session and we haven't auto-loaded yet for this folder
+      if (!currentSession && sessions.length > 0 && !hasAutoLoadedRef.current) {
+        const latestSession = [...sessions].sort((a, b) =>
+          new Date(b.lastUsedAt).getTime() - new Date(a.lastUsedAt).getTime()
+        )[0];
+
+        console.log('[PhotoboothWorkspace] Auto-loading latest session:', latestSession.id);
+        hasAutoLoadedRef.current = true;
+        await loadSession(latestSession.id);
+      }
+    };
+
+    loadLatestSession();
+  }, [workingFolder, sessions, currentSession, loadSession]);
+
+  // Reset auto-load flag when working folder changes
+  useEffect(() => {
+    hasAutoLoadedRef.current = false;
+  }, [workingFolder]);
 
   // Second screen hook
   const { isSecondScreenOpen, openSecondScreen, closeSecondScreen, updateGuestDisplay, updateDisplayMode, selectPhoto } = useSecondScreen();
@@ -101,6 +130,7 @@ export default function PhotoboothWorkspace() {
 
   // Add photos to set when photosTaken changes (happens during capture phase)
   const lastPhotosTakenRef = useRef(0);
+  const hasAutoLoadedRef = useRef(false);
   useEffect(() => {
     if (sequence.photosTaken > lastPhotosTakenRef.current) {
       const newPhoto: CurrentSetPhoto = {
@@ -118,14 +148,19 @@ export default function PhotoboothWorkspace() {
 
   // Handle photo_downloaded events from WebSocket
   const handlePhotoDownloaded = useCallback(async (event: PhotoDownloadedEvent) => {
-    console.log('[PhotoboothWorkspace] Photo downloaded event:', event);
+    console.log('[PhotoboothWorkspace::handlePhotoDownloaded] START');
+    console.log('[PhotoboothWorkspace::handlePhotoDownloaded] event:', event);
 
-    // Extract filename from file_path (e.g., '/tmp/photos/DSCF0042.JPG' -> 'DSCF0042.JPG')
+    // Immediately advance the sequence state machine (adds placeholder + moves to review/next)
+    // This decouples state progression from the slower download pipeline
+    sequence.notifyCaptureComplete();
+
     const filename = event.file_path.split('/').pop() || event.file_path;
+    console.log('[PhotoboothWorkspace::handlePhotoDownloaded] extracted filename:', filename);
 
     if (!workingFolder) {
       // Show warning toast if working folder is not set
-      console.warn('[PhotoboothWorkspace] Working folder not set, cannot save photo');
+      console.warn('[PhotoboothWorkspace::handlePhotoDownloaded] Working folder not set, cannot save photo');
       setShowWorkingFolderWarning(true);
       // Auto-hide after 5 seconds
       setTimeout(() => setShowWorkingFolderWarning(false), 5000);
@@ -133,31 +168,111 @@ export default function PhotoboothWorkspace() {
     }
 
     try {
+      let sessionId = currentSession?.id;
+      console.log('[PhotoboothWorkspace::handlePhotoDownloaded] initial sessionId:', sessionId);
+
+      // Auto-create session if none exists
+      if (!sessionId) {
+        console.log('[PhotoboothWorkspace::handlePhotoDownloaded] No active session - auto-creating new session');
+
+        // Extract parent folder name for session prefix
+        const parentName = workingFolder.split(/[\\/]/).pop() || 'Session';
+
+        // Find the highest numbered session to increment
+        let nextNumber = 1;
+        if (sessions.length > 0) {
+          // Extract numbers from session names like "ParentName_set_001"
+          const numbers = sessions
+            .map(s => {
+              const match = s.name.match(/_set_(\d+)$/);
+              return match ? parseInt(match[1], 10) : 0;
+            })
+            .filter(n => n > 0);
+
+          if (numbers.length > 0) {
+            nextNumber = Math.max(...numbers) + 1;
+          }
+        }
+
+        const sessionName = `${parentName}_set_${String(nextNumber).padStart(3, '0')}`;
+        console.log('[PhotoboothWorkspace] Creating session:', sessionName);
+
+        // Create the new session using the backend command
+        const newSession = await invoke<{ id: string; name: string; folderName: string }>('create_photobooth_session', {
+          folderPath: workingFolder,
+          sessionName,
+        });
+
+        sessionId = newSession.id;
+        console.log('[PhotoboothWorkspace::handlePhotoDownloaded] Created session:', sessionId);
+
+        // Load the newly created session as current
+        await loadSession(sessionId);
+        console.log('[PhotoboothWorkspace::handlePhotoDownloaded] Loaded new session');
+      }
+
+      console.log('[PhotoboothWorkspace::handlePhotoDownloaded] Calling download_photo_from_daemon with:', {
+        daemonUrl: DAEMON_URL,
+        filename,
+        folderPath: workingFolder,
+        sessionId,
+        cameraPath: event.camera_path,
+        originalDaemonPath: event.file_path,
+      });
+
       // Download photo directly via Rust (bypasses slow JS ArrayBuffer → Array conversion)
       const updatedSession = await invoke<PtbSession>('download_photo_from_daemon', {
         daemonUrl: DAEMON_URL,
         filename,
         folderPath: workingFolder,
+        sessionId,
         cameraPath: event.camera_path,
         originalDaemonPath: event.file_path,
       });
 
-      console.log('[PhotoboothWorkspace] Photo saved, session updated:', updatedSession);
+      console.log('[PhotoboothWorkspace::handlePhotoDownloaded] Photo saved, session updated:', updatedSession);
       setPtbSession(updatedSession);
 
-      // Add photo to current set display with actual thumbnail
-      const photoPath = `${workingFolder}/${filename}`;
+      // Update session state directly from the returned data (avoids expensive full refresh)
+      updateCurrentSessionFromDownload({
+        id: sessionId!,
+        name: updatedSession.name,
+        createdAt: updatedSession.createdAt,
+        lastUsedAt: updatedSession.lastUsedAt,
+        shotCount: updatedSession.shotCount,
+        photos: updatedSession.photos,
+      });
+      console.log('[PhotoboothWorkspace::handlePhotoDownloaded] Session state updated directly');
+
+      // Replace placeholder thumbnail with actual photo
+      const photoPath = `${workingFolder}/${sessionId}/${filename}`;
+      console.log('[PhotoboothWorkspace::handlePhotoDownloaded] photoPath:', photoPath);
       const newPhoto: CurrentSetPhoto = {
         id: `photo-${Date.now()}`,
         thumbnailUrl: convertFileSrc(photoPath),
         timestamp: new Date().toLocaleTimeString(),
       };
-      setCurrentSetPhotos(prev => [...prev, newPhoto]);
+
+      // Find and replace the first placeholder thumbnail (SVG data URL)
+      setCurrentSetPhotos(prev => {
+        const placeholderIndex = prev.findIndex(p => p.thumbnailUrl.startsWith('data:image/svg+xml'));
+        if (placeholderIndex !== -1) {
+          // Replace the placeholder with the real photo
+          const updated = [...prev];
+          updated[placeholderIndex] = newPhoto;
+          console.log('[PhotoboothWorkspace::handlePhotoDownloaded] Replaced placeholder at index:', placeholderIndex);
+          return updated;
+        }
+        // If no placeholder found, append the new photo
+        console.log('[PhotoboothWorkspace::handlePhotoDownloaded] No placeholder found, appending photo');
+        return [...prev, newPhoto];
+      });
 
     } catch (error) {
-      console.error('[PhotoboothWorkspace] Error handling photo download:', error);
+      console.error('[PhotoboothWorkspace::handlePhotoDownloaded] ERROR:', error);
     }
-  }, [workingFolder]);
+    console.log('[PhotoboothWorkspace::handlePhotoDownloaded] END');
+  }, [workingFolder, currentSession, sessions, updateCurrentSessionFromDownload, loadSession, sequence.notifyCaptureComplete]);
 
   // Subscribe to photo_downloaded events
   useEffect(() => {
@@ -198,16 +313,48 @@ export default function PhotoboothWorkspace() {
     });
   };
 
-  const canProceedToPreview = selectedPhotos.size > 0;
+  // Handler for creating next session
+  const handleNextSession = async () => {
+    if (!workingFolder) return;
 
-  const handleProceedToPreview = () => {
-    if (canProceedToPreview) {
-      setWorkflowStep('preview');
+    try {
+      // Extract parent folder name for session prefix
+      const parentName = workingFolder.split(/[\\/]/).pop() || 'Session';
+
+      // Find the highest numbered session to increment
+      let nextNumber = 1;
+      if (sessions.length > 0) {
+        const numbers = sessions
+          .map(s => {
+            const match = s.name.match(/_set_(\d+)$/);
+            return match ? parseInt(match[1], 10) : 0;
+          })
+          .filter(n => n > 0);
+
+        if (numbers.length > 0) {
+          nextNumber = Math.max(...numbers) + 1;
+        }
+      }
+
+      const sessionName = `${parentName}_set_${String(nextNumber).padStart(3, '0')}`;
+      console.log('[PhotoboothWorkspace] Creating next session:', sessionName);
+
+      // Create the new session using the backend command
+      const newSession = await invoke<{ id: string; name: string; folderName: string }>('create_photobooth_session', {
+        folderPath: workingFolder,
+        sessionName,
+      });
+
+      console.log('[PhotoboothWorkspace] Created and switching to session:', newSession.id);
+
+      // Load the new session
+      await loadSession(newSession.id);
+
+      // Clear current photos for the new session
+      setCurrentSetPhotos([]);
+    } catch (error) {
+      console.error('[PhotoboothWorkspace] Error creating next session:', error);
     }
-  };
-
-  const handleBackToSelect = () => {
-    setWorkflowStep('select');
   };
 
   const toggleSet = (setId: string) => {
@@ -406,101 +553,16 @@ export default function PhotoboothWorkspace() {
           </div>
 
           {/* Current Set Photo Strip */}
-          <div className="current-set-strip">
-            <div className="current-set-header">
-              <div className="workflow-steps">
-                <button
-                  className={`workflow-step ${workflowStep === 'select' ? 'active' : ''} ${workflowStep === 'preview' ? 'completed' : ''}`}
-                  onClick={handleBackToSelect}
-                >
-                  <span className="step-number">1</span>
-                  <span className="step-label">Select Photos</span>
-                  {selectedPhotos.size > 0 && (
-                    <span className="step-count">{selectedPhotos.size}/{frameZoneCount}</span>
-                  )}
-                </button>
-                <div className="step-arrow">
-                  <ChevronRight size={16} />
-                </div>
-                <button
-                  className={`workflow-step ${workflowStep === 'preview' ? 'active' : ''}`}
-                  onClick={handleProceedToPreview}
-                  disabled={!canProceedToPreview}
-                >
-                  <span className="step-number">2</span>
-                  <span className="step-label">Preview & Share</span>
-                </button>
-              </div>
-            </div>
-
-            {workflowStep === 'select' ? (
-              <div className="current-set-photos">
-                {currentSetPhotos.length === 0 ? (
-                  <div className="current-set-empty">
-                    <ImageIcon size={32} />
-                    <span>No photos yet - capture photos to see them here</span>
-                  </div>
-                ) : (
-                  currentSetPhotos.map((photo, idx) => (
-                    <div
-                      key={photo.id}
-                      className={`current-set-photo ${selectedPhotos.has(photo.id) ? 'selected' : ''}`}
-                      onClick={() => togglePhotoSelection(photo.id)}
-                    >
-                      <div className="current-set-photo-inner">
-                        <ImageIcon size={36} />
-                      </div>
-                      <span className="current-set-photo-number">{idx + 1}</span>
-                      {selectedPhotos.has(photo.id) && (
-                        <div className="photo-selected-check">
-                          <Check size={14} />
-                        </div>
-                      )}
-                    </div>
-                  ))
-                )}
-              </div>
-            ) : (
-              <div className="preview-result">
-                <div className="preview-result-canvas">
-                  <div className="preview-frame-zones">
-                    {Array.from({ length: frameZoneCount }).map((_, idx) => {
-                      const selectedPhotoIds = Array.from(selectedPhotos);
-                      const photoId = selectedPhotoIds[idx];
-                      return (
-                        <div key={idx} className="preview-zone">
-                          {photoId ? (
-                            <div className="preview-zone-filled">
-                              <ImageIcon size={24} />
-                              <span>Photo {currentSetPhotos.findIndex(p => p.id === photoId) + 1}</span>
-                            </div>
-                          ) : (
-                            <div className="preview-zone-empty">
-                              <span>Empty</span>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-                <div className="preview-actions">
-                  <button className="preview-action-btn" onClick={handleBackToSelect}>
-                    <ArrowLeft size={16} />
-                    <span>Back</span>
-                  </button>
-                  <button className="preview-action-btn primary">
-                    <QrCode size={16} />
-                    <span>Generate QR</span>
-                  </button>
-                  <button className="preview-action-btn primary">
-                    <Printer size={16} />
-                    <span>Print</span>
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
+          <CurrentSetPhotoStrip
+            currentSetPhotos={currentSetPhotos}
+            selectedPhotos={selectedPhotos}
+            setName={ptbSession?.name ?? null}
+            workingFolder={workingFolder}
+            frameName={currentFrame?.name ?? null}
+            requiredPhotos={currentFrame?.zones.length ?? autoCount}
+            onPhotoSelect={togglePhotoSelection}
+            onNextSession={handleNextSession}
+          />
 
           {/* Photobooth Controls */}
           <PhotoboothControls
@@ -526,223 +588,21 @@ export default function PhotoboothWorkspace() {
         </div>
 
         {/* Right Sidebar - Photo Sets Catalog */}
-        <div className="catalog-sidebar">
-          <div className="catalog-header">
-            <h2 className="catalog-title">Photo Sessions</h2>
-            <span className="catalog-count">{sessions.length} sessions</span>
-          </div>
-
-          <div className="catalog-list">
-            <AnimatePresence mode="popLayout">
-              {sessions.map((set) => {
-                // Format date from createdAt
-                const date = new Date(set.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-                // Format time from lastUsedAt
-                const time = new Date(set.lastUsedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-
-                return (
-                  <motion.div
-                    key={set.id}
-                    layout
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    transition={{ duration: 0.2 }}
-                    className={`photo-set-card ${selectedSetId === set.id ? 'selected' : ''}`}
-                  >
-                    <button
-                      className="photo-set-header"
-                      onClick={() => {
-                        setSelectedSetId(set.id);
-                        toggleSet(set.id);
-                      }}
-                    >
-                      <div className="photo-set-info">
-                        <div className="photo-set-icon">
-                          {expandedSets.has(set.id) ? (
-                            <ChevronDown size={14} />
-                          ) : (
-                            <ChevronRight size={14} />
-                          )}
-                        </div>
-                        <div className="photo-set-details">
-                          <span className="photo-set-name">{set.name}</span>
-                          <span className="photo-set-meta">
-                            {set.shotCount} photos • {date}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="photo-set-time">
-                        <Clock size={12} />
-                        <span>{time}</span>
-                      </div>
-                    </button>
-
-                    <AnimatePresence>
-                      {expandedSets.has(set.id) && (
-                        <motion.div
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: "auto", opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          transition={{ duration: 0.2 }}
-                          className="photo-set-content"
-                        >
-                          <div className="photo-thumbnails">
-                            {Array.from({ length: set.shotCount }).map((_, idx) => (
-                              <div key={idx} className="thumbnail-placeholder">
-                                <ImageIcon size={20} />
-                                <span>Photo {idx + 1}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </motion.div>
-                );
-              })}
-            </AnimatePresence>
-          </div>
-
-          {/* Selected Set Detail */}
-          <AnimatePresence>
-            {selectedSet && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                exit={{ opacity: 0, height: 0 }}
-                className="selected-set-detail"
-              >
-                <div className="detail-header">
-                  <h3>{selectedSet.name}</h3>
-                  <button
-                    className="close-detail"
-                    onClick={() => setSelectedSetId(null)}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M18 6L6 18M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-                <div className="detail-meta">
-                  <span className="detail-item">
-                    <Calendar size={12} />
-                    {new Date(selectedSet.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                  </span>
-                  <span className="detail-item">
-                    <Clock size={12} />
-                    {new Date(selectedSet.lastUsedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                  <span className="detail-item">
-                    <ImageIcon size={12} />
-                    {selectedSet.shotCount} photos
-                  </span>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Camera Connection Status Notification - Only show if camera was connected before */}
-          <AnimatePresence>
-            {hasEverConnected && !isCameraConnected && !isConnecting && (
-              <motion.div
-                className="connection-status-toast"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 20 }}
-              >
-                <WifiOff size={16} className="connection-status-icon" />
-                <div className="connection-status-text">
-                  <span className="connection-status-title">Camera Disconnected</span>
-                  <span className="connection-status-subtitle">
-                    <RefreshCw size={12} className="spinning" />
-                    Retrying connection...
-                  </span>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Camera Connecting Toast */}
-          <AnimatePresence>
-            {isConnecting && (
-              <motion.div
-                className="connection-status-toast connecting-toast"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 20 }}
-              >
-                <RefreshCw size={16} className="connection-status-icon spinning" />
-                <div className="connection-status-text">
-                  <span className="connection-status-title">Connecting to Camera</span>
-                  <span className="connection-status-subtitle">
-                    Please wait...
-                  </span>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Working Folder Warning Toast */}
-          <AnimatePresence>
-            {showWorkingFolderWarning && (
-              <motion.div
-                className="connection-status-toast working-folder-warning"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 20 }}
-                onClick={() => setShowWorkingFolderWarning(false)}
-              >
-                <FolderOpen size={16} className="connection-status-icon" />
-                <div className="connection-status-text">
-                  <span className="connection-status-title">No Working Folder Set</span>
-                  <span className="connection-status-subtitle">
-                    Photos cannot be saved. Set a working folder in Photobooth settings.
-                  </span>
-                </div>
-                <button
-                  className="toast-dismiss-btn"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowWorkingFolderWarning(false);
-                  }}
-                >
-                  <X size={14} />
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* No Camera Warning Toast */}
-          <AnimatePresence>
-            {showNoCameraWarning && (
-              <motion.div
-                className="connection-status-toast no-camera-warning"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 20 }}
-                onClick={() => setShowNoCameraWarning(false)}
-              >
-                <WifiOff size={16} className="connection-status-icon" />
-                <div className="connection-status-text">
-                  <span className="connection-status-title">No Camera Connected</span>
-                  <span className="connection-status-subtitle">
-                    Connect a camera to capture photos.
-                  </span>
-                </div>
-                <button
-                  className="toast-dismiss-btn"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowNoCameraWarning(false);
-                  }}
-                >
-                  <X size={14} />
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+        <PhotoSessionsSidebar
+          sessions={sessions}
+          selectedSetId={selectedSetId}
+          expandedSets={expandedSets}
+          hasEverConnected={hasEverConnected}
+          isCameraConnected={isCameraConnected}
+          isConnecting={isConnecting}
+          showWorkingFolderWarning={showWorkingFolderWarning}
+          showNoCameraWarning={showNoCameraWarning}
+          onSetSelect={setSelectedSetId}
+          onToggleSet={toggleSet}
+          onCloseSetDetail={() => setSelectedSetId(null)}
+          onDismissWorkingFolderWarning={() => setShowWorkingFolderWarning(false)}
+          onDismissNoCameraWarning={() => setShowNoCameraWarning(false)}
+        />
       </div>
     </div>
   );

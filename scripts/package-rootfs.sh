@@ -74,9 +74,9 @@ cp "$BUILDROOT/output/images/rootfs.cpio.xz" "$ISODIR/initrd.xz"
 
 cat > "$ISODIR/boot/grub/grub.cfg" <<'GRUBEOF'
 set default=0
-set timeout=3
+set timeout=0
 menuentry "Photobooth Linux" {
-    linux /vmlinuz console=tty0 console=ttyS0,115200 earlyprintk=ttyS0,115200
+    linux /vmlinuz console=ttyS0,115200 quiet loglevel=3 mitigations=off lpj=8293824
     initrd /initrd.xz
 }
 GRUBEOF

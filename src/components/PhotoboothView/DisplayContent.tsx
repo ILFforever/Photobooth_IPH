@@ -1,7 +1,7 @@
 import { Layers, Camera, Image as ImageIcon, Grid3x3 } from "lucide-react";
 import { mdiFlashTriangleOutline } from '@mdi/js';
 import Icon from '@mdi/react';
-import { useEffect, useRef } from "react";
+import { useCallback, useRef } from "react";
 
 type DisplayMode = 'single' | 'center' | 'canvas';
 
@@ -18,11 +18,9 @@ interface DisplayContentProps {
   onPhotoDoubleClick?: (index: number) => void;
   onExitFullscreen?: () => void;
   onNavClick?: (direction: 'prev' | 'next') => void;
-  // Optional features for main workspace
   showGridOverlay?: boolean;
   showRecentPhotos?: boolean;
   showBackButton?: boolean;
-  // Live view stream
   liveViewStream?: MediaStream | null;
 }
 
@@ -38,28 +36,34 @@ export default function DisplayContent({
   showBackButton = false,
   liveViewStream = null
 }: DisplayContentProps) {
-  const videoRef = useRef<HTMLVideoElement>(null);
+  // Use a callback ref so srcObject is attached whenever the <video> DOM node
+  // mounts (including after a display-mode switch that destroys/recreates it).
+  const streamRef = useRef<MediaStream | null>(liveViewStream);
+  streamRef.current = liveViewStream;
 
-  // Attach stream to video element when stream changes
-  useEffect(() => {
-    if (liveViewStream && videoRef.current) {
-      videoRef.current.srcObject = liveViewStream;
+  const videoCallbackRef = useCallback((node: HTMLVideoElement | null) => {
+    if (node && streamRef.current) {
+      node.srcObject = streamRef.current;
     }
-  }, [liveViewStream]);
+  }, []);
 
-  // Render display content based on mode
+  // Shared video element builder to avoid duplication
+  const renderVideo = (className: string) => (
+    <video
+      ref={videoCallbackRef}
+      autoPlay
+      playsInline
+      muted
+      className={className}
+    />
+  );
+
   switch (displayMode) {
     case 'single':
       return (
         <div className="single-display">
           {liveViewStream ? (
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className="single-liveview-video"
-            />
+            renderVideo("single-liveview-video")
           ) : (
             <div className="single-photo-content">
               <Icon path={mdiFlashTriangleOutline} size={3} />
@@ -72,23 +76,15 @@ export default function DisplayContent({
     case 'center':
       return (
         <div className="center-display">
-          {/* Main live view */}
           <div className="center-main">
             {liveViewStream ? (
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                className="center-liveview-video"
-              />
+              renderVideo("center-liveview-video")
             ) : (
               <div className="center-main-content">
                 <Camera size={48} strokeWidth={1.5} />
                 <span className="center-label">Live View</span>
               </div>
             )}
-            {/* Grid overlay within center-main */}
             {(showGridOverlay || liveViewStream) && (
               <div className="grid-overlay center-grid">
                 <div className="grid-line grid-h-1"></div>
@@ -98,7 +94,6 @@ export default function DisplayContent({
               </div>
             )}
           </div>
-          {/* Recent photos strip */}
           {showRecentPhotos && (
             <div className="center-recent">
               {Array.from({ length: 5 }).map((_, idx) => (
@@ -112,7 +107,6 @@ export default function DisplayContent({
       );
 
     case 'canvas':
-      // Show single photo if one is selected
       if (selectedPhotoIndex !== null) {
         const currentPhoto = currentSetPhotos[selectedPhotoIndex];
         const totalPhotos = currentSetPhotos.length || 6;

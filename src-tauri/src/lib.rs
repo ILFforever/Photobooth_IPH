@@ -2369,34 +2369,58 @@ struct PhotoboothSessionInfo {
     shot_count: u32,
     created_at: String,
     last_used_at: String,
+    thumbnails: Vec<String>, // Thumbnail URLs for the session's photos
 }
 
-/// Workspace-level session tracking
+/// Photo entry in the .ptb session file
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
-struct PhotoboothWorkspace {
+struct PtbPhoto {
+    filename: String,
+    original_path: String,
+    camera_path: String,
+    captured_at: String,
+}
+
+/// Session data in the .ptb file
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+struct PtbSessionData {
+    id: String,
+    name: String,
+    folder_name: String,
+    created_at: String,
+    last_used_at: String,
+    shot_count: u32,
+    photos: Vec<PtbPhoto>,
+}
+
+/// Root .ptb file structure - stored at working folder root
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+struct PtbWorkspace {
     name: String,
     created_at: String,
     last_used_at: String,
     current_session_id: Option<String>,
-    sessions: Vec<PhotoboothSessionInfo>,
+    sessions: Vec<PtbSessionData>,
 }
 
-/// Load or create workspace session file
+/// Load or create .ptb workspace file at root level
 #[tauri::command]
-async fn load_photobooth_workspace(folder_path: String) -> Result<PhotoboothWorkspace, String> {
-    let config_path = std::path::Path::new(&folder_path).join(".photobooth-workspace.json");
+async fn load_ptb_workspace(folder_path: String) -> Result<PtbWorkspace, String> {
+    let ptb_path = std::path::Path::new(&folder_path).join(".ptb");
 
-    if config_path.exists() {
-        let content = fs::read_to_string(&config_path)
-            .map_err(|e| format!("Failed to read workspace file: {}", e))?;
-        let workspace: PhotoboothWorkspace = serde_json::from_str(&content)
-            .map_err(|e| format!("Failed to parse workspace file: {}", e))?;
+    if ptb_path.exists() {
+        let content = fs::read_to_string(&ptb_path)
+            .map_err(|e| format!("Failed to read .ptb file: {}", e))?;
+        let workspace: PtbWorkspace = serde_json::from_str(&content)
+            .map_err(|e| format!("Failed to parse .ptb file: {}", e))?;
         Ok(workspace)
     } else {
         // Create a new workspace
         let now = chrono::Utc::now().to_rfc3339();
-        Ok(PhotoboothWorkspace {
+        Ok(PtbWorkspace {
             name: "Photobooth Workspace".to_string(),
             created_at: now.clone(),
             last_used_at: now,
@@ -2406,86 +2430,87 @@ async fn load_photobooth_workspace(folder_path: String) -> Result<PhotoboothWork
     }
 }
 
-/// Save workspace session file
+/// Save .ptb workspace file at root level
 #[tauri::command]
-async fn save_photobooth_workspace(folder_path: String, workspace: PhotoboothWorkspace) -> Result<(), String> {
-    let config_path = std::path::Path::new(&folder_path).join(".photobooth-workspace.json");
+async fn save_ptb_workspace(folder_path: String, workspace: PtbWorkspace) -> Result<(), String> {
+    let ptb_path = std::path::Path::new(&folder_path).join(".ptb");
 
-    let workspace_to_save = PhotoboothWorkspace {
+    let workspace_to_save = PtbWorkspace {
         last_used_at: chrono::Utc::now().to_rfc3339(),
         ..workspace
     };
 
     let json = serde_json::to_string_pretty(&workspace_to_save)
-        .map_err(|e| format!("Failed to serialize workspace: {}", e))?;
+        .map_err(|e| format!("Failed to serialize .ptb workspace: {}", e))?;
 
-    fs::write(&config_path, json)
-        .map_err(|e| format!("Failed to write workspace file: {}", e))?;
+    fs::write(&ptb_path, json)
+        .map_err(|e| format!("Failed to write .ptb file: {}", e))?;
 
     Ok(())
 }
 
-/// List all sessions in the workspace
-#[tauri::command]
-async fn list_photobooth_sessions(folder_path: String) -> Result<Vec<PhotoboothSessionInfo>, String> {
-    let workspace = load_photobooth_workspace(folder_path.clone()).await?;
+/// Convert PtbSessionData to PhotoboothSessionInfo (without thumbnails - for internal use)
+fn ptb_session_to_info(session: &PtbSessionData) -> PhotoboothSessionInfo {
+    PhotoboothSessionInfo {
+        id: session.id.clone(),
+        name: session.name.clone(),
+        folder_name: session.folder_name.clone(),
+        shot_count: session.shot_count,
+        created_at: session.created_at.clone(),
+        last_used_at: session.last_used_at.clone(),
+        thumbnails: Vec::new(), // Empty thumbnails for simple conversion
+    }
+}
 
-    // Get the base name from the working folder
-    let base_name = std::path::Path::new(&folder_path)
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("");
-
-    // Also scan for any folders that might not be in the workspace file
-    let folder = std::path::Path::new(&folder_path);
-    let mut sessions = workspace.sessions.clone();
-
-    if let Ok(entries) = fs::read_dir(folder) {
-        for entry in entries.flatten() {
-            if let Ok(file_type) = entry.file_type() {
-                if file_type.is_dir() {
-                    let dir_name = entry.file_name().to_string_lossy().to_string();
-                    // Skip hidden folders
-                    if !dir_name.starts_with('.') {
-                        // Check for pattern: {basename}_### or just folders with .ptb file
-                        let matches_pattern = if base_name.is_empty() {
-                            dir_name.contains('_')
-                        } else {
-                            dir_name.starts_with(&format!("{}_", base_name))
-                        };
-
-                        if matches_pattern {
-                            let ptb_path = entry.path().join(".ptb");
-                            if ptb_path.exists() {
-                                // Check if this session is already in our list
-                                if !sessions.iter().any(|s| s.folder_name == dir_name) {
-                                    if let Ok(ptb_content) = fs::read_to_string(&ptb_path) {
-                                        if let Ok(mut ptb_session) = serde_json::from_str::<PtbSession>(&ptb_content) {
-                                            // Ensure id matches folder name
-                                            ptb_session.id = dir_name.clone();
-                                            sessions.push(PhotoboothSessionInfo {
-                                                id: dir_name.clone(),
-                                                name: ptb_session.name,
-                                                folder_name: dir_name,
-                                                shot_count: ptb_session.shot_count,
-                                                created_at: ptb_session.created_at,
-                                                last_used_at: ptb_session.last_used_at,
-                                            });
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+/// Convert PtbSessionData to PhotoboothSessionInfo with thumbnail generation
+async fn ptb_session_to_info_with_thumbnails(
+    session: &PtbSessionData,
+    folder_path: &str,
+    app: &tauri::AppHandle,
+) -> PhotoboothSessionInfo {
+    // Generate thumbnails for each photo
+    let mut thumbnails = Vec::new();
+    for photo in &session.photos {
+        let full_path = format!("{}/{}/{}", folder_path, session.folder_name, photo.filename);
+        match generate_cached_thumbnail_high_res(&full_path, app).await {
+            Ok(result) => thumbnails.push(result.thumbnail),
+            Err(_) => {
+                // If thumbnail generation fails, use the original path as fallback
+                thumbnails.push(full_path.clone());
             }
         }
     }
 
-    // Sort by creation date (newest first)
-    sessions.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    PhotoboothSessionInfo {
+        id: session.id.clone(),
+        name: session.name.clone(),
+        folder_name: session.folder_name.clone(),
+        shot_count: session.shot_count,
+        created_at: session.created_at.clone(),
+        last_used_at: session.last_used_at.clone(),
+        thumbnails,
+    }
+}
 
-    Ok(sessions)
+/// List all sessions from the .ptb file with thumbnails
+#[tauri::command]
+async fn list_photobooth_sessions(folder_path: String, app: tauri::AppHandle) -> Result<Vec<PhotoboothSessionInfo>, String> {
+    let workspace = load_ptb_workspace(folder_path.clone()).await?;
+
+    // Convert sessions to info format with thumbnails (in parallel for performance)
+    let sessions_futures: Vec<_> = workspace.sessions
+        .iter()
+        .map(|session| ptb_session_to_info_with_thumbnails(session, &folder_path, &app))
+        .collect();
+
+    // Wait for all thumbnail generation to complete
+    let sessions = futures::future::join_all(sessions_futures).await;
+
+    // Sort by creation date (newest first)
+    let mut sorted_sessions = sessions;
+    sorted_sessions.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+
+    Ok(sorted_sessions)
 }
 
 /// Create a new photobooth session folder
@@ -2495,7 +2520,7 @@ async fn create_photobooth_session(
     folder_path: String,
     session_name: String,
 ) -> Result<PhotoboothSessionInfo, String> {
-    let mut workspace = load_photobooth_workspace(folder_path.clone()).await?;
+    let mut workspace = load_ptb_workspace(folder_path.clone()).await?;
 
     // Get the base name from the working folder (e.g., "Myshoot" from "C:\Photos\Myshoot")
     let base_name = std::path::Path::new(&folder_path)
@@ -2525,37 +2550,25 @@ async fn create_photobooth_session(
     fs::create_dir_all(&session_folder)
         .map_err(|e| format!("Failed to create session folder: {}", e))?;
 
-    // Create .ptb session file
+    // Create session data
     let now = chrono::Utc::now().to_rfc3339();
-    let ptb_session = PtbSession {
+    let session_data = PtbSessionData {
         id: session_id.clone(),
         name: session_name.clone(),
+        folder_name: session_id.clone(),
         created_at: now.clone(),
         last_used_at: now.clone(),
         shot_count: 0,
         photos: Vec::new(),
     };
 
-    let ptb_path = session_folder.join(".ptb");
-    let ptb_json = serde_json::to_string_pretty(&ptb_session)
-        .map_err(|e| format!("Failed to serialize session: {}", e))?;
-    fs::write(&ptb_path, ptb_json)
-        .map_err(|e| format!("Failed to write session file: {}", e))?;
-
     // Create session info
-    let session_info = PhotoboothSessionInfo {
-        id: session_id.clone(),
-        name: session_name,
-        folder_name: session_id,
-        shot_count: 0,
-        created_at: now.clone(),
-        last_used_at: now,
-    };
+    let session_info = ptb_session_to_info(&session_data);
 
-    // Add to workspace
-    workspace.sessions.push(session_info.clone());
+    // Add to workspace and save
+    workspace.sessions.push(session_data);
     workspace.current_session_id = Some(session_info.id.clone());
-    save_photobooth_workspace(folder_path, workspace).await?;
+    save_ptb_workspace(folder_path, workspace).await?;
 
     Ok(session_info)
 }
@@ -2563,17 +2576,17 @@ async fn create_photobooth_session(
 /// Get the current active session
 #[tauri::command]
 async fn get_current_session(folder_path: String) -> Result<Option<PhotoboothSessionInfo>, String> {
-    let workspace = load_photobooth_workspace(folder_path).await?;
+    let workspace = load_ptb_workspace(folder_path).await?;
 
     if let Some(session_id) = workspace.current_session_id {
         if let Some(session) = workspace.sessions.iter().find(|s| s.id == session_id) {
-            return Ok(Some(session.clone()));
+            return Ok(Some(ptb_session_to_info(session)));
         }
     }
 
     // If no current session, get the most recent one
     if let Some(session) = workspace.sessions.first() {
-        Ok(Some(session.clone()))
+        Ok(Some(ptb_session_to_info(session)))
     } else {
         Ok(None)
     }
@@ -2582,13 +2595,25 @@ async fn get_current_session(folder_path: String) -> Result<Option<PhotoboothSes
 /// Set the current active session
 #[tauri::command]
 async fn set_current_session(folder_path: String, session_id: String) -> Result<(), String> {
-    let mut workspace = load_photobooth_workspace(folder_path.clone()).await?;
+    let mut workspace = load_ptb_workspace(folder_path.clone()).await?;
 
     // Verify session exists
     if workspace.sessions.iter().any(|s| s.id == session_id) {
         workspace.current_session_id = Some(session_id);
-        save_photobooth_workspace(folder_path, workspace).await?;
+        save_ptb_workspace(folder_path, workspace).await?;
         Ok(())
+    } else {
+        Err(format!("Session not found: {}", session_id))
+    }
+}
+
+/// Get full session data including photos
+#[tauri::command]
+async fn get_session_data(folder_path: String, session_id: String) -> Result<PtbSessionData, String> {
+    let workspace = load_ptb_workspace(folder_path).await?;
+
+    if let Some(session) = workspace.sessions.iter().find(|s| s.id == session_id) {
+        Ok(session.clone())
     } else {
         Err(format!("Session not found: {}", session_id))
     }
@@ -2596,92 +2621,9 @@ async fn set_current_session(folder_path: String, session_id: String) -> Result<
 
 // ==================== END PHOTOBOOTH SESSION SYSTEM ====================
 
-// ==================== PHOTOBOOTH WORKING FOLDER SYSTEM ====================
+// ==================== PHOTO SAVING FUNCTIONS ====================
 
-/// Photo entry in the .ptb session file
-#[derive(Serialize, Deserialize, Clone, Debug)]
-#[serde(rename_all = "camelCase")]
-struct PtbPhoto {
-    filename: String,
-    original_path: String,
-    camera_path: String,
-    captured_at: String,
-}
-
-/// Session tracking file (.ptb) structure
-/// Stored in each session folder (Test_001/.ptb)
-#[derive(Serialize, Deserialize, Clone, Debug)]
-#[serde(rename_all = "camelCase")]
-struct PtbSession {
-    id: String,
-    name: String,
-    created_at: String,
-    last_used_at: String,
-    shot_count: u32,
-    photos: Vec<PtbPhoto>,
-}
-
-/// Load a .ptb session file from a session folder
-/// The id is derived from the folder name (e.g., "Test_001")
-#[tauri::command]
-async fn load_ptb_session(folder_path: String) -> Result<PtbSession, String> {
-    let ptb_path = std::path::Path::new(&folder_path).join(".ptb");
-
-    // Get the session id from the folder name
-    let session_id = std::path::Path::new(&folder_path)
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("unknown")
-        .to_string();
-
-    if ptb_path.exists() {
-        let content = fs::read_to_string(&ptb_path)
-            .map_err(|e| format!("Failed to read .ptb file: {}", e))?;
-        let mut session: PtbSession = serde_json::from_str(&content)
-            .map_err(|e| format!("Failed to parse .ptb file: {}", e))?;
-        // Ensure the id matches the folder
-        session.id = session_id;
-        Ok(session)
-    } else {
-        // Create a new session with folder name
-        let folder_name = std::path::Path::new(&folder_path)
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("Untitled Session")
-            .to_string();
-
-        let now = chrono::Utc::now().to_rfc3339();
-        Ok(PtbSession {
-            id: session_id,
-            name: folder_name,
-            created_at: now.clone(),
-            last_used_at: now,
-            shot_count: 0,
-            photos: Vec::new(),
-        })
-    }
-}
-
-/// Save a .ptb session file
-#[tauri::command]
-async fn save_ptb_session(folder_path: String, session: PtbSession) -> Result<(), String> {
-    let ptb_path = std::path::Path::new(&folder_path).join(".ptb");
-
-    let session_to_save = PtbSession {
-        last_used_at: chrono::Utc::now().to_rfc3339(),
-        ..session
-    };
-
-    let json = serde_json::to_string_pretty(&session_to_save)
-        .map_err(|e| format!("Failed to serialize .ptb session: {}", e))?;
-
-    fs::write(&ptb_path, json)
-        .map_err(|e| format!("Failed to write .ptb file: {}", e))?;
-
-    Ok(())
-}
-
-/// Save photo data to session folder and update .ptb session
+/// Save photo data to session folder and update root .ptb file
 /// Photos are saved to: {working_folder}/{session_id}/{filename}
 #[tauri::command]
 async fn save_photo_to_working_folder(
@@ -2691,7 +2633,7 @@ async fn save_photo_to_working_folder(
     photo_data: Vec<u8>,
     camera_path: String,
     original_daemon_path: String,
-) -> Result<PtbSession, String> {
+) -> Result<PtbSessionData, String> {
     // Build the session folder path
     let session_folder = std::path::Path::new(&folder_path).join(&session_id);
 
@@ -2706,24 +2648,30 @@ async fn save_photo_to_working_folder(
     fs::write(&photo_path, &photo_data)
         .map_err(|e| format!("Failed to write photo file: {}", e))?;
 
-    // Load or create .ptb session
-    let session_folder_str = session_folder.to_string_lossy().to_string();
-    let mut session = load_ptb_session(session_folder_str.clone()).await?;
+    // Load workspace, update session, and save
+    let mut workspace = load_ptb_workspace(folder_path.clone()).await?;
 
-    // Add photo entry
-    let photo_entry = PtbPhoto {
-        filename: filename.clone(),
-        original_path: original_daemon_path,
-        camera_path,
-        captured_at: chrono::Utc::now().to_rfc3339(),
+    // Find and update the session
+    let updated_session = if let Some(session) = workspace.sessions.iter_mut().find(|s| s.id == session_id) {
+        let photo_entry = PtbPhoto {
+            filename: filename.clone(),
+            original_path: original_daemon_path,
+            camera_path,
+            captured_at: chrono::Utc::now().to_rfc3339(),
+        };
+        session.photos.push(photo_entry);
+        session.shot_count = session.photos.len() as u32;
+        session.last_used_at = chrono::Utc::now().to_rfc3339();
+
+        Some(session.clone())
+    } else {
+        return Err(format!("Session not found: {}", session_id));
     };
-    session.photos.push(photo_entry);
-    session.shot_count = session.photos.len() as u32;
 
-    // Save updated session
-    save_ptb_session(session_folder_str, session.clone()).await?;
+    // Save updated workspace
+    save_ptb_workspace(folder_path, workspace).await?;
 
-    Ok(session)
+    Ok(updated_session.unwrap())
 }
 
 /// Download photo directly from daemon and save to session folder
@@ -2737,59 +2685,231 @@ async fn download_photo_from_daemon(
     filename: String,
     camera_path: String,
     original_daemon_path: String,
-) -> Result<PtbSession, String> {
+) -> Result<PtbSessionData, String> {
+    println!("[Rust::download_photo_from_daemon] START");
+    println!("[Rust::download_photo_from_daemon] daemon_url: {}", daemon_url);
+    println!("[Rust::download_photo_from_daemon] folder_path: {}", folder_path);
+    println!("[Rust::download_photo_from_daemon] session_id: {}", session_id);
+    println!("[Rust::download_photo_from_daemon] filename: {}", filename);
+    println!("[Rust::download_photo_from_daemon] camera_path: {}", camera_path);
+    println!("[Rust::download_photo_from_daemon] original_daemon_path: {}", original_daemon_path);
+
     // Download photo directly from daemon
     let photo_url = format!("{}/api/photo/{}", daemon_url, filename);
+    println!("[Rust::download_photo_from_daemon] photo_url: {}", photo_url);
 
     let client = reqwest::Client::new();
     let response = client.get(&photo_url)
         .send()
         .await
-        .map_err(|e| format!("Failed to fetch photo from daemon: {}", e))?;
+        .map_err(|e| {
+            println!("[Rust::download_photo_from_daemon] ERROR: Failed to fetch photo from daemon: {}", e);
+            format!("Failed to fetch photo from daemon: {}", e)
+        })?;
+
+    println!("[Rust::download_photo_from_daemon] response status: {}", response.status());
 
     if !response.status().is_success() {
+        println!("[Rust::download_photo_from_daemon] ERROR: Daemon returned non-success status");
         return Err(format!("Daemon returned error: {}", response.status()));
     }
 
     let photo_data = response.bytes()
         .await
-        .map_err(|e| format!("Failed to read photo data: {}", e))?;
+        .map_err(|e| {
+            println!("[Rust::download_photo_from_daemon] ERROR: Failed to read photo data: {}", e);
+            format!("Failed to read photo data: {}", e)
+        })?;
+
+    println!("[Rust::download_photo_from_daemon] photo_data size: {} bytes", photo_data.len());
 
     // Build the session folder path
     let session_folder = std::path::Path::new(&folder_path).join(&session_id);
+    println!("[Rust::download_photo_from_daemon] session_folder: {:?}", session_folder);
 
     // Ensure session folder exists
     if !session_folder.exists() {
+        println!("[Rust::download_photo_from_daemon] Creating session folder");
         fs::create_dir_all(&session_folder)
             .map_err(|e| format!("Failed to create session folder: {}", e))?;
     }
 
     // Save the photo file in the session folder
     let photo_path = session_folder.join(&filename);
+    println!("[Rust::download_photo_from_daemon] photo_path: {:?}", photo_path);
     fs::write(&photo_path, &photo_data)
-        .map_err(|e| format!("Failed to write photo file: {}", e))?;
+        .map_err(|e| {
+            println!("[Rust::download_photo_from_daemon] ERROR: Failed to write photo file: {}", e);
+            format!("Failed to write photo file: {}", e)
+        })?;
 
-    // Load or create .ptb session
-    let session_folder_str = session_folder.to_string_lossy().to_string();
-    let mut session = load_ptb_session(session_folder_str.clone()).await?;
+    println!("[Rust::download_photo_from_daemon] Photo file written successfully");
 
-    // Add photo entry
-    let photo_entry = PtbPhoto {
-        filename: filename.clone(),
-        original_path: original_daemon_path,
-        camera_path,
-        captured_at: chrono::Utc::now().to_rfc3339(),
+    // Load workspace, update session, and save
+    println!("[Rust::download_photo_from_daemon] Loading workspace");
+    let mut workspace = load_ptb_workspace(folder_path.clone()).await?;
+    println!("[Rust::download_photo_from_daemon] Workspace loaded, sessions count: {}", workspace.sessions.len());
+
+    // Find and update the session
+    let updated_session = if let Some(session) = workspace.sessions.iter_mut().find(|s| s.id == session_id) {
+        println!("[Rust::download_photo_from_daemon] Found session, adding photo entry");
+        let photo_entry = PtbPhoto {
+            filename: filename.clone(),
+            original_path: original_daemon_path,
+            camera_path,
+            captured_at: chrono::Utc::now().to_rfc3339(),
+        };
+        session.photos.push(photo_entry);
+        session.shot_count = session.photos.len() as u32;
+        session.last_used_at = chrono::Utc::now().to_rfc3339();
+        println!("[Rust::download_photo_from_daemon] Session updated, shot_count: {}", session.shot_count);
+
+        Some(session.clone())
+    } else {
+        println!("[Rust::download_photo_from_daemon] ERROR: Session not found: {}", session_id);
+        return Err(format!("Session not found: {}", session_id));
     };
-    session.photos.push(photo_entry);
-    session.shot_count = session.photos.len() as u32;
 
-    // Save updated session
-    save_ptb_session(session_folder_str, session.clone()).await?;
+    // Save updated workspace
+    println!("[Rust::download_photo_from_daemon] Saving workspace");
+    save_ptb_workspace(folder_path, workspace).await?;
+    println!("[Rust::download_photo_from_daemon] Workspace saved successfully");
 
-    Ok(session)
+    println!("[Rust::download_photo_from_daemon] END - returning session");
+    Ok(updated_session.unwrap())
 }
 
-// ==================== END PHOTOBOOTH WORKING FOLDER SYSTEM ====================
+// ==================== VM LOGS ====================
+
+#[derive(Serialize, Deserialize)]
+pub struct VmLogsResponse {
+    pub logs: Vec<String>,
+    #[serde(alias = "lineCount")]
+    pub line_count: usize,
+}
+
+/// Read the VM console log file
+/// In dev mode, reads from linux-build/vbox-console.log
+/// In prod mode, path will be configured via app settings
+#[tauri::command]
+async fn get_vm_logs(lines: Option<usize>) -> Result<VmLogsResponse, String> {
+    let num_lines = lines.unwrap_or(100).min(1000); // Max 1000 lines
+
+    // Get the current executable's directory to resolve relative paths
+    let exe_dir = std::env::current_dir()
+        .map_err(|e| format!("Failed to get current directory: {}", e))?;
+
+    // Try to find the log file in multiple possible locations
+    let mut possible_paths: Vec<PathBuf> = vec![
+        // Dev mode: in the linux-build folder (relative to exe dir)
+        exe_dir.join("linux-build").join("vbox-console.log"),
+        exe_dir.join("../linux-build").join("vbox-console.log"),
+        // Also try parent directory (for dev builds)
+        exe_dir.join("../../linux-build").join("vbox-console.log"),
+    ];
+
+    // In development, also try the project root (up from src-tauri/target/debug)
+    if cfg!(debug_assertions) {
+        if let Ok(mut path) = std::env::current_exe() {
+            // Go up from target/debug to project root
+            path.pop(); // debug
+            path.pop(); // target
+            possible_paths.push(path.join("linux-build").join("vbox-console.log"));
+            // Also try from src-tauri
+            path.pop(); // src-tauri
+            possible_paths.push(path.join("linux-build").join("vbox-console.log"));
+        }
+    }
+
+    // Try to find and read the log file
+    let mut log_content: Option<String> = None;
+    let mut found_path = None;
+
+    for path in &possible_paths {
+        if path.exists() {
+            match fs::read_to_string(&path) {
+                Ok(content) => {
+                    log_content = Some(content);
+                    found_path = Some(path.clone());
+                    break;
+                }
+                Err(e) => {
+                    eprintln!("[get_vm_logs] Found path but failed to read {:?}: {}", path, e);
+                    continue;
+                }
+            }
+        }
+    }
+
+    let log_content = match log_content {
+        Some(content) => content,
+        None => {
+            // If no log file found, return helpful error message with searched paths
+            let paths_str: Vec<String> = possible_paths.iter()
+                .map(|p| p.display().to_string())
+                .collect();
+            eprintln!("[get_vm_logs] No log file found. Searched paths:");
+            for p in &paths_str {
+                eprintln!("  - {}", p);
+            }
+            return Ok(VmLogsResponse {
+                logs: vec![
+                    "No log file found. The VM may not be running.".to_string(),
+                    format!("Current directory: {:?}", exe_dir.display()),
+                    format!("Searched {} possible locations.", possible_paths.len()),
+                ],
+                line_count: 0,
+            });
+        }
+    };
+
+    // Get the last N lines
+    let log_lines: Vec<String> = log_content
+        .lines()
+        .rev()
+        .take(num_lines)
+        .map(|s: &str| s.to_string())
+        .collect();
+
+    // Reverse back to original order
+    let mut log_lines: Vec<String> = log_lines.into_iter().rev().collect();
+    let line_count = log_lines.len();
+
+    Ok(VmLogsResponse {
+        logs: log_lines,
+        line_count,
+    })
+}
+
+/// Check if the VM is online by pinging the health endpoint
+/// Returns true if the VM daemon is responding
+#[tauri::command]
+async fn check_vm_online() -> Result<bool, String> {
+    const DAEMON_URL: &str = "http://localhost:58321/api/health";
+    const HEALTH_TIMEOUT_MS: u64 = 2000; // 2 second timeout
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_millis(HEALTH_TIMEOUT_MS))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+    let response = client
+        .get(DAEMON_URL)
+        .send()
+        .await;
+
+    match response {
+        Ok(resp) => {
+            let is_online = resp.status().is_success();
+            Ok(is_online)
+        }
+        Err(e) => {
+            Ok(false)
+        }
+    }
+}
+
+// ==================== END PHOTO SAVING FUNCTIONS ====================
 
 // ==================== CUSTOM SETS SYSTEM ====================
 
@@ -3219,10 +3339,11 @@ pub fn run() {
             save_custom_canvas_size, get_custom_canvas_sizes, delete_custom_canvas_size,
             save_app_setting, get_app_setting,
             save_custom_set, load_custom_sets, get_custom_set, delete_custom_set, duplicate_custom_set,
-            load_photobooth_workspace, save_photobooth_workspace,
-            create_photobooth_session, list_photobooth_sessions, get_current_session, set_current_session,
-            load_ptb_session, save_ptb_session, save_photo_to_working_folder, download_photo_from_daemon,
-            list_usb_cameras, attach_usb_camera, detach_usb_camera, get_attached_cameras, is_camera_attached, cleanup_all_cameras, attach_all_cameras, ensure_usb_filters
+            load_ptb_workspace, save_ptb_workspace,
+            create_photobooth_session, list_photobooth_sessions, get_current_session, set_current_session, get_session_data,
+            save_photo_to_working_folder, download_photo_from_daemon,
+            list_usb_cameras, attach_usb_camera, detach_usb_camera, get_attached_cameras, is_camera_attached, cleanup_all_cameras, attach_all_cameras, ensure_usb_filters,
+            get_vm_logs, check_vm_online
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

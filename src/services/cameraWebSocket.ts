@@ -1,6 +1,7 @@
 /**
  * Singleton WebSocket manager for camera daemon communication.
  * Lives outside React lifecycle — no useEffect, no state dependencies.
+ * No auto-reconnect — UI shows a modal for the user to reconnect manually.
  */
 
 export interface CameraStatus {
@@ -39,20 +40,14 @@ type EventType = 'status' | 'photo_downloaded' | 'capture_error' | 'camera_disco
 type Listener = (data: any) => void;
 
 const WS_URL = 'ws://localhost:58321/ws';
-const RECONNECT_BASE_MS = 2000;
-const RECONNECT_MAX_MS = 30000;
 
 class CameraWebSocketManager {
   private static instance: CameraWebSocketManager | null = null;
 
   private ws: WebSocket | null = null;
   private listeners: Map<EventType, Set<Listener>> = new Map();
-  private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
-  private reconnectAttempt = 0;
-  private shouldConnect = false;
 
   private constructor() {
-    // Initialize listener sets
     for (const event of ['status', 'photo_downloaded', 'capture_error', 'camera_disconnected', 'camera_switched', 'connected', 'disconnected'] as EventType[]) {
       this.listeners.set(event, new Set());
     }
@@ -66,18 +61,15 @@ class CameraWebSocketManager {
   }
 
   connect(): void {
-    this.shouldConnect = true;
     this.createConnection();
   }
 
   disconnect(): void {
-    this.shouldConnect = false;
-    if (this.reconnectTimeout) {
-      clearTimeout(this.reconnectTimeout);
-      this.reconnectTimeout = null;
-    }
     if (this.ws) {
-      this.ws.onclose = null; // Prevent reconnect on intentional close
+      this.ws.onclose = null; // Prevent emitting 'disconnected' on intentional close
+      this.ws.onopen = null;
+      this.ws.onmessage = null;
+      this.ws.onerror = null;
       this.ws.close();
       this.ws = null;
     }
@@ -103,35 +95,45 @@ class CameraWebSocketManager {
 
   private createConnection(): void {
     if (this.ws) {
-      // Already have a connection or connecting
-      if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
+      const state = this.ws.readyState;
+      if (state === WebSocket.OPEN || state === WebSocket.CONNECTING) {
         return;
       }
+      // CLOSING or CLOSED — detach handlers so the old onclose
+      // doesn't interfere with our new connection
+      this.ws.onopen = null;
+      this.ws.onmessage = null;
+      this.ws.onerror = null;
+      this.ws.onclose = null;
+      this.ws = null;
     }
 
     console.log('[WS Manager] Connecting...');
-    const ws = new WebSocket(WS_URL);
+
+    let ws: WebSocket;
+    try {
+      ws = new WebSocket(WS_URL);
+    } catch (err) {
+      console.error('[WS Manager] Failed to create WebSocket:', err);
+      this.emit('disconnected');
+      return;
+    }
 
     ws.onopen = () => {
       console.log('[WS Manager] Connected');
-      this.reconnectAttempt = 0;
       this.emit('connected');
     };
 
     ws.onmessage = (event) => {
       const rawData = event.data as string;
 
-      // Skip empty messages or non-JSON (e.g., daemon debug output)
       if (!rawData || !rawData.trim().startsWith('{')) {
-        // Only log if it's something unexpected (not just whitespace)
         if (rawData && rawData.trim().length > 0) {
           console.debug('[WS Manager] Ignoring non-JSON message:', rawData.substring(0, 50));
         }
         return;
       }
 
-      // Handle potentially concatenated JSON messages (daemon may send multiple at once)
-      // Try to split on }{ which indicates concatenated JSON objects
       const messages = rawData.includes('}{')
         ? rawData.split(/(?<=\})(?=\{)/)
         : [rawData];
@@ -141,6 +143,7 @@ class CameraWebSocketManager {
           const data = JSON.parse(msg);
 
           if (data.type === 'photo_downloaded') {
+            console.log('[WS Manager::onmessage] photo_downloaded event received:', data);
             this.emit('photo_downloaded', data as PhotoDownloadedEvent);
           } else if (data.type === 'capture_error') {
             console.error('[WS Manager] Capture error:', data.error);
@@ -166,28 +169,14 @@ class CameraWebSocketManager {
 
     ws.onclose = () => {
       console.log('[WS Manager] Disconnected');
-      this.ws = null;
-      this.emit('disconnected');
-      this.scheduleReconnect();
+      if (this.ws === ws) {
+        this.ws = null;
+        this.emit('disconnected');
+        // No auto-reconnect — UI will show a modal for the user
+      }
     };
 
     this.ws = ws;
-  }
-
-  private scheduleReconnect(): void {
-    if (!this.shouldConnect) return;
-
-    const delay = Math.min(
-      RECONNECT_BASE_MS * Math.pow(1.5, this.reconnectAttempt),
-      RECONNECT_MAX_MS
-    );
-    this.reconnectAttempt++;
-
-    console.log(`[WS Manager] Reconnecting in ${Math.round(delay)}ms (attempt ${this.reconnectAttempt})`);
-    this.reconnectTimeout = setTimeout(() => {
-      this.reconnectTimeout = null;
-      this.createConnection();
-    }, delay);
   }
 }
 

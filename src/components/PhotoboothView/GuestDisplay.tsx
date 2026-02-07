@@ -19,11 +19,7 @@ interface PhotoState {
   displayMode: DisplayMode;
 }
 
-interface GuestDisplayProps {
-  isSecondScreen?: boolean;
-}
-
-export default function GuestDisplay({ isSecondScreen = false }: GuestDisplayProps) {
+export default function GuestDisplay() {
   const [photoState, setPhotoState] = useState<PhotoState>({
     currentSetPhotos: [],
     selectedPhotoIndex: null,

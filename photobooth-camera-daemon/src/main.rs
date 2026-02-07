@@ -217,38 +217,10 @@ struct HealthResponse {
     libgphoto2_available: bool,
 }
 
-#[derive(Serialize, Deserialize)]
-struct CaptureResponse {
-    success: bool,
-    file_path: Option<String>,
-    error: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    camera_path: Option<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    files: Vec<CapturedFile>,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-struct CapturedFile {
-    file_path: String,
-    camera_path: String,
-}
-
-// Photo download event for WebSocket notifications
-#[derive(Serialize, Deserialize, Clone)]
-struct PhotoDownloadedEvent {
-    #[serde(rename = "type")]
-    event_type: String,
-    file_path: String,
-    camera_path: String,
-}
-
 // Shared state for WebSocket clients
 #[derive(Clone)]
 struct SharedState {
     ws_tx: broadcast::Sender<Message>,
-    /// Handle to the gphoto2-controller process so we can restart it if it crashes
-    controller_handle: Arc<tokio::sync::Mutex<Option<tokio::process::Child>>>,
     /// Live view active flag
     liveview_active: Arc<tokio::sync::Mutex<bool>>,
     /// Cached camera status: camera_id -> (status_json, last_update_time)
@@ -260,18 +232,12 @@ impl SharedState {
         let (tx, _) = broadcast::channel(100);
         Self {
             ws_tx: tx,
-            controller_handle: Arc::new(tokio::sync::Mutex::new(None)),
             liveview_active: Arc::new(tokio::sync::Mutex::new(false)),
             cached_status: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
         }
     }
 }
 
-impl CaptureResponse {
-    fn error(msg: String) -> Self {
-        Self { success: false, file_path: None, error: Some(msg), camera_path: None, files: vec![] }
-    }
-}
 
 // State for camera sessions
 #[derive(Clone)]
@@ -322,66 +288,6 @@ impl CameraState {
         }
     }
 
-    fn trigger_capture(&self, camera_id: Option<u32>) -> CaptureResponse {
-        let camera_idx = camera_id.unwrap_or(0).to_string();
-        match StdCommand::new("gphoto2-wrapper")
-            .arg("capture")
-            .arg(&camera_idx)
-            .output()
-        {
-            Ok(output) => {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                println!("gphoto2 capture stdout: {}", stdout);
-                if !stderr.is_empty() {
-                    eprintln!("gphoto2 capture stderr: {}", stderr);
-                }
-
-                // Try new format with files array first
-                if let Ok(resp) = serde_json::from_str::<serde_json::Value>(stdout.trim()) {
-                    if let Some(_success) = resp.get("success").and_then(|v| v.as_bool()) {
-                        if let Some(files) = resp.get("files").and_then(|v| v.as_array()) {
-                            // New format with files array
-                            let captured_files: Vec<CapturedFile> = files
-                                .iter()
-                                .filter_map(|f| {
-                                    let fp = f.get("file_path")?.as_str()?;
-                                    let cp = f.get("camera_path")?.as_str()?;
-                                    Some(CapturedFile {
-                                        file_path: fp.to_string(),
-                                        camera_path: cp.to_string(),
-                                    })
-                                })
-                                .collect();
-                            return CaptureResponse {
-                                success: true,
-                                file_path: captured_files.first().map(|f| f.file_path.clone()),
-                                error: None,
-                                camera_path: captured_files.first().map(|f| f.camera_path.clone()),
-                                files: captured_files,
-                            };
-                        }
-                    }
-                    // Error response
-                    if let Some(error) = resp.get("error").and_then(|v| v.as_str()) {
-                        return CaptureResponse::error(error.to_string());
-                    }
-                }
-
-                // Fall back to old single-file format for backward compatibility
-                match serde_json::from_str::<CaptureResponse>(stdout.trim()) {
-                    Ok(resp) => resp,
-                    Err(e) => CaptureResponse::error(
-                        format!("Failed to parse capture response: {}. Raw: {}", e, stdout.trim())
-                    ),
-                }
-            }
-            Err(e) => CaptureResponse::error(
-                format!("Failed to run gphoto2-wrapper capture: {}", e)
-            ),
-        }
-    }
-
     fn debug_camera(&self, camera_id: Option<u32>) -> serde_json::Value {
         let camera_idx = camera_id.unwrap_or(0).to_string();
         match StdCommand::new("gphoto2-wrapper")
@@ -406,65 +312,6 @@ impl CameraState {
             }
             Err(e) => serde_json::json!({
                 "error": format!("Failed to run gphoto2-wrapper debug: {}", e),
-            }),
-        }
-    }
-
-    fn set_camera_config(&self, setting: &str, value: &str, camera_id: Option<u32>) -> serde_json::Value {
-        let camera_idx = camera_id.unwrap_or(0).to_string();
-        let json_config = format!("{{\"setting\":\"{}\",\"value\":\"{}\"}}", setting, value);
-
-        match StdCommand::new("gphoto2-wrapper")
-            .arg("setconfig")
-            .arg(&json_config)
-            .arg(&camera_idx)
-            .output()
-        {
-            Ok(output) => {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                println!("gphoto2 setconfig stdout: {}", stdout);
-                if !stderr.is_empty() {
-                    eprintln!("gphoto2 setconfig stderr: {}", stderr);
-                }
-                match serde_json::from_str::<serde_json::Value>(stdout.trim()) {
-                    Ok(val) => val,
-                    Err(e) => serde_json::json!({
-                        "error": format!("Failed to parse setconfig response: {}. Raw: {}", e, stdout.trim()),
-                        "stderr": stderr.trim(),
-                    }),
-                }
-            }
-            Err(e) => serde_json::json!({
-                "error": format!("Failed to run gphoto2-wrapper setconfig: {}", e),
-            }),
-        }
-    }
-
-    fn get_camera_config(&self, camera_id: Option<u32>) -> serde_json::Value {
-        let camera_idx = camera_id.unwrap_or(0).to_string();
-        match StdCommand::new("gphoto2-wrapper")
-            .arg("config")
-            .arg(&camera_idx)
-            .output()
-        {
-            Ok(output) => {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                println!("gphoto2 config stdout: {}", stdout);
-                if !stderr.is_empty() {
-                    eprintln!("gphoto2 config stderr: {}", stderr);
-                }
-                match serde_json::from_str::<serde_json::Value>(stdout.trim()) {
-                    Ok(val) => val,
-                    Err(e) => serde_json::json!({
-                        "error": format!("Failed to parse config response: {}. Raw: {}", e, stdout.trim()),
-                        "stderr": stderr.trim(),
-                    }),
-                }
-            }
-            Err(e) => serde_json::json!({
-                "error": format!("Failed to run gphoto2-wrapper config: {}", e),
             }),
         }
     }
@@ -497,33 +344,6 @@ impl CameraState {
         }
     }
 
-    fn get_camera_status(&self, camera_id: Option<u32>) -> serde_json::Value {
-        let camera_idx = camera_id.unwrap_or(0).to_string();
-        match StdCommand::new("gphoto2-wrapper")
-            .arg("status")
-            .arg(&camera_idx)
-            .output()
-        {
-            Ok(output) => {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                println!("gphoto2 status stdout: {}", stdout);
-                if !stderr.is_empty() {
-                    eprintln!("gphoto2 status stderr: {}", stderr);
-                }
-                match serde_json::from_str::<serde_json::Value>(stdout.trim()) {
-                    Ok(val) => val,
-                    Err(e) => serde_json::json!({
-                        "error": format!("Failed to parse status response: {}. Raw: {}", e, stdout.trim()),
-                        "stderr": stderr.trim(),
-                    }),
-                }
-            }
-            Err(e) => serde_json::json!({
-                "error": format!("Failed to run gphoto2-wrapper status: {}", e),
-            }),
-        }
-    }
 }
 
 /// Spawn the gphoto2-controller process with respawn logic.
@@ -670,6 +490,123 @@ async fn send_controller_command(cmd: &str) -> Result<(), Box<dyn std::error::Er
     }
 
     Err(Box::new(last_err.unwrap()))
+}
+
+const CONFIG_RESPONSE_FILE: &str = "/tmp/camera_config_response";
+
+/// Wait for the controller to write a config response file.
+/// Polls the file with a 200ms interval until content appears or timeout.
+async fn wait_for_config_response(timeout_ms: u64) -> Result<serde_json::Value, String> {
+    let start = std::time::Instant::now();
+    let timeout = std::time::Duration::from_millis(timeout_ms);
+    let mut poll_count = 0u32;
+
+    loop {
+        if start.elapsed() > timeout {
+            return Err(format!(
+                "Timeout waiting for controller config response after {}ms ({} polls). \
+                 Is the controller running with CONFIG command support?",
+                timeout_ms, poll_count
+            ));
+        }
+
+        poll_count += 1;
+        match tokio::fs::read_to_string(CONFIG_RESPONSE_FILE).await {
+            Ok(content) => {
+                let trimmed = content.trim();
+                if !trimmed.is_empty() {
+                    println!("[config] Got response after {}ms ({} polls)",
+                             start.elapsed().as_millis(), poll_count);
+                    // Delete the response file so it doesn't get stale
+                    let _ = tokio::fs::remove_file(CONFIG_RESPONSE_FILE).await;
+                    return serde_json::from_str(trimmed)
+                        .map_err(|e| format!("Failed to parse config response: {}. Raw: {}", e, trimmed));
+                }
+            }
+            Err(_) => {
+                // File doesn't exist yet, keep waiting
+            }
+        }
+
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    }
+}
+
+/// Get camera config by routing through the controller (avoids USB contention).
+async fn get_camera_config_via_controller() -> serde_json::Value {
+    println!("[config] get_camera_config_via_controller called");
+
+    // Check if controller command pipe exists
+    match tokio::fs::metadata("/tmp/camera_cmd").await {
+        Ok(_) => println!("[config] Command pipe /tmp/camera_cmd exists"),
+        Err(e) => {
+            println!("[config] Command pipe /tmp/camera_cmd NOT found: {}", e);
+            return serde_json::json!({
+                "error": format!("Controller command pipe not found - is the controller running? ({})", e)
+            });
+        }
+    }
+
+    // Remove stale response file
+    match tokio::fs::remove_file(CONFIG_RESPONSE_FILE).await {
+        Ok(_) => println!("[config] Removed stale response file"),
+        Err(_) => println!("[config] No stale response file to remove (ok)"),
+    }
+
+    // Send CONFIG command to controller
+    println!("[config] Sending CONFIG command to controller...");
+    if let Err(e) = send_controller_command("CONFIG").await {
+        println!("[config] ERROR: Failed to send CONFIG command: {}", e);
+        return serde_json::json!({
+            "error": format!("Failed to send CONFIG command: {}", e)
+        });
+    }
+    println!("[config] CONFIG command sent successfully, waiting for response...");
+
+    // Wait for response (up to 20s — controller may need to finish its current poll cycle first)
+    match wait_for_config_response(20000).await {
+        Ok(val) => {
+            println!("[config] Got config response successfully");
+            val
+        },
+        Err(e) => {
+            println!("[config] ERROR: {}", e);
+            // Check if controller process is running
+            if let Ok(output) = StdCommand::new("pgrep").arg("-f").arg("gphoto2-controller").output() {
+                let pid = String::from_utf8_lossy(&output.stdout);
+                if pid.trim().is_empty() {
+                    println!("[config] WARNING: gphoto2-controller process NOT running!");
+                } else {
+                    println!("[config] gphoto2-controller PID: {}", pid.trim());
+                }
+            }
+            serde_json::json!({
+                "error": e
+            })
+        },
+    }
+}
+
+/// Set camera config by routing through the controller (avoids USB contention).
+async fn set_camera_config_via_controller(setting: &str, value: &str) -> serde_json::Value {
+    // Remove stale response file
+    let _ = tokio::fs::remove_file(CONFIG_RESPONSE_FILE).await;
+
+    // Send SETCONFIG command with JSON payload
+    let cmd = format!("SETCONFIG {{\"setting\":\"{}\",\"value\":\"{}\"}}", setting, value);
+    if let Err(e) = send_controller_command(&cmd).await {
+        return serde_json::json!({
+            "error": format!("Failed to send SETCONFIG command: {}", e)
+        });
+    }
+
+    // Wait for response
+    match wait_for_config_response(15000).await {
+        Ok(val) => val,
+        Err(e) => serde_json::json!({
+            "error": e
+        }),
+    }
 }
 
 fn make_api_response(data: impl Serialize) -> Response<ResponseBody> {
@@ -855,8 +792,7 @@ async fn handle_request(
         }
 
         (&Method::GET, "/api/camera/config") => {
-            let camera_id = parse_query_param(&uri_str, "camera");
-            let config = state.get_camera_config(camera_id);
+            let config = get_camera_config_via_controller().await;
             Some(make_api_response(config))
         }
 
@@ -916,8 +852,7 @@ async fn handle_request(
                 };
 
                 if let (Some(s), Some(v)) = (setting, value) {
-                    let camera_id = parse_query_param(&uri_str, "camera");
-                    result = state.set_camera_config(s, v, camera_id);
+                    result = set_camera_config_via_controller(s, v).await;
                 } else {
                     result = serde_json::json!({
                         "error": "JSON must contain 'setting' and 'value' fields. Example: {\"setting\":\"iso\",\"value\":\"800\"}"
@@ -929,8 +864,7 @@ async fn handle_request(
                     let setting = &body_str[..eq_pos];
                     let value = &body_str[eq_pos + 1..];
                     if !setting.is_empty() && !value.is_empty() {
-                        let camera_id = parse_query_param(&uri_str, "camera");
-                        result = state.set_camera_config(setting, value, camera_id);
+                        result = set_camera_config_via_controller(setting, value).await;
                     } else {
                         result = serde_json::json!({
                             "error": "Invalid format. Use JSON or 'setting=value' format"
@@ -1082,8 +1016,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         start_controller_process(&shared_state_for_controller).await;
     });
 
-    // Wait a bit for controller to start
-    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    // Wait for controller to create the status pipe (typically <500ms)
+    {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while std::time::Instant::now() < deadline {
+            if std::path::Path::new("/tmp/camera_status").exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+    }
 
     // Get port from environment variable or use default
     // Default: 58321 for production (less common than 3000)

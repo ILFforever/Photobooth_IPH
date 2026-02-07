@@ -127,10 +127,12 @@ interface CameraSectionProps {
   onSetWbValue: (value: string) => void;
   onSetMeteringValue: (value: string) => void;
   onSetActiveSetting: (setting: SettingType) => void;
-  onCameraOptionsLoaded?: (options: { iso: string[]; aperture: string[]; shutterspeed: string[]; whitebalance: string[]; ev?: string[] }) => void;
+  onCameraOptionsLoaded?: (options: { iso: string[]; aperture: string[]; shutterspeed: string[]; whitebalance: string[]; ev?: string[] }, skipStatusApply?: boolean, initialConfigValues?: { shutter?: string; aperture?: string; iso?: string; ev?: string; wb?: string; metering?: string; battery?: string }) => void;
   pendingSettings?: Record<string, string>;
   /** Callback when camera selection/connection state changes */
   onConnectionChange?: (isConnected: boolean, hasSelectedCamera: boolean) => void;
+  /** Callback when initial config values are loaded (for setting dial positions) */
+  onConfigValuesLoaded?: (values: { shutter?: string; aperture?: string; iso?: string; ev?: string; wb?: string; metering?: string; battery?: string }) => void;
 }
 
 export function CameraSection({
@@ -158,6 +160,7 @@ export function CameraSection({
   onCameraOptionsLoaded,
   pendingSettings,
   onConnectionChange,
+  onConfigValuesLoaded,
 }: CameraSectionProps) {
   // Camera connection state
   const [availableCameras, setAvailableCameras] = useState<CameraInfo[]>([]);
@@ -171,7 +174,7 @@ export function CameraSection({
   const [cameraBrand, setCameraBrand] = useState<CameraBrand>(detectBrand('', '')); // Default to Fuji
 
   // Camera status from centralized WebSocket context
-  const { batteryLevel, shootingMode, setConnecting } = useCamera();
+  const { batteryLevel, shootingMode, setConnecting, connect, disconnect, connectionState, setCameraHttpConnected } = useCamera();
 
   // Normalize shooting mode for display and logic using brand framework
   const normalizedMode = normalizeMode(shootingMode, cameraBrand);
@@ -217,6 +220,17 @@ export function CameraSection({
     onConnectionChange?.(isConnected, selectedCamera !== null);
   }, [isConnected, selectedCamera, onConnectionChange]);
 
+  // Reset local state when context disconnects (e.g. from ConnectionLostModal "Disconnect" button)
+  useEffect(() => {
+    if (connectionState === 'NC' && isConnected) {
+      setSelectedCamera(null);
+      setIsConnected(false);
+      setCameraStatus(null);
+      setLensInfo(null);
+      setCameraConfig(null);
+    }
+  }, [connectionState, isConnected]);
+
   const fetchCameras = async () => {
     setIsLoadingCameras(true);
     try {
@@ -238,6 +252,9 @@ export function CameraSection({
     setIsConnected(true);
     setShowCameraDropdown(false);
     setLensInfo(null);
+
+    // Trigger connection state in context
+    connect();
 
     // Detect camera brand for quirks handling
     const brand = detectBrand(camera.manufacturer, camera.model);
@@ -292,6 +309,43 @@ export function CameraSection({
         const convertedIsoChoices = cameraSettingsService.convertIsoChoicesToDisplay(isoChoices);
         console.log('Converted ISO choices:', convertedIsoChoices);
 
+        // Extract current VALUES from config (the 'value' field of each setting)
+        const initialValues: { shutter?: string; aperture?: string; iso?: string; ev?: string; wb?: string; metering?: string; battery?: string } = {};
+
+        if (config.shutterspeed?.value) {
+          initialValues.shutter = config.shutterspeed.value;
+        }
+        if (config['f-number']?.value) {
+          initialValues.aperture = config['f-number'].value;
+        } else if (config.aperture?.value) {
+          initialValues.aperture = config.aperture.value;
+        }
+        if (config.iso?.value) {
+          initialValues.iso = config.iso.value;
+        }
+        if (config[evSettingName]?.value) {
+          initialValues.ev = config[evSettingName].value;
+        }
+        if (config.whitebalance?.value) {
+          initialValues.wb = config.whitebalance.value;
+        }
+        if (config.exposuremetermode?.value) {
+          initialValues.metering = config.exposuremetermode.value;
+        }
+
+        // Battery info from config (Fuji uses 'd36b' key)
+        if (config.d36b?.value) {
+          // Battery format: "4,0,0" -> extract first number as percentage
+          const batteryParts = config.d36b.value.split(',');
+          initialValues.battery = batteryParts[0];
+        } else if (config.battery?.value) {
+          // Some cameras might use 'battery' key
+          const batteryParts = config.battery.value.split(',');
+          initialValues.battery = batteryParts[0];
+        }
+
+        console.log('Extracted initial values from config:', initialValues);
+
         const newOptions: typeof cameraSettingOptions = {
           iso: convertedIsoChoices,
           aperture: apertureConfig,
@@ -304,10 +358,14 @@ export function CameraSection({
         setCameraSettingOptions(newOptions);
         console.log('Camera setting options:', newOptions);
 
-        // Notify parent component of loaded options
+        // Notify parent component of loaded options with initial values
+        // Pass the initial values directly so they can be applied synchronously with the options
         if (onCameraOptionsLoaded) {
-          onCameraOptionsLoaded(newOptions);
+          onCameraOptionsLoaded(newOptions, true, initialValues);
         }
+
+        // Mark camera as connected via HTTP API (WebSocket may not be available yet)
+        setCameraHttpConnected(true, camera.id);
 
         // Config returns lensname as an object with label, type, value
         if (config.lensname?.value) {
@@ -331,6 +389,10 @@ export function CameraSection({
     setSelectedCamera(null);
     setIsConnected(false);
     setCameraStatus(null);
+    // Trigger disconnect in context
+    disconnect();
+    // Mark HTTP camera connection as false
+    setCameraHttpConnected(false);
   };
 
   const getCameraDisplayName = (camera: CameraInfo) => {

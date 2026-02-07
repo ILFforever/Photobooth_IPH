@@ -6,6 +6,6 @@ import "./components/PhotoboothView/GuestDisplay.css";
 // Entry point for the guest display window
 ReactDOM.createRoot(document.getElementById("guest-root") as HTMLElement).render(
   <React.StrictMode>
-    <GuestDisplay isSecondScreen={true} />
+    <GuestDisplay />
   </React.StrictMode>,
 );

@@ -1,39 +1,65 @@
-import { createContext, useContext, useState, useRef, ReactNode, useCallback } from "react";
+import { createContext, useContext, useEffect, useRef, ReactNode } from "react";
+import { useLiveViewManager, type LiveViewManagerState } from "../hooks/useLiveViewManager";
 
-interface LiveViewContextType {
-  liveViewStream: MediaStream | null;
-  setLiveViewStream: (stream: MediaStream | null) => void;
-  selectedDevice: string;
-  setSelectedDevice: (device: string) => void;
-}
+const LiveViewContext = createContext<LiveViewManagerState | undefined>(undefined);
 
-const LiveViewContext = createContext<LiveViewContextType | undefined>(undefined);
+/**
+ * Hidden video element that always consumes the MediaStream.
+ *
+ * Chromium / WebView aggressively manages media pipelines: if no <video>
+ * element is actively pulling frames (e.g. the visible video is conditionally
+ * un-rendered during a section collapse or display-mode switch), the engine
+ * may end the underlying track to reclaim resources.  OBS doesn't have this
+ * problem because it uses DirectShow directly, bypassing Chromium's lifecycle.
+ *
+ * This zero-size, muted, hidden video acts as a permanent consumer so the
+ * track stays alive regardless of what the UI is doing.
+ */
+function StreamKeepAlive({ stream }: { stream: MediaStream | null }) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
-export function LiveViewProvider({ children }: { children: ReactNode }) {
-  const [liveViewStream, setLiveViewStream] = useState<MediaStream | null>(null);
-  const [selectedDevice, setSelectedDevice] = useState<string>('');
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
 
-  // Cleanup stream when unmounting or changing
-  const streamRef = useRef<MediaStream | null>(null);
-
-  const setLiveViewStreamWithCleanup = useCallback((stream: MediaStream | null) => {
-    // Stop previous stream tracks
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
+    if (stream) {
+      el.srcObject = stream;
+      // Some Chromium builds pause media on hidden/offscreen elements.
+      // Explicitly calling play() prevents that.
+      el.play().catch(() => {/* muted autoplay — safe to ignore */});
+    } else {
+      el.srcObject = null;
     }
-    streamRef.current = stream;
-    setLiveViewStream(stream);
-  }, []);
+  }, [stream]);
 
   return (
-    <LiveViewContext.Provider
-      value={{
-        liveViewStream,
-        setLiveViewStream: setLiveViewStreamWithCleanup,
-        selectedDevice,
-        setSelectedDevice,
+    <video
+      ref={videoRef}
+      autoPlay
+      playsInline
+      muted
+      // Invisible but still in the DOM so Chromium keeps the pipeline active
+      style={{
+        position: 'fixed',
+        width: 1,
+        height: 1,
+        opacity: 0,
+        pointerEvents: 'none',
+        zIndex: -9999,
       }}
-    >
+      aria-hidden="true"
+      tabIndex={-1}
+    />
+  );
+}
+
+export function LiveViewProvider({ children }: { children: ReactNode }) {
+  const manager = useLiveViewManager();
+
+  return (
+    <LiveViewContext.Provider value={manager}>
+      {/* Keep-alive: prevents Chromium from ending the track when no visible <video> is consuming */}
+      <StreamKeepAlive stream={manager.stream} />
       {children}
     </LiveViewContext.Provider>
   );

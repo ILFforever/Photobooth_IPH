@@ -29,6 +29,9 @@ if not errorlevel 1 (
     exit /b 0
 )
 
+REM Optimize AHCI port count (30 default is slow - only need 2)
+%VBOX_MANAGER% storagectl %VM_NAME% --name "SATA" --portcount 2 2>nul
+
 REM Start VM in headless mode
 echo Starting VM in headless mode...
 %VBOX_MANAGER% startvm %VM_NAME% --type headless
