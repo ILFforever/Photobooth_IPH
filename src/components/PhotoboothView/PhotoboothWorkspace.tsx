@@ -73,7 +73,7 @@ export default function PhotoboothWorkspace() {
     updateCurrentSessionFromDownload
   } = usePhotoboothSettings();
   const { captureError, clearCaptureError, isCameraConnected, hasEverConnected, isConnecting, addPhotoDownloadedListener, removePhotoDownloadedListener } = useCamera();
-  const { stream: liveViewStream } = useLiveView();
+  const { stream: liveViewStream, hdmi } = useLiveView();
   const { currentFrame } = useCollage();
 
   const [selectedSetId, setSelectedSetId] = useState<string | null>(null);
@@ -543,6 +543,7 @@ export default function PhotoboothWorkspace() {
                   onPhotoDoubleClick={setSelectedPhotoIndex}
                   onExitFullscreen={() => setSelectedPhotoIndex(null)}
                   liveViewStream={liveViewStream}
+                  hdmiStreamUrl={hdmi.frameUrl}
                   onNavClick={handleNavClick}
                   showGridOverlay={true}
                   showRecentPhotos={true}

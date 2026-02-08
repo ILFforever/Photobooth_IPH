@@ -16,6 +16,10 @@ use std::io::Cursor;
 mod usb_camera;
 use usb_camera::{UsbCamera, AttachedCamera, list_usb_cameras, attach_usb_camera, detach_usb_camera, get_attached_cameras, is_camera_attached, cleanup_all_cameras, attach_all_cameras, ensure_usb_filters};
 
+// HDMI capture via FFmpeg sidecar
+mod hdmi_capture;
+use hdmi_capture::{list_capture_devices, start_hdmi_capture, stop_hdmi_capture};
+
 // Custom deserializer helper to accept both int and float for Option<u32>
 fn deserialize_optional_u32_or_float<'de, D>(deserializer: D) -> Result<Option<u32>, D::Error>
 where
@@ -2476,7 +2480,9 @@ async fn ptb_session_to_info_with_thumbnails(
             Ok(result) => thumbnails.push(result.thumbnail),
             Err(_) => {
                 // If thumbnail generation fails, use the original path as fallback
-                thumbnails.push(full_path.clone());
+                // Prefix with asset:// to match the format from successful thumbnail generation
+                let fallback_path = full_path.replace('\\', "/");
+                thumbnails.push(format!("asset://{}", fallback_path));
             }
         }
     }
@@ -3343,7 +3349,8 @@ pub fn run() {
             create_photobooth_session, list_photobooth_sessions, get_current_session, set_current_session, get_session_data,
             save_photo_to_working_folder, download_photo_from_daemon,
             list_usb_cameras, attach_usb_camera, detach_usb_camera, get_attached_cameras, is_camera_attached, cleanup_all_cameras, attach_all_cameras, ensure_usb_filters,
-            get_vm_logs, check_vm_online
+            get_vm_logs, check_vm_online,
+            list_capture_devices, start_hdmi_capture, stop_hdmi_capture
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

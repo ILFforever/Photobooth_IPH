@@ -103,7 +103,7 @@ export default function PhotoSessionsSidebar({
                           set.thumbnails.map((thumbnail, idx) => (
                             <div key={idx} className="thumbnail-item">
                               <img
-                                src={convertFileSrc(thumbnail)}
+                                src={convertFileSrc(thumbnail.replace('asset://', ''))}
                                 alt={`Photo ${idx + 1}`}
                                 className="thumbnail-image"
                               />

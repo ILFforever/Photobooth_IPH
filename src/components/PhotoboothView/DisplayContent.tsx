@@ -22,6 +22,7 @@ interface DisplayContentProps {
   showRecentPhotos?: boolean;
   showBackButton?: boolean;
   liveViewStream?: MediaStream | null;
+  hdmiStreamUrl?: string | null;
 }
 
 export default function DisplayContent({
@@ -34,7 +35,8 @@ export default function DisplayContent({
   showGridOverlay = false,
   showRecentPhotos = false,
   showBackButton = false,
-  liveViewStream = null
+  liveViewStream = null,
+  hdmiStreamUrl = null,
 }: DisplayContentProps) {
   // Use a callback ref so srcObject is attached whenever the <video> DOM node
   // mounts (including after a display-mode switch that destroys/recreates it).
@@ -58,12 +60,30 @@ export default function DisplayContent({
     />
   );
 
+  // Shared HDMI img element builder
+  const renderHdmiImg = (className: string) => (
+    <img
+      src={hdmiStreamUrl!}
+      className={className}
+      alt="HDMI Live View"
+    />
+  );
+
+  const hasLiveView = !!(liveViewStream || hdmiStreamUrl);
+
+  // Render the appropriate live view element
+  const renderLiveView = (className: string) => {
+    if (hdmiStreamUrl) return renderHdmiImg(className);
+    if (liveViewStream) return renderVideo(className);
+    return null;
+  };
+
   switch (displayMode) {
     case 'single':
       return (
         <div className="single-display">
-          {liveViewStream ? (
-            renderVideo("single-liveview-video")
+          {hasLiveView ? (
+            renderLiveView("single-liveview-video")
           ) : (
             <div className="single-photo-content">
               <Icon path={mdiFlashTriangleOutline} size={3} />
@@ -77,15 +97,15 @@ export default function DisplayContent({
       return (
         <div className="center-display">
           <div className="center-main">
-            {liveViewStream ? (
-              renderVideo("center-liveview-video")
+            {hasLiveView ? (
+              renderLiveView("center-liveview-video")
             ) : (
               <div className="center-main-content">
                 <Camera size={48} strokeWidth={1.5} />
                 <span className="center-label">Live View</span>
               </div>
             )}
-            {(showGridOverlay || liveViewStream) && (
+            {(showGridOverlay || hasLiveView) && (
               <div className="grid-overlay center-grid">
                 <div className="grid-line grid-h-1"></div>
                 <div className="grid-line grid-h-2"></div>

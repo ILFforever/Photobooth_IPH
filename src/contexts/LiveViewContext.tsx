@@ -1,7 +1,12 @@
 import { createContext, useContext, useEffect, useRef, ReactNode } from "react";
 import { useLiveViewManager, type LiveViewManagerState } from "../hooks/useLiveViewManager";
+import { useHdmiCapture, type HdmiCaptureState } from "../hooks/useHdmiCapture";
 
-const LiveViewContext = createContext<LiveViewManagerState | undefined>(undefined);
+interface LiveViewContextValue extends LiveViewManagerState {
+  hdmi: HdmiCaptureState;
+}
+
+const LiveViewContext = createContext<LiveViewContextValue | undefined>(undefined);
 
 /**
  * Hidden video element that always consumes the MediaStream.
@@ -55,9 +60,12 @@ function StreamKeepAlive({ stream }: { stream: MediaStream | null }) {
 
 export function LiveViewProvider({ children }: { children: ReactNode }) {
   const manager = useLiveViewManager();
+  const hdmi = useHdmiCapture();
+
+  const value: LiveViewContextValue = { ...manager, hdmi };
 
   return (
-    <LiveViewContext.Provider value={manager}>
+    <LiveViewContext.Provider value={value}>
       {/* Keep-alive: prevents Chromium from ending the track when no visible <video> is consuming */}
       <StreamKeepAlive stream={manager.stream} />
       {children}

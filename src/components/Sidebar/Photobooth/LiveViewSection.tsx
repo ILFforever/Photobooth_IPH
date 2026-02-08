@@ -14,13 +14,14 @@ interface LiveViewSectionProps {
 export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSectionProps) {
   const {
     stream: liveViewStream,
-    devices,
-    selectedDeviceId,
-    isLoadingDevices,
+    devices: webrtcDevices,
+    selectedDeviceId: webrtcSelectedDeviceId,
+    isLoadingDevices: webrtcLoadingDevices,
     permissionError,
     startStream,
     stopStream,
-    setSelectedDevice,
+    setSelectedDevice: setWebrtcDevice,
+    hdmi,
   } = useLiveView();
 
   const [captureMethod, setCaptureMethod] = useState<CaptureMethod>('hdmi');
@@ -44,23 +45,51 @@ export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSec
     }
   }, []);
 
-  // Start/stop stream when device selection or panel state changes.
-  // Thanks to the same-device guard in startStream, calling this repeatedly
-  // with the same deviceId is a no-op (no teardown/restart).
+  // Load HDMI devices when switching to HDMI mode or expanding the section
   useEffect(() => {
-    if (selectedDeviceId && captureMethod === 'hdmi' && expandedSections.liveview) {
-      startStream(selectedDeviceId);
-    } else {
+    console.log('[LiveViewSection] Device load effect — captureMethod:', captureMethod, 'liveview expanded:', expandedSections.liveview);
+    if (captureMethod === 'hdmi' && expandedSections.liveview) {
+      hdmi.loadDevices();
+    }
+  }, [captureMethod, expandedSections.liveview]);
+
+  // Auto start/stop HDMI capture
+  useEffect(() => {
+    console.log('[LiveViewSection] HDMI capture effect — captureMethod:', captureMethod, 'liveview:', expandedSections.liveview, 'selectedDevice:', hdmi.selectedDevice);
+    if (captureMethod === 'hdmi' && expandedSections.liveview && hdmi.selectedDevice) {
+      console.log('[LiveViewSection] → Starting HDMI capture for:', hdmi.selectedDevice);
+      hdmi.startCapture(hdmi.selectedDevice);
+    } else if (captureMethod === 'hdmi') {
+      console.log('[LiveViewSection] → Stopping HDMI capture (no device or section closed)');
+      hdmi.stopCapture();
+    }
+    // Stop getUserMedia stream when in HDMI mode
+    if (captureMethod === 'hdmi') {
       stopStream();
     }
-  }, [selectedDeviceId, captureMethod, expandedSections.liveview, startStream, stopStream]);
+  }, [hdmi.selectedDevice, captureMethod, expandedSections.liveview]);
+
+  // Auto start/stop getUserMedia stream for USB-C mode (kept for fallback)
+  useEffect(() => {
+    if (webrtcSelectedDeviceId && captureMethod === 'usbc' && expandedSections.liveview) {
+      startStream(webrtcSelectedDeviceId);
+    } else if (captureMethod === 'usbc') {
+      stopStream();
+    }
+    // Stop HDMI capture when in USB-C mode
+    if (captureMethod === 'usbc') {
+      hdmi.stopCapture();
+    }
+  }, [webrtcSelectedDeviceId, captureMethod, expandedSections.liveview, startStream, stopStream]);
 
   const handleCaptureMethodChange = (method: CaptureMethod) => {
     if (method === 'usbc' && captureMethod === 'hdmi') {
       setShowUsbWarning(true);
     }
     setCaptureMethod(method);
-    setSelectedDevice('');
+    // Clear device selections for both modes
+    setWebrtcDevice('');
+    hdmi.setSelectedDevice('');
   };
 
   // Handle video stretch slider drag
@@ -128,7 +157,13 @@ export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSec
         <div className="collapsible-content">
           <div className="liveview-container">
             <div className="liveview-frame">
-              {captureMethod === 'hdmi' && liveViewStream ? (
+              {captureMethod === 'hdmi' && hdmi.frameUrl ? (
+                <img
+                  src={hdmi.frameUrl}
+                  className="liveview-video"
+                  alt="HDMI Live View"
+                />
+              ) : captureMethod === 'usbc' && liveViewStream ? (
                 <video
                   ref={videoCallbackRef}
                   autoPlay
@@ -180,15 +215,15 @@ export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSec
 
             {captureMethod === 'hdmi' && (
               <div className="capture-device-selector">
-                <div className="device-selector-label">Capture Device</div>
-                {isLoadingDevices ? (
+                <div className="device-selector-label">Capture Device (FFmpeg)</div>
+                {hdmi.isLoadingDevices ? (
                   <div className="device-loading">Loading devices...</div>
-                ) : permissionError ? (
+                ) : hdmi.error ? (
                   <div className="device-error">
-                    <span>{permissionError}</span>
+                    <span>{hdmi.error}</span>
                     <button
                       className="device-retry-btn"
-                      onClick={() => window.location.reload()}
+                      onClick={() => hdmi.loadDevices()}
                     >
                       Retry
                     </button>
@@ -201,9 +236,7 @@ export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSec
                       onClick={() => setShowDeviceDropdown(!showDeviceDropdown)}
                     >
                       <span className="device-dropdown-text">
-                        {selectedDeviceId
-                          ? devices.find(d => d.id === selectedDeviceId)?.name
-                          : 'Select capture device...'}
+                        {hdmi.selectedDevice || 'Select capture device...'}
                       </span>
                       <ChevronDown size={14} className={`device-dropdown-icon ${showDeviceDropdown ? 'open' : ''}`} />
                     </button>
@@ -216,17 +249,17 @@ export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSec
                           width: `${dropdownPosition.width}px`,
                         }}
                       >
-                        {devices.length === 0 ? (
+                        {hdmi.devices.length === 0 ? (
                           <div className="device-dropdown-item" style={{ cursor: 'default', opacity: 0.7 }}>
                             No devices found
                           </div>
                         ) : (
-                          devices.map((device) => (
+                          hdmi.devices.map((device) => (
                             <button
-                              key={device.id}
-                              className={`device-dropdown-item ${selectedDeviceId === device.id ? 'selected' : ''}`}
+                              key={device.name}
+                              className={`device-dropdown-item ${hdmi.selectedDevice === device.name ? 'selected' : ''}`}
                               onClick={() => {
-                                setSelectedDevice(device.id);
+                                hdmi.setSelectedDevice(device.name);
                                 setShowDeviceDropdown(false);
                               }}
                             >
