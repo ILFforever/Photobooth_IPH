@@ -54,10 +54,17 @@
 }
 
 .tab-icon {
-  font-size: 1.25rem;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.tab-icon svg {
+  color: var(--text-secondary);
+}
+
+.sidebar-tab.active .tab-icon svg {
+  color: white;
 }
 
 /* Content area */

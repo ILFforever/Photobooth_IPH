@@ -1,6 +1,8 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "../../contexts/AuthContext";
 import { useRef, useLayoutEffect, useState } from "react";
+import Icon from "@mdi/react";
+import { mdiLockOutline, mdiClose, mdiAccountOutline, mdiChevronDown } from "@mdi/js";
 
 type AppMode = 'photobooth' | 'collage' | 'qr';
 
@@ -178,11 +180,11 @@ export default function Header({
               </>
             ) : (
               <>
-                <span className="account-icon">👤</span>
+                <span className="account-icon"><Icon path={mdiAccountOutline} size={1} /></span>
                 <span className="account-label">Account</span>
               </>
             )}
-            <span className="dropdown-arrow">▼</span>
+            <span className="dropdown-arrow"><Icon path={mdiChevronDown} size={0.7} /></span>
           </button>
 
           <AnimatePresence>
@@ -259,7 +261,7 @@ export default function Header({
                           onClick={onCancelLogin}
                           style={{ color: 'var(--text-secondary)' }}
                         >
-                          <span>✕</span>
+                          <span><Icon path={mdiClose} size={0.8} /></span>
                           <span>Cancel</span>
                         </button>
                       </>
@@ -269,7 +271,7 @@ export default function Header({
                           className="account-menu-item sign-in-item"
                           onClick={onLogin}
                         >
-                          <span>🔐</span>
+                          <span><Icon path={mdiLockOutline} size={0.9} /></span>
                           <span>Sign in with Google</span>
                         </button>
                         <div className="account-menu-permission-notice">

@@ -8,6 +8,20 @@ import { Frame } from "../../types/frame";
 import { Background } from "../../types/background";
 import CustomCanvasDialog from "./CustomCanvasDialog";
 import "./FloatingFrameSelector.css";
+import Icon from "@mdi/react";
+import {
+  mdiPaletteOutline,
+  mdiRuler,
+  mdiImageOutline,
+  mdiLockOutline,
+  mdiChevronDown,
+  mdiChevronUp,
+  mdiDeleteOutline,
+  mdiClose,
+  mdiInformationOutline,
+  mdiImageSizeSelectLarge,
+  mdiPlus
+} from "@mdi/js";
 
 type PanelType = "frame" | "canvas" | "background" | null;
 
@@ -57,12 +71,12 @@ function BackgroundPillButton({
           background: isOver && canDrop ? 'rgba(59, 130, 246, 0.1)' : undefined,
         }}
       >
-        <span className="pill-icon">🎨</span>
+        <span className="pill-icon"><Icon path={mdiPaletteOutline} size={0.9} /></span>
         <span className="pill-text">
           {currentBackgroundName || "Background"}
         </span>
         <span className="pill-indicator">
-          {openPanel === "background" ? "▼" : "▲"}
+          {openPanel === "background" ? <Icon path={mdiChevronDown} size={0.7} /> : <Icon path={mdiChevronUp} size={0.7} />}
         </span>
       </motion.button>
       {isOver && canDrop && (
@@ -655,12 +669,12 @@ const FloatingFrameSelector = () => {
           } ${isFrameDisabled ? "disabled" : ""}`}
           disabled={isFrameDisabled}
         >
-          <span className="pill-icon">🖼️</span>
+          <span className="pill-icon"><Icon path={mdiImageOutline} size={0.9} /></span>
           <span className="pill-text">
             {isFrameDisabled ? "Frame (Disabled)" : (currentFrame ? currentFrame.name : "Select Frame")}
           </span>
           <span className="pill-indicator">
-            {isFrameDisabled ? "🔒" : (openPanel === "frame" ? "▼" : "▲")}
+            {isFrameDisabled ? <Icon path={mdiLockOutline} size={0.7} /> : (openPanel === "frame" ? <Icon path={mdiChevronDown} size={0.7} /> : <Icon path={mdiChevronUp} size={0.7} />)}
           </span>
         </motion.button>
 
@@ -688,7 +702,7 @@ const FloatingFrameSelector = () => {
             openPanel === "canvas" ? "active" : ""
           }`}
         >
-          <span className="pill-icon">📐</span>
+          <span className="pill-icon"><Icon path={mdiRuler} size={0.9} /></span>
           <span className="pill-text">
             {autoMatchBackground && backgroundDimensions
               ? `Automatic (${backgroundDimensions.width}×${backgroundDimensions.height})`
@@ -698,7 +712,7 @@ const FloatingFrameSelector = () => {
             }
           </span>
           <span className="pill-indicator">
-            {openPanel === "canvas" ? "▼" : "▲"}
+            {openPanel === "canvas" ? <Icon path={mdiChevronDown} size={0.7} /> : <Icon path={mdiChevronUp} size={0.7} />}
           </span>
         </motion.button>
       </div>
@@ -778,11 +792,7 @@ const FloatingFrameSelector = () => {
                       title="What is Auto-Match?"
                       aria-label="Learn about Auto-Match feature"
                     >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="12" cy="12" r="10"/>
-                        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
-                        <line x1="12" x2="12.01" y1="17" y2="17"/>
-                      </svg>
+                      <Icon path={mdiInformationOutline} size={0.9} />
                     </button>
                   </>
                 )}
@@ -795,7 +805,7 @@ const FloatingFrameSelector = () => {
                     className={`delete-toggle-btn is-delete-mode ${deleteMode === openPanel ? 'active' : ''}`}
                     title={deleteMode === openPanel ? "Exit delete mode" : "Enter delete mode"}
                   >
-                    🗑️
+                    <Icon path={mdiDeleteOutline} size={0.9} />
                   </button>
                 )}
                 <button
@@ -805,7 +815,7 @@ const FloatingFrameSelector = () => {
                   }}
                   className="close-btn"
                 >
-                  ✕
+                  <Icon path={mdiClose} size={0.9} />
                 </button>
               </div>
             </div>
@@ -855,10 +865,13 @@ const FloatingFrameSelector = () => {
                                 style={{
                                   border: '2px dashed rgba(255, 255, 255, 0.25)',
                                   overflow: 'visible',
-                                  paddingBottom: '10px'
+                                  paddingBottom: '10px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
                                 }}
                               >
-                                +
+                                <Icon path={mdiPlus} size={1.2} />
                               </div>
                             </div>
                             <div className="frame-option-info">
@@ -925,7 +938,7 @@ const FloatingFrameSelector = () => {
                                     className="item-delete-btn"
                                     title="Delete frame"
                                   >
-                                    🗑
+                                    <Icon path={mdiDeleteOutline} size={0.8} />
                                   </button>
                                 )}
                               </div>
@@ -982,7 +995,7 @@ const FloatingFrameSelector = () => {
                           textAlign: 'center',
                         }}
                       >
-                        <div style={{ fontSize: '32px', marginBottom: '0.5rem' }}>🖼️</div>
+                        <div style={{ fontSize: '32px', marginBottom: '0.5rem' }}><Icon path={mdiImageSizeSelectLarge} size={1.5} /></div>
                         <div style={{ color: 'white', fontWeight: '600', marginBottom: '0.25rem' }}>
                           Auto-matching Background
                         </div>
@@ -1011,10 +1024,13 @@ const FloatingFrameSelector = () => {
                             style={{
                               border: '2px dashed rgba(255, 255, 255, 0.25)',
                               overflow: 'visible',
-                              paddingBottom: '10px'
+                              paddingBottom: '10px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
                             }}
                           >
-                            +
+                            <Icon path={mdiPlus} size={1.2} />
                           </div>
                         </div>
                         <div className="frame-option-info">
@@ -1072,7 +1088,7 @@ const FloatingFrameSelector = () => {
                               className="item-delete-btn"
                               title="Delete custom canvas"
                             >
-                                🗑
+                                <Icon path={mdiDeleteOutline} size={0.8} />
                               </button>
                           )}
                         </div>
@@ -1153,14 +1169,11 @@ const FloatingFrameSelector = () => {
                         <div className="frame-option-content">
                           <div className="frame-preview-container">
                             <div
-                              className="bg-preview-compact import-bg-icon"
+                              className="import-bg-icon"
                               style={{
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                fontSize: '2.5rem',
-                                fontWeight: 300,
-                                lineHeight: '0.8',
                                 color: 'rgba(255, 255, 255, 0.4)',
                                 border: '2px dashed rgba(255, 255, 255, 0.25)',
                                 background: 'rgba(0, 0, 0, 0.15)',
@@ -1169,7 +1182,7 @@ const FloatingFrameSelector = () => {
                                 paddingBottom: '10px'
                               }}
                             >
-                              +
+                              <Icon path={mdiPlus} size={1.2} />
                             </div>
                           </div>
                           <div className="frame-option-info">
@@ -1342,7 +1355,7 @@ const FloatingFrameSelector = () => {
                   boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
                 }}
               >
-                <div style={{ fontSize: '48px', marginBottom: '1rem' }}>🖼️</div>
+                <div style={{ fontSize: '48px', marginBottom: '1rem' }}><Icon path={mdiImageSizeSelectLarge} size={2} /></div>
                 <h3 style={{
                   color: 'white',
                   fontSize: '1.5rem',

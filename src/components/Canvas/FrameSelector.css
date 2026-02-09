@@ -36,8 +36,8 @@
 .frame-item {
   display: flex;
   gap: 1rem;
-  padding: 1rem;
-  background: var(--bg-secondary);
+  padding: 12px;
+  background: var(--bg-primary);
   border: 2px solid transparent;
   border-radius: 8px;
   cursor: pointer;
@@ -47,14 +47,16 @@
 }
 
 .frame-item:hover {
-  background: var(--bg-hover);
-  border-color: var(--border-hover);
+  background: var(--bg-secondary);
+  border-color: var(--border-color);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .frame-item.selected {
-  background: var(--bg-selected);
-  border-color: var(--accent-blue);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  background: var(--bg-secondary);
+  border-color: #000000;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3);
 }
 
 .frame-preview {
@@ -87,7 +89,7 @@
 .zone-count {
   font-size: 32px;
   font-weight: 700;
-  color: var(--accent-blue);
+  color: var(--text-primary);
   line-height: 1;
 }
 
@@ -125,17 +127,17 @@
 }
 
 .default-badge {
-  color: var(--accent-blue);
+  color: var(--text-primary);
   font-weight: 500;
 }
 
 .selected-indicator {
   position: absolute;
-  top: 1rem;
-  right: 1rem;
+  top: 12px;
+  right: 12px;
   width: 24px;
   height: 24px;
-  background: var(--accent-blue);
+  background: #000000;
   color: white;
   border-radius: 50%;
   display: flex;
@@ -143,6 +145,7 @@
   justify-content: center;
   font-size: 14px;
   font-weight: 600;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 .frame-selector-loading {
@@ -157,7 +160,7 @@
 .loading-spinner {
   font-size: 32px;
   margin-bottom: 1rem;
-  color: var(--accent-blue);
+  color: var(--text-primary);
 }
 
 .frame-empty-state {

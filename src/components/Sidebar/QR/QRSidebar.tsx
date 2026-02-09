@@ -1,6 +1,8 @@
 import { motion, AnimatePresence } from "framer-motion";
 import "./QRSidebar.css";
 import type { GoogleAccount, NoPreviewImage, UploadProgress } from "../../../types/qr";
+import Icon from "@mdi/react";
+import { mdiRocketLaunch, mdiCheckCircle, mdiFolder, mdiMagnify, mdiUpload, mdiLockOpen, mdiQrcode, mdiAlert } from "@mdi/js";
 
 interface QRSidebarProps {
   account: GoogleAccount | null;
@@ -119,13 +121,27 @@ export default function QRSidebar({
             >
               <div className="upload-progress-header">
                 <span className="upload-progress-step">
-                  {uploadProgress.step === 'starting' && '🚀 Starting...'}
-                  {uploadProgress.step === 'creating_folder' && '📁 Creating Folder...'}
-                  {uploadProgress.step === 'scanning' && '🔍 Scanning Files...'}
-                  {uploadProgress.step === 'uploading' && '📤 Uploading Files...'}
-                  {uploadProgress.step === 'permissions' && '🔓 Setting Permissions...'}
-                  {uploadProgress.step === 'qr_code' && '📱 Generating QR Code...'}
-                  {uploadProgress.step === 'complete' && '✅ Complete!'}
+                  {uploadProgress.step === 'starting' && (
+                    <><Icon path={mdiRocketLaunch} size={0.8} /> Starting...</>
+                  )}
+                  {uploadProgress.step === 'creating_folder' && (
+                    <><Icon path={mdiFolder} size={0.8} /> Creating Folder...</>
+                  )}
+                  {uploadProgress.step === 'scanning' && (
+                    <><Icon path={mdiMagnify} size={0.8} /> Scanning Files...</>
+                  )}
+                  {uploadProgress.step === 'uploading' && (
+                    <><Icon path={mdiUpload} size={0.8} /> Uploading Files...</>
+                  )}
+                  {uploadProgress.step === 'permissions' && (
+                    <><Icon path={mdiLockOpen} size={0.8} /> Setting Permissions...</>
+                  )}
+                  {uploadProgress.step === 'qr_code' && (
+                    <><Icon path={mdiQrcode} size={0.8} /> Generating QR Code...</>
+                  )}
+                  {uploadProgress.step === 'complete' && (
+                    <><Icon path={mdiCheckCircle} size={0.8} /> Complete!</>
+                  )}
                 </span>
                 {uploadProgress.total > 0 && (
                   <span className="upload-progress-count">
@@ -156,7 +172,7 @@ export default function QRSidebar({
               exit={{ opacity: 0, y: -10 }}
               className="error-message"
             >
-              <span className="error-icon">⚠️</span>
+              <span className="error-icon"><Icon path={mdiAlert} size={0.9} /></span>
               {error}
             </motion.div>
           )}

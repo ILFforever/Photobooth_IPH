@@ -6,6 +6,8 @@ import { CustomSetsSidebar } from "../CustomSets";
 import { LayersSidebar } from "../Layers";
 import { useCollage } from "../../../contexts/CollageContext";
 import "./CollageSidebar.css";
+import Icon from "@mdi/react";
+import { mdiFolderOutline, mdiPencilOutline, mdiImageOutline, mdiLayersOutline, mdiContentSaveOutline } from "@mdi/js";
 
 const CollageSidebar = () => {
   const { activeSidebarTab, setActiveSidebarTab } = useCollage();
@@ -20,7 +22,7 @@ const CollageSidebar = () => {
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
         >
-          <span className="tab-icon">📁</span>
+          <span className="tab-icon"><Icon path={mdiFolderOutline} size={0.9} /></span>
         </motion.button>
         <motion.button
           className={`sidebar-tab ${activeSidebarTab === 'edit' ? 'active' : ''}`}
@@ -28,7 +30,7 @@ const CollageSidebar = () => {
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
         >
-          <span className="tab-icon">✏️</span>
+          <span className="tab-icon"><Icon path={mdiPencilOutline} size={0.9} /></span>
         </motion.button>
         <motion.button
           className={`sidebar-tab ${activeSidebarTab === 'frames' ? 'active' : ''}`}
@@ -36,7 +38,7 @@ const CollageSidebar = () => {
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
         >
-          <span className="tab-icon">🖼️</span>
+          <span className="tab-icon"><Icon path={mdiImageOutline} size={0.9} /></span>
         </motion.button>
         <motion.button
           className={`sidebar-tab ${activeSidebarTab === 'layers' ? 'active' : ''}`}
@@ -44,7 +46,7 @@ const CollageSidebar = () => {
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
         >
-          <span className="tab-icon">📚</span>
+          <span className="tab-icon"><Icon path={mdiLayersOutline} size={0.9} /></span>
         </motion.button>
         <motion.button
           className={`sidebar-tab ${activeSidebarTab === 'custom-sets' ? 'active' : ''}`}
@@ -52,7 +54,7 @@ const CollageSidebar = () => {
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
         >
-          <span className="tab-icon">💾</span>
+          <span className="tab-icon"><Icon path={mdiContentSaveOutline} size={0.9} /></span>
         </motion.button>
       </div>
 

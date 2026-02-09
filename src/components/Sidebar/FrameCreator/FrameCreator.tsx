@@ -5,6 +5,19 @@ import { useCollage } from '../../../contexts/CollageContext';
 import { Frame, FrameZone, FrameShape } from '../../../types/frame';
 import { generateFrameId } from '../../../utils/frameTemplates';
 import './FrameCreator.css';
+import Icon from '@mdi/react';
+import {
+  mdiSquareRoundedOutline,
+  mdiCircleOutline,
+  mdiTriangleOutline,
+  mdiHexagonOutline,
+  mdiOctagon,
+  mdiStarOutline,
+  mdiDiamondStone,
+  mdiHeartOutline,
+  mdiPlus,
+  mdiSquareOutline
+} from '@mdi/js';
 
 // Drag and drop imports
 import { useDrag, useDrop } from 'react-dnd';
@@ -86,18 +99,18 @@ function ZoneItem({
               })()}
             </span>
             <span className="zone-item-shape">
-              {zone.shape === 'rounded_rect' ? '🔲' :
-               zone.shape === 'circle' ? '⚪' :
-               zone.shape === 'ellipse' ? '⬭' :
-               zone.shape === 'pill' ? '💊' :
-               zone.shape === 'triangle' ? '🔺' :
-               zone.shape === 'pentagon' ? '⬠' :
-               zone.shape === 'hexagon' ? '⬡' :
-               zone.shape === 'octagon' ? '⯃' :
-               zone.shape === 'star' ? '⭐' :
-               zone.shape === 'diamond' ? '💎' :
-               zone.shape === 'heart' ? '❤️' :
-               zone.shape === 'cross' ? '✚' : '⬜'}
+              {zone.shape === 'rounded_rect' ? <Icon path={mdiSquareRoundedOutline} size={0.8} /> :
+               zone.shape === 'circle' ? <Icon path={mdiCircleOutline} size={0.8} /> :
+               zone.shape === 'ellipse' ? <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><ellipse cx="12" cy="12" rx="10" ry="6"/></svg> :
+               zone.shape === 'pill' ? <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><rect x="6" y="2" width="12" height="20" rx="6"/></svg> :
+               zone.shape === 'triangle' ? <Icon path={mdiTriangleOutline} size={0.8} /> :
+               zone.shape === 'pentagon' ? <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L22 9L18 21H6L2 9L12 2Z"/></svg> :
+               zone.shape === 'hexagon' ? <Icon path={mdiHexagonOutline} size={0.8} /> :
+               zone.shape === 'octagon' ? <Icon path={mdiOctagon} size={0.8} /> :
+               zone.shape === 'star' ? <Icon path={mdiStarOutline} size={0.8} /> :
+               zone.shape === 'diamond' ? <Icon path={mdiDiamondStone} size={0.8} /> :
+               zone.shape === 'heart' ? <Icon path={mdiHeartOutline} size={0.8} /> :
+               zone.shape === 'cross' ? <Icon path={mdiPlus} size={0.8} /> : <Icon path={mdiSquareOutline} size={0.8} />}
             </span>
             <span className="zone-item-size">
               {Math.round(zone.width)}×{Math.round(zone.height)}
@@ -788,16 +801,29 @@ export default function FrameCreator() {
 
               const getShapeIcon = () => {
                 switch (shape) {
-                  case 'triangle': return '▲';
-                  case 'pentagon': return '⬠';
-                  case 'hexagon': return '⬡';
-                  case 'octagon': return '⯃';
-                  case 'star': return '★';
-                  case 'diamond': return '◆';
-                  case 'heart': return '♥';
-                  case 'cross': return '✚';
-                  case 'rounded_rect': return '▢';
-                  default: return '';
+                  case 'triangle': return mdiTriangleOutline;
+                  case 'hexagon': return mdiHexagonOutline;
+                  case 'octagon': return mdiOctagon;
+                  case 'star': return mdiStarOutline;
+                  case 'diamond': return mdiDiamondStone;
+                  case 'heart': return mdiHeartOutline;
+                  case 'cross': return mdiPlus;
+                  case 'rounded_rect': return mdiSquareRoundedOutline;
+                  case 'rectangle': return mdiSquareOutline;
+                  case 'circle': return mdiCircleOutline;
+                  default: return null;
+                }
+              };
+
+              const getCustomSvg = () => {
+                switch (shape) {
+                  case 'ellipse':
+                    return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2"><ellipse cx="12" cy="12" rx="10" ry="6"/></svg>;
+                  case 'pill':
+                    return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2"><rect x="6" y="2" width="12" height="20" rx="6"/></svg>;
+                  case 'pentagon':
+                    return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L22 9L18 21H6L2 9L12 2Z"/></svg>;
+                  default: return null;
                 }
               };
 
@@ -821,8 +847,9 @@ export default function FrameCreator() {
 
               const clipPath = getClipPath();
               const shapeIcon = getShapeIcon();
+              const customSvg = getCustomSvg();
               const isPolygonShape = clipPath !== 'none' || shape === 'rounded_rect';
-              const isPill = shape === 'pill';
+              const hasCustomIcon = !!customSvg;
 
               return (
                 <button
@@ -830,16 +857,10 @@ export default function FrameCreator() {
                   className={`shape-btn ${selectedShape === shape ? 'active' : ''}`}
                   onClick={() => setSelectedShape(shape)}
                 >
-                  {isPill ? (
-                    <div
-                      className="shape-icon"
-                      style={{
-                        borderRadius: '50% / 40%',
-                        transform: 'rotate(-90deg)',
-                      }}
-                    />
+                  {hasCustomIcon ? (
+                    <span className="shape-icon-mdi">{customSvg}</span>
                   ) : isPolygonShape ? (
-                    <span className="shape-icon-text">{shapeIcon}</span>
+                    shapeIcon ? <Icon path={shapeIcon} size={1} className="shape-icon-mdi" /> : null
                   ) : (
                     <div
                       className="shape-icon"

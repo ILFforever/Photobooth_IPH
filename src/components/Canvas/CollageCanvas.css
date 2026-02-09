@@ -1,31 +1,45 @@
+/* Collage Canvas - Photobooth-style aesthetic */
+
 .collage-canvas-container {
   position: relative;
-  padding: 2rem;
-  padding-bottom: 6rem;
+  padding: 16px;
+  padding-bottom: 80px;
   display: flex;
   justify-content: center;
   align-items: center;
   min-height: 100%;
   overflow: visible;
+  background: var(--bg-primary);
 }
 
 .collage-canvas {
   position: relative;
   user-select: none;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  transition: box-shadow 0.2s ease;
+}
+
+.collage-canvas:hover {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 
 .canvas-background {
   z-index: 0;
+  border-radius: 8px;
+  overflow: hidden;
 }
 
 .image-zone {
   z-index: 1;
-  transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+  transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+  border-radius: 4px;
 }
 
 .image-zone:hover {
-  border-color: rgba(59, 130, 246, 0.6);
-  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+  border-color: #666666;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.3);
+  transform: scale(1.01);
 }
 
 /* 3x3 Grid Overlay for Rule of Thirds */
@@ -40,13 +54,13 @@
 }
 
 .grid-overlay-overflow .grid-line {
-  background-color: rgba(59, 130, 246, 0.5);
-  box-shadow: 0 0 2px rgba(59, 130, 246, 0.3);
+  background-color: rgba(0, 212, 255, 0.5);
+  box-shadow: 0 0 4px rgba(0, 212, 255, 0.4);
 }
 
 .grid-line {
   position: absolute;
-  background-color: rgba(255, 255, 255, 0.8);
+  background-color: rgba(255, 255, 255, 0.2);
   box-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
 }
 
@@ -68,8 +82,9 @@
 
 /* Overflow Overlay Frame */
 .overflow-overlay-frame {
-  border: 1px solid rgba(59, 130, 246, 0.4);
-  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.2);
+  border: 1px solid rgba(0, 212, 255, 0.4);
+  box-shadow: 0 0 0 1px rgba(0, 212, 255, 0.2);
+  border-radius: 4px;
 }
 
 /* Background Overflow Mask */
@@ -114,10 +129,11 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0, 0.7);
   backdrop-filter: blur(8px);
-  padding: 6px 10px;
-  border-radius: 4px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   font-size: 11px;
   color: white;
   z-index: 10;
@@ -126,14 +142,15 @@
 
 .canvas-frame-name {
   font-weight: 600;
-  font-size: 11px;
-  color: var(--accent-blue);
+  font-size: 12px;
+  color: var(--text-primary);
   line-height: 1.2;
+  letter-spacing: 0.5px;
 }
 
 .canvas-dimensions {
   font-size: 10px;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--text-muted);
   line-height: 1.1;
 }
 
@@ -154,7 +171,7 @@
   font-size: 64px;
   display: block;
   margin-bottom: 1rem;
-  opacity: 0.5;
+  opacity: 0.4;
 }
 
 .placeholder-content h3 {
@@ -162,18 +179,39 @@
   font-weight: 600;
   color: var(--text-primary);
   margin-bottom: 0.5rem;
+  letter-spacing: 0.5px;
 }
 
 .placeholder-content p {
   font-size: 14px;
-  color: var(--text-secondary);
+  color: var(--text-muted);
 }
 
-/* Zoom handles */
+/* Zoom handles - Teenage Engineering style */
 .zoom-handle {
   opacity: 0.9;
+  background: linear-gradient(145deg, #1a1815 0%, #0a0908 100%);
+  border: 1px solid #252220;
+  border-radius: 4px;
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.4),
+    inset 0 1px 2px rgba(255, 255, 255, 0.05);
+  transition: all 0.15s ease;
 }
 
 .zoom-handle:hover {
   opacity: 1;
+  background: linear-gradient(145deg, #2a2825 0%, #1a1815 100%);
+  border-color: #3a3632;
+  box-shadow:
+    0 4px 8px rgba(0, 0, 0, 0.5),
+    inset 0 1px 2px rgba(255, 255, 255, 0.08);
+  transform: scale(1.05);
+}
+
+.zoom-handle:active {
+  transform: scale(0.95);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.5),
+    inset 0 2px 4px rgba(0, 0, 0, 0.4);
 }
