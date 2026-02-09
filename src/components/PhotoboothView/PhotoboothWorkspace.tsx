@@ -1,13 +1,14 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Image as ImageIcon, ExternalLink, Camera, Grid3x3, Layers, AlertTriangle, X
+  Image as ImageIcon, ExternalLink, Camera, Grid3x3, Layers, AlertTriangle, X, Plus, FolderOpen
 } from "lucide-react";
-import { usePhotoboothSettings, type PhotoboothSessionInfo, type SessionPhoto } from "../../contexts/PhotoboothSettingsContext";
+import { usePhotoboothSettings, type PhotoboothSessionInfo } from "../../contexts/PhotoboothSettingsContext";
 import { usePhotoboothSequence } from "../../hooks/usePhotoboothSequence";
 import { useCamera } from "../../contexts/CameraContext";
 import { useLiveView } from "../../contexts/LiveViewContext";
 import { useCollage } from "../../contexts/CollageContext";
+import { useToast } from "../../contexts/ToastContext";
 import { PhotoboothControls } from "./PhotoboothControls";
 import DisplayContent from "./DisplayContent";
 import CurrentSetPhotoStrip from "./CurrentSetPhotoStrip";
@@ -16,6 +17,7 @@ import { type PhotoDownloadedEvent } from "../../services/cameraWebSocket";
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { useSecondScreen } from "../../hooks/useSecondScreen";
+import { imageCache } from "../../services/ImageCacheService";
 import "./PhotoboothWorkspace.css";
 
 const DAEMON_URL = 'http://localhost:58321';
@@ -67,30 +69,46 @@ export default function PhotoboothWorkspace() {
     setDelayBetweenPhotos,
     photoReviewTime,
     workingFolder,
+    photoNamingScheme,
     sessions,
     currentSession,
     loadSession,
-    updateCurrentSessionFromDownload
+    refreshSessions,
+    updateCurrentSessionFromDownload,
+    createNewSession
   } = usePhotoboothSettings();
   const { captureError, clearCaptureError, isCameraConnected, hasEverConnected, isConnecting, addPhotoDownloadedListener, removePhotoDownloadedListener } = useCamera();
   const { stream: liveViewStream, hdmi } = useLiveView();
-  const { currentFrame } = useCollage();
+  const { showToast } = useToast();
+  const { currentFrame, selectedCustomSetName } = useCollage();
+
+  // Debug: Log when selectedCustomSetName changes
+  useEffect(() => {
+    console.log('[PhotoboothWorkspace] selectedCustomSetName changed to:', selectedCustomSetName);
+  }, [selectedCustomSetName]);
 
   const [selectedSetId, setSelectedSetId] = useState<string | null>(null);
   const [expandedSets, setExpandedSets] = useState<Set<string>>(new Set());
   const [displayMode, setDisplayMode] = useState<DisplayMode>('center');
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null);
+  const [centerBrowseIndex, setCenterBrowseIndex] = useState<number | null>(null);
   const [currentSetPhotos, setCurrentSetPhotos] = useState<CurrentSetPhoto[]>([]);
+
+  // Capture preview state for guest display
+  const [showCapturePreview, setShowCapturePreview] = useState(false);
+  const [capturedPhotoUrl, setCapturedPhotoUrl] = useState<string | null>(null);
+  const previewTimerStartedRef = useRef(false); // Track if timer has been started
 
   // Workflow state
   const [selectedPhotos, setSelectedPhotos] = useState<Set<string>>(new Set());
-  const frameZoneCount = 3; // TODO: Get from selected custom set
+  // Calculate required photos from frame zones, fallback to autoCount
+  const requiredPhotos = currentFrame?.zones.length ?? autoCount;
 
-  // Working folder warning state
-  const [showWorkingFolderWarning, setShowWorkingFolderWarning] = useState(false);
-  // No camera warning state
-  const [showNoCameraWarning, setShowNoCameraWarning] = useState(false);
   const [ptbSession, setPtbSession] = useState<PtbSession | null>(null);
+
+  // Modal state for session selection when loading a folder with existing sessions
+  const [showSessionSelectModal, setShowSessionSelectModal] = useState(false);
+  const [pendingSessionToLoad, setPendingSessionToLoad] = useState<PhotoboothSessionInfo | null>(null);
 
   // Auto-load latest session when working folder changes
   useEffect(() => {
@@ -99,18 +117,27 @@ export default function PhotoboothWorkspace() {
 
       // If no current session and we haven't auto-loaded yet for this folder
       if (!currentSession && sessions.length > 0 && !hasAutoLoadedRef.current) {
+        // Skip modal if there's only one empty session (just auto-created by refreshSessions)
+        if (sessions.length === 1 && sessions[0].shotCount === 0) {
+          console.log('[PhotoboothWorkspace] Single empty session detected, auto-loading without modal');
+          hasAutoLoadedRef.current = true;
+          await loadSession(sessions[0].id);
+          return;
+        }
+
         const latestSession = [...sessions].sort((a, b) =>
           new Date(b.lastUsedAt).getTime() - new Date(a.lastUsedAt).getTime()
         )[0];
 
-        console.log('[PhotoboothWorkspace] Auto-loading latest session:', latestSession.id);
+        console.log('[PhotoboothWorkspace] Found existing sessions, showing selection modal');
         hasAutoLoadedRef.current = true;
-        await loadSession(latestSession.id);
+        setPendingSessionToLoad(latestSession);
+        setShowSessionSelectModal(true);
       }
     };
 
     loadLatestSession();
-  }, [workingFolder, sessions, currentSession, loadSession]);
+  }, [workingFolder, sessions, currentSession]);
 
   // Reset auto-load flag when working folder changes
   useEffect(() => {
@@ -118,7 +145,7 @@ export default function PhotoboothWorkspace() {
   }, [workingFolder]);
 
   // Second screen hook
-  const { isSecondScreenOpen, openSecondScreen, closeSecondScreen, updateGuestDisplay, updateDisplayMode, selectPhoto } = useSecondScreen();
+  const { isSecondScreenOpen, openSecondScreen, closeSecondScreen, updateGuestDisplay, updateDisplayMode, selectPhoto, selectCenterPhoto } = useSecondScreen();
 
   // Photobooth sequence hook - manages all timing state
   const sequence = usePhotoboothSequence({
@@ -126,11 +153,16 @@ export default function PhotoboothWorkspace() {
     delayBetweenPhotos,
     photoReviewTime,
     autoCount,
+    onPreviewLoaded: () => {
+      // Called when entering waitingForPreview state
+      console.log('[PhotoboothWorkspace] Entering waitingForPreview state');
+    },
   });
 
   // Add photos to set when photosTaken changes (happens during capture phase)
   const lastPhotosTakenRef = useRef(0);
   const hasAutoLoadedRef = useRef(false);
+  const prevSequenceStateRef = useRef<string>('idle');
   useEffect(() => {
     if (sequence.photosTaken > lastPhotosTakenRef.current) {
       const newPhoto: CurrentSetPhoto = {
@@ -142,6 +174,55 @@ export default function PhotoboothWorkspace() {
     }
     lastPhotosTakenRef.current = sequence.photosTaken;
   }, [sequence.photosTaken]);
+
+  // Populate current set photos when loading an existing session
+  const lastSessionIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    // Only populate when session changes and has photos
+    if (currentSession && currentSession.id !== lastSessionIdRef.current) {
+      lastSessionIdRef.current = currentSession.id;
+
+      if (currentSession.photos && currentSession.photos.length > 0) {
+        console.log('[PhotoboothWorkspace] Loading existing photos from session:', currentSession.photos.length);
+
+        // Get the session info for thumbnails
+        const sessionInfo = sessions.find(s => s.id === currentSession.id);
+        const folderName = sessionInfo?.folderName || currentSession.id;
+        const thumbnails = sessionInfo?.thumbnails || [];
+
+        // Convert session photos to current set photos using thumbnails when available
+        const loadedPhotos: CurrentSetPhoto[] = currentSession.photos.map((photo, idx) => {
+          // Use thumbnail if available, otherwise fall back to full-res image
+          let thumbnailUrl = '';
+          if (idx < thumbnails.length && thumbnails[idx]) {
+            // Use cached thumbnail from backend
+            thumbnailUrl = convertFileSrc(thumbnails[idx].replace('asset://', ''));
+          } else if (workingFolder) {
+            // Fall back to full-res image
+            const filePath = `${workingFolder}/${folderName}/${photo.filename}`;
+            thumbnailUrl = convertFileSrc(filePath);
+          }
+
+          return {
+            id: photo.filename || `photo-${idx}`,
+            thumbnailUrl,
+            timestamp: new Date(photo.capturedAt).toLocaleTimeString(),
+          };
+        });
+
+        setCurrentSetPhotos(loadedPhotos);
+
+        // Preload all thumbnail images in background for better performance
+        const thumbnailUrls = loadedPhotos.map(p => p.thumbnailUrl).filter(Boolean);
+        imageCache.preloadImages(thumbnailUrls, 8).catch(err => {
+          console.warn('[PhotoboothWorkspace] Some images failed to preload:', err);
+        });
+      } else {
+        // Clear if new session has no photos
+        setCurrentSetPhotos([]);
+      }
+    }
+  }, [currentSession, workingFolder, sessions]);
 
   // Clear photos only on explicit stop/reset, not when starting a new sequence (append mode)
   // Removed the auto-clear on scramble to allow appending photos to existing set
@@ -161,9 +242,7 @@ export default function PhotoboothWorkspace() {
     if (!workingFolder) {
       // Show warning toast if working folder is not set
       console.warn('[PhotoboothWorkspace::handlePhotoDownloaded] Working folder not set, cannot save photo');
-      setShowWorkingFolderWarning(true);
-      // Auto-hide after 5 seconds
-      setTimeout(() => setShowWorkingFolderWarning(false), 5000);
+      showToast('No Working Folder Set', 'warning', 5000, 'Select a folder in Photobooth settings');
       return;
     }
 
@@ -175,16 +254,12 @@ export default function PhotoboothWorkspace() {
       if (!sessionId) {
         console.log('[PhotoboothWorkspace::handlePhotoDownloaded] No active session - auto-creating new session');
 
-        // Extract parent folder name for session prefix
-        const parentName = workingFolder.split(/[\\/]/).pop() || 'Session';
-
-        // Find the highest numbered session to increment
+        // Find the highest numbered session to increment (from folder names like "Test_004")
         let nextNumber = 1;
         if (sessions.length > 0) {
-          // Extract numbers from session names like "ParentName_set_001"
           const numbers = sessions
             .map(s => {
-              const match = s.name.match(/_set_(\d+)$/);
+              const match = s.folderName.match(/_(\d+)$/);
               return match ? parseInt(match[1], 10) : 0;
             })
             .filter(n => n > 0);
@@ -194,7 +269,7 @@ export default function PhotoboothWorkspace() {
           }
         }
 
-        const sessionName = `${parentName}_set_${String(nextNumber).padStart(3, '0')}`;
+        const sessionName = `Session ${nextNumber}`;
         console.log('[PhotoboothWorkspace] Creating session:', sessionName);
 
         // Create the new session using the backend command
@@ -228,32 +303,53 @@ export default function PhotoboothWorkspace() {
         sessionId,
         cameraPath: event.camera_path,
         originalDaemonPath: event.file_path,
+        photoNamingScheme,
       });
 
       console.log('[PhotoboothWorkspace::handlePhotoDownloaded] Photo saved, session updated:', updatedSession);
       setPtbSession(updatedSession);
 
-      // Update session state directly from the returned data (avoids expensive full refresh)
-      updateCurrentSessionFromDownload({
-        id: sessionId!,
-        name: updatedSession.name,
-        createdAt: updatedSession.createdAt,
-        lastUsedAt: updatedSession.lastUsedAt,
-        shotCount: updatedSession.shotCount,
-        photos: updatedSession.photos,
-      });
-      console.log('[PhotoboothWorkspace::handlePhotoDownloaded] Session state updated directly');
+      // PRIORITY 1: Show full-res photo on guest display immediately (do this first!)
+      const latestPhoto = updatedSession.photos[updatedSession.photos.length - 1];
+      const customFilename = latestPhoto?.filename || filename;
+      const sessionInfo = sessions.find(s => s.id === sessionId);
+      const folderName = sessionInfo?.folderName || sessionId;
+      const photoPath = `${workingFolder}/${folderName}/${customFilename}`;
+      const photoUrl = convertFileSrc(photoPath);
 
-      // Replace placeholder thumbnail with actual photo
-      const photoPath = `${workingFolder}/${sessionId}/${filename}`;
-      console.log('[PhotoboothWorkspace::handlePhotoDownloaded] photoPath:', photoPath);
+      console.log('[PhotoboothWorkspace::handlePhotoDownloaded] Showing photo on guest display immediately');
+
+      // Reset flag for new photo
+      previewTimerStartedRef.current = false;
+
+      // Update main workspace state first (for guest display sync)
+      // NOTE: Timer will be started when onCapturePreviewLoad is called (after image loads)
+      setCapturedPhotoUrl(photoUrl);
+      setShowCapturePreview(true);
+
+      // Send to guest display IMMEDIATELY - don't wait for anything else
+      updateGuestDisplay({
+        currentSetPhotos,
+        selectedPhotoIndex,
+        displayMode,
+        showCapturePreview: true,
+        capturedPhotoUrl: photoUrl,
+      });
+
+      // Start manual review mode if not in automatic sequence
+      if (!sequence.isActive) {
+        console.log('[PhotoboothWorkspace::handlePhotoDownloaded] Manual capture - starting manual review mode');
+        sequence.startManualReview();
+      }
+
+      // Create new photo entry for current set
       const newPhoto: CurrentSetPhoto = {
-        id: `photo-${Date.now()}`,
-        thumbnailUrl: convertFileSrc(photoPath),
+        id: customFilename,
+        thumbnailUrl: photoUrl, // Use full-res for display quality
         timestamp: new Date().toLocaleTimeString(),
       };
 
-      // Find and replace the first placeholder thumbnail (SVG data URL)
+      // Update current set photos (main workspace display)
       setCurrentSetPhotos(prev => {
         const placeholderIndex = prev.findIndex(p => p.thumbnailUrl.startsWith('data:image/svg+xml'));
         if (placeholderIndex !== -1) {
@@ -268,11 +364,24 @@ export default function PhotoboothWorkspace() {
         return [...prev, newPhoto];
       });
 
+      // PRIORITY 2 (LOW): Update session state in background (non-blocking)
+      // Don't await this - let it complete in background
+      updateCurrentSessionFromDownload({
+        id: sessionId!,
+        name: updatedSession.name,
+        createdAt: updatedSession.createdAt,
+        lastUsedAt: updatedSession.lastUsedAt,
+        shotCount: updatedSession.shotCount,
+        photos: updatedSession.photos,
+      }, customFilename);
+      console.log('[PhotoboothWorkspace::handlePhotoDownloaded] Session state updated directly');
+
+      console.log('[PhotoboothWorkspace::handlePhotoDownloaded] END - photo displayed immediately');
     } catch (error) {
       console.error('[PhotoboothWorkspace::handlePhotoDownloaded] ERROR:', error);
     }
     console.log('[PhotoboothWorkspace::handlePhotoDownloaded] END');
-  }, [workingFolder, currentSession, sessions, updateCurrentSessionFromDownload, loadSession, sequence.notifyCaptureComplete]);
+  }, [workingFolder, currentSession, sessions, updateCurrentSessionFromDownload, loadSession, sequence.notifyCaptureComplete, photoReviewTime, updateGuestDisplay, currentSetPhotos, selectedPhotoIndex, displayMode]);
 
   // Subscribe to photo_downloaded events
   useEffect(() => {
@@ -282,6 +391,57 @@ export default function PhotoboothWorkspace() {
     };
   }, [handlePhotoDownloaded, addPhotoDownloadedListener, removePhotoDownloadedListener]);
 
+  // Hide preview when sequence leaves review state (review countdown ended)
+  useEffect(() => {
+    const prevState = prevSequenceStateRef.current;
+    const currentState = sequence.sequenceState;
+
+    console.log('[PhotoboothWorkspace] Preview hide check - prevState:', prevState, 'currentState:', currentState, 'showCapturePreview:', showCapturePreview, 'reviewCountdown:', sequence.reviewCountdown);
+
+    // Hide preview when leaving review/waitingForPreview, OR when sequence ends (complete/idle)
+    const wasInReview = prevState === 'review' || prevState === 'waitingForPreview';
+    const isNowInReview = currentState === 'review' || currentState === 'waitingForPreview';
+    const sequenceEnded = (currentState === 'complete' || currentState === 'idle') && prevState !== currentState;
+
+    if ((wasInReview && !isNowInReview || sequenceEnded) && showCapturePreview) {
+      console.log('[PhotoboothWorkspace] Review ended, hiding preview');
+      previewTimerStartedRef.current = false;
+      setShowCapturePreview(false);
+      setCapturedPhotoUrl(null);
+      updateGuestDisplay({
+        currentSetPhotos,
+        selectedPhotoIndex,
+        displayMode,
+        showCapturePreview: false,
+        capturedPhotoUrl: null,
+      });
+    }
+
+    // Update ref for next check
+    prevSequenceStateRef.current = currentState;
+  }, [sequence.sequenceState, sequence.reviewCountdown, showCapturePreview, updateGuestDisplay, currentSetPhotos, selectedPhotoIndex, displayMode]);
+
+  // Hide preview when manual capture review ends (manualPhase goes from review → idle)
+  const prevManualPhaseRef = useRef<string>('idle');
+  useEffect(() => {
+    const prev = prevManualPhaseRef.current;
+    const current = sequence.manualPhase;
+    if ((prev === 'review' || prev === 'waiting') && current === 'idle' && showCapturePreview) {
+      console.log('[PhotoboothWorkspace] Manual review ended, hiding preview');
+      previewTimerStartedRef.current = false;
+      setShowCapturePreview(false);
+      setCapturedPhotoUrl(null);
+      updateGuestDisplay({
+        currentSetPhotos,
+        selectedPhotoIndex,
+        displayMode,
+        showCapturePreview: false,
+        capturedPhotoUrl: null,
+      });
+    }
+    prevManualPhaseRef.current = current;
+  }, [sequence.manualPhase, showCapturePreview, updateGuestDisplay, currentSetPhotos, selectedPhotoIndex, displayMode]);
+
   // Controls wrapper for UI compatibility
   const setAutoRunActive = (active: boolean) => {
     if (active) sequence.start();
@@ -290,9 +450,26 @@ export default function PhotoboothWorkspace() {
 
   // Show no camera warning toast
   const handleShowNoCameraWarning = () => {
-    setShowNoCameraWarning(true);
-    setTimeout(() => setShowNoCameraWarning(false), 3000);
+    showToast('No Camera Connected', 'error', 3000, 'Connect a camera to capture photos');
   };
+
+  // Called when capture preview image has finished loading
+  const handleCapturePreviewLoad = useCallback(() => {
+    console.log('[PhotoboothWorkspace] handleCapturePreviewLoad called - sequenceState:', sequence.sequenceState, 'previewTimerStartedRef:', previewTimerStartedRef.current);
+
+    // Only start timer once (either from main window or guest display, whoever loads first)
+    if (previewTimerStartedRef.current) {
+      console.log('[PhotoboothWorkspace] Preview timer already started, ignoring');
+      return;
+    }
+
+    console.log('[PhotoboothWorkspace] Capture preview image loaded, starting review countdown');
+    previewTimerStartedRef.current = true;
+
+    // Both manual and automatic captures use the sequence state machine
+    console.log('[PhotoboothWorkspace] Calling sequence.startReviewCountdown()');
+    sequence.startReviewCountdown();
+  }, [sequence.startReviewCountdown]);
 
   // Each digit stops at different tick for cascading finish sequence
   const getScrambledDigit = (offset: number, stopTick: number) =>
@@ -304,8 +481,8 @@ export default function PhotoboothWorkspace() {
       if (newSet.has(photoId)) {
         newSet.delete(photoId);
       } else {
-        // Limit selection to frame zone count
-        if (newSet.size < frameZoneCount) {
+        // Limit selection to required photos from frame
+        if (newSet.size < requiredPhotos) {
           newSet.add(photoId);
         }
       }
@@ -318,15 +495,12 @@ export default function PhotoboothWorkspace() {
     if (!workingFolder) return;
 
     try {
-      // Extract parent folder name for session prefix
-      const parentName = workingFolder.split(/[\\/]/).pop() || 'Session';
-
-      // Find the highest numbered session to increment
+      // Find the highest numbered session to increment (from folder names like "Test_004")
       let nextNumber = 1;
       if (sessions.length > 0) {
         const numbers = sessions
           .map(s => {
-            const match = s.name.match(/_set_(\d+)$/);
+            const match = s.folderName.match(/_(\d+)$/);
             return match ? parseInt(match[1], 10) : 0;
           })
           .filter(n => n > 0);
@@ -336,7 +510,7 @@ export default function PhotoboothWorkspace() {
         }
       }
 
-      const sessionName = `${parentName}_set_${String(nextNumber).padStart(3, '0')}`;
+      const sessionName = `Session ${nextNumber}`;
       console.log('[PhotoboothWorkspace] Creating next session:', sessionName);
 
       // Create the new session using the backend command
@@ -346,6 +520,9 @@ export default function PhotoboothWorkspace() {
       });
 
       console.log('[PhotoboothWorkspace] Created and switching to session:', newSession.id);
+
+      // Update the sessions list in context by triggering a refresh
+      await refreshSessions();
 
       // Load the new session
       await loadSession(newSession.id);
@@ -357,16 +534,69 @@ export default function PhotoboothWorkspace() {
     }
   };
 
+  // Handler for finalizing current session
+  const handleFinalizeSession = () => {
+    // TODO: Implement finalize page navigation
+    console.log('[PhotoboothWorkspace] Finalize session clicked - to be implemented');
+  };
+
   const toggleSet = (setId: string) => {
     setExpandedSets(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(setId)) {
-        newSet.delete(setId);
-      } else {
-        newSet.add(setId);
+      // If clicking on already expanded set, collapse it
+      if (prev.has(setId)) {
+        return new Set();
       }
-      return newSet;
+      // Otherwise, only expand this one set (accordion behavior)
+      return new Set([setId]);
     });
+  };
+
+  // Handler for continuing the last session
+  const handleContinueSession = async () => {
+    if (pendingSessionToLoad) {
+      await loadSession(pendingSessionToLoad.id);
+      setShowSessionSelectModal(false);
+      setPendingSessionToLoad(null);
+    }
+  };
+
+  // Handler for creating a new session
+  const handleCreateNewSession = async () => {
+    if (!workingFolder) return;
+
+    try {
+      // Find the highest numbered session to increment
+      let nextNumber = 1;
+      if (sessions.length > 0) {
+        const numbers = sessions
+          .map(s => {
+            // Extract number from folder name like "Test_001"
+            const match = s.folderName.match(/_(\d+)$/);
+            return match ? parseInt(match[1], 10) : 0;
+          })
+          .filter(n => n > 0);
+
+        if (numbers.length > 0) {
+          nextNumber = Math.max(...numbers) + 1;
+        }
+      }
+
+      const sessionName = `Session ${nextNumber}`;
+      console.log('[PhotoboothWorkspace] Creating new session:', sessionName);
+
+      const newSession = await createNewSession(sessionName);
+
+      // Load the new session
+      await loadSession(newSession.id);
+
+      // Clear current photos for the new session
+      setCurrentSetPhotos([]);
+
+      setShowSessionSelectModal(false);
+      setPendingSessionToLoad(null);
+    } catch (error) {
+      console.error('[PhotoboothWorkspace] Error creating new session:', error);
+    }
   };
 
   const selectedSet = sessions.find(set => set.id === selectedSetId);
@@ -415,6 +645,11 @@ export default function PhotoboothWorkspace() {
     selectPhoto(selectedPhotoIndex);
   }, [selectedPhotoIndex, selectPhoto]);
 
+  // Sync center browse index to guest display
+  useEffect(() => {
+    selectCenterPhoto(centerBrowseIndex);
+  }, [centerBrowseIndex, selectCenterPhoto]);
+
   // Sync full state to guest display when photos change
   useEffect(() => {
     updateGuestDisplay({
@@ -429,15 +664,20 @@ export default function PhotoboothWorkspace() {
     let unlisteners: UnlistenFn[] = [];
 
     const setupListeners = async () => {
-      const [unlisten1, unlisten2] = await Promise.all([
+      const [unlisten1, unlisten2, unlisten3] = await Promise.all([
         listen('guest-display:escape', () => {
           setSelectedPhotoIndex(null);
         }),
         listen('guest-display:select-photo', (event: { payload: number | null }) => {
           setSelectedPhotoIndex(event.payload);
         }),
+        listen('guest-display:preview-loaded', () => {
+          // Guest display has finished loading the preview image, start countdown
+          console.log('[PhotoboothWorkspace] Guest display preview loaded');
+          handleCapturePreviewLoad();
+        }),
       ]);
-      unlisteners = [unlisten1, unlisten2];
+      unlisteners = [unlisten1, unlisten2, unlisten3];
     };
 
     setupListeners();
@@ -445,7 +685,7 @@ export default function PhotoboothWorkspace() {
     return () => {
       unlisteners.forEach(u => u());
     };
-  }, []);
+  }, [handleCapturePreviewLoad]);
 
   // Handle navigation clicks for DisplayContent
   const handleNavClick = (direction: 'prev' | 'next') => {
@@ -524,7 +764,18 @@ export default function PhotoboothWorkspace() {
               </div>
               <button
                 className={`open-display-btn ${isSecondScreenOpen ? 'active' : ''}`}
-                onClick={isSecondScreenOpen ? closeSecondScreen : openSecondScreen}
+                onClick={() => {
+                  if (isSecondScreenOpen) {
+                    closeSecondScreen();
+                  } else {
+                    openSecondScreen({
+                      currentSetPhotos,
+                      selectedPhotoIndex,
+                      displayMode,
+                      centerBrowseIndex,
+                    });
+                  }
+                }}
                 title={isSecondScreenOpen ? "Close second screen" : "Open on second screen"}
               >
                 <ExternalLink size={16} />
@@ -548,6 +799,19 @@ export default function PhotoboothWorkspace() {
                   showGridOverlay={true}
                   showRecentPhotos={true}
                   showBackButton={true}
+                  showCapturePreview={showCapturePreview}
+                  capturedPhotoUrl={capturedPhotoUrl}
+                  onCapturePreviewLoad={handleCapturePreviewLoad}
+                  centerBrowseIndex={centerBrowseIndex}
+                  onCenterPhotoClick={(index) => setCenterBrowseIndex(index)}
+                  onCenterBack={() => setCenterBrowseIndex(null)}
+                  onCenterNavClick={(direction) => {
+                    setCenterBrowseIndex(prev => {
+                      if (prev === null) return null;
+                      if (direction === 'prev') return Math.max(0, prev - 1);
+                      return Math.min(currentSetPhotos.length - 1, prev + 1);
+                    });
+                  }}
                 />
               </div>
             </div>
@@ -557,12 +821,13 @@ export default function PhotoboothWorkspace() {
           <CurrentSetPhotoStrip
             currentSetPhotos={currentSetPhotos}
             selectedPhotos={selectedPhotos}
-            setName={ptbSession?.name ?? null}
+            setName={currentSession?.name ?? ptbSession?.name ?? null}
             workingFolder={workingFolder}
-            frameName={currentFrame?.name ?? null}
-            requiredPhotos={currentFrame?.zones.length ?? autoCount}
+            frameName={selectedCustomSetName ?? null}
+            requiredPhotos={requiredPhotos}
             onPhotoSelect={togglePhotoSelection}
             onNextSession={handleNextSession}
+            onFinalize={handleFinalizeSession}
           />
 
           {/* Photobooth Controls */}
@@ -573,13 +838,16 @@ export default function PhotoboothWorkspace() {
             photosTaken={sequence.photosTaken}
             scrambleTick={sequence.scrambleTick}
             isActive={sequence.isActive}
+            isAutoRunning={sequence.isAutoRunning}
             isPaused={sequence.isPaused}
+            manualPhase={sequence.manualPhase}
+            manualReviewCountdown={sequence.manualReviewCountdown}
             delayBetweenPhotos={delayBetweenPhotos}
             autoCount={autoCount}
             isCameraConnected={isCameraConnected}
             hasWorkingFolder={!!workingFolder}
             setDelayBetweenPhotos={setDelayBetweenPhotos}
-            onToggleActive={() => setAutoRunActive(!sequence.isActive)}
+            onToggleActive={() => setAutoRunActive(!sequence.isAutoRunning)}
             onPause={sequence.togglePause}
             onStopIfActive={sequence.stopIfActive}
             onCaptureNow={sequence.captureNow}
@@ -596,15 +864,174 @@ export default function PhotoboothWorkspace() {
           hasEverConnected={hasEverConnected}
           isCameraConnected={isCameraConnected}
           isConnecting={isConnecting}
-          showWorkingFolderWarning={showWorkingFolderWarning}
-          showNoCameraWarning={showNoCameraWarning}
           onSetSelect={setSelectedSetId}
           onToggleSet={toggleSet}
-          onCloseSetDetail={() => setSelectedSetId(null)}
-          onDismissWorkingFolderWarning={() => setShowWorkingFolderWarning(false)}
-          onDismissNoCameraWarning={() => setShowNoCameraWarning(false)}
+          onLoadSession={loadSession}
+          currentSessionId={currentSession?.id}
         />
       </div>
+
+      {/* Session Selection Modal */}
+      <AnimatePresence>
+        {showSessionSelectModal && pendingSessionToLoad && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="modal-overlay"
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0, 0, 0, 0.75)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 1000,
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="modal-content"
+              style={{
+                backgroundColor: '#1a1a1a',
+                borderRadius: '12px',
+                padding: '32px',
+                minWidth: '480px',
+                maxWidth: '560px',
+                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+              }}
+            >
+              <div style={{ marginBottom: '24px' }}>
+                <h2 style={{
+                  color: '#fff',
+                  fontSize: '22px',
+                  fontWeight: 600,
+                  marginBottom: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                }}>
+                  <FolderOpen size={24} style={{ color: '#3b82f6' }} />
+                  Existing Sessions Found
+                </h2>
+                <p style={{
+                  color: '#999',
+                  fontSize: '15px',
+                  lineHeight: '1.5',
+                  margin: 0,
+                }}>
+                  This folder has {sessions.length} existing session{sessions.length > 1 ? 's' : ''}. Would you like to continue the last session or create a new one?
+                </p>
+              </div>
+
+              {/* Last session info */}
+              {pendingSessionToLoad && (
+                <div style={{
+                  backgroundColor: '#252525',
+                  borderRadius: '8px',
+                  padding: '16px',
+                  marginBottom: '24px',
+                  border: '1px solid #333',
+                }}>
+                  <div style={{
+                    color: '#666',
+                    fontSize: '12px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                    marginBottom: '6px',
+                  }}>Last Session</div>
+                  <div style={{
+                    color: '#fff',
+                    fontSize: '16px',
+                    fontWeight: 500,
+                    marginBottom: '4px',
+                  }}>{pendingSessionToLoad.name}</div>
+                  <div style={{
+                    color: '#888',
+                    fontSize: '13px',
+                    display: 'flex',
+                    gap: '16px',
+                  }}>
+                    <span>{pendingSessionToLoad.shotCount} photos</span>
+                    <span>•</span>
+                    <span>{new Date(pendingSessionToLoad.lastUsedAt).toLocaleDateString()}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Action buttons */}
+              <div style={{
+                display: 'flex',
+                gap: '12px',
+              }}>
+                <button
+                  onClick={handleContinueSession}
+                  style={{
+                    flex: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    padding: '14px 20px',
+                    backgroundColor: '#252525',
+                    color: '#fff',
+                    border: '1px solid #444',
+                    borderRadius: '8px',
+                    fontSize: '15px',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = '#333';
+                    e.currentTarget.style.borderColor = '#555';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = '#252525';
+                    e.currentTarget.style.borderColor = '#444';
+                  }}
+                >
+                  <FolderOpen size={18} />
+                  Continue Last
+                </button>
+                <button
+                  onClick={handleCreateNewSession}
+                  style={{
+                    flex: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    padding: '14px 20px',
+                    backgroundColor: '#3b82f6',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '8px',
+                    fontSize: '15px',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = '#2563eb';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = '#3b82f6';
+                  }}
+                >
+                  <Plus size={18} />
+                  Create New Session
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

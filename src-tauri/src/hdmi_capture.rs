@@ -211,13 +211,20 @@ fn spawn_and_parse(
 ) -> u64 {
     let ffmpeg_cmd = format!("video={device_name}");
     let ffmpeg_args = [
+        // Input options - LOW LATENCY
+        "-fflags", "nobuffer",
+        "-flags", "low_delay",
+        "-probesize", "32",
+        "-analyzeduration", "0",
+        // Input device
         "-f", "dshow",
         "-video_size", "1920x1080",
         "-framerate", "30",
-        "-rtbufsize", "100M",
+        "-rtbufsize", "4M",  // Reduced from 100M for lower latency
         "-i", &ffmpeg_cmd,
+        // Output options
         "-f", "mpjpeg",
-        "-q:v", "5",
+        "-q:v", "8",  // Higher number = lower quality = less data = faster
         "-boundary_tag", "ffframe",
         "-an",
         "pipe:1",
@@ -281,9 +288,10 @@ fn parse_and_emit_frames(
     app: &AppHandle,
     shutdown_rx: &watch::Receiver<bool>,
 ) -> u64 {
-    let mut reader = BufReader::with_capacity(512 * 1024, stdout);
+    let mut reader = BufReader::with_capacity(64 * 1024, stdout); // Reduced from 512KB
     let mut line_buf = String::new();
     let mut frame_count: u64 = 0;
+    let mut last_emit_time = std::time::Instant::now();
     let start_time = std::time::Instant::now();
 
     println!("[hdmi_capture:parser] Waiting for first frame...");
@@ -351,10 +359,18 @@ fn parse_and_emit_frames(
                         );
                     }
 
+                    // Skip frames if frontend is consuming too slowly (max 30fps)
+                    let time_since_last = last_emit_time.elapsed().as_secs_f64();
+                    if time_since_last < 0.020 {
+                        // Skip this frame - previous one was <20ms ago
+                        continue;
+                    }
+
                     let b64 = general_purpose::STANDARD.encode(&jpeg_data);
                     if let Err(e) = app.emit("hdmi-frame", &b64) {
                         println!("[hdmi_capture:parser] Emit error: {e}");
                     }
+                    last_emit_time = std::time::Instant::now();
                 }
                 Err(e) => {
                     println!("[hdmi_capture:parser] JPEG read error ({} bytes): {e}", len);

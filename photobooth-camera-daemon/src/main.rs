@@ -405,18 +405,33 @@ async fn start_controller_process(shared_state: &SharedState) {
                                 }
                                 Ok(_) => {
                                     let trimmed = line.trim();
-                                    // println!("Controller status: {}", trimmed); // Verbose - disabled
+                                    if trimmed.is_empty() {
+                                        continue;
+                                    }
+
+                                    // Log photo events so we can trace the broadcast path
+                                    if trimmed.contains("photo_downloaded") {
+                                        println!("[status-pipe] photo_downloaded event received, broadcasting to WS");
+                                    }
 
                                     // Parse and cache the status for /api/camera/status endpoint
                                     if let Ok(status_json) = serde_json::from_str::<serde_json::Value>(&trimmed) {
                                         let mut cached = cached_status.lock().await;
                                         // Use "0" as default camera ID for single camera setup
                                         cached.insert("0".to_string(), (status_json, std::time::Instant::now()));
-                                        // println!("Updated cached_status for camera 0"); // Verbose - disabled
                                     }
 
                                     // Broadcast to all WebSocket clients
-                                    let _ = ws_tx.send(Message::Text(trimmed.to_string().into()));
+                                    match ws_tx.send(Message::Text(trimmed.to_string().into())) {
+                                        Ok(n) => {
+                                            if trimmed.contains("photo_downloaded") {
+                                                println!("[status-pipe] Broadcast photo_downloaded to {} WS clients", n);
+                                            }
+                                        }
+                                        Err(_) => {
+                                            // No active WebSocket receivers - this is normal when no clients connected
+                                        }
+                                    }
                                 }
                                 Err(e) => {
                                     eprintln!("Error reading status pipe: {}", e);

@@ -45,26 +45,26 @@ async function renderApp() {
     <React.StrictMode>
       <DndProvider backend={HTML5Backend}>
         <LiveViewProvider>
-          <PhotoboothSettingsProvider>
-            <AuthProvider>
-              <QRProvider>
-                <CameraProvider>
-                  <VMProvider>
-                    <WorkingFolderProvider>
-                      <AssetsProvider>
-                        <CollageProvider>
-                          <ToastProvider>
+          <AuthProvider>
+            <QRProvider>
+              <CameraProvider>
+                <VMProvider>
+                  <WorkingFolderProvider>
+                    <AssetsProvider>
+                      <CollageProvider>
+                        <ToastProvider>
+                          <PhotoboothSettingsProvider>
                             <AppComponent />
-                            <ToastContainer />
-                          </ToastProvider>
-                        </CollageProvider>
-                      </AssetsProvider>
-                    </WorkingFolderProvider>
-                  </VMProvider>
-                </CameraProvider>
-              </QRProvider>
-            </AuthProvider>
-          </PhotoboothSettingsProvider>
+                          </PhotoboothSettingsProvider>
+                          <ToastContainer />
+                        </ToastProvider>
+                      </CollageProvider>
+                    </AssetsProvider>
+                  </WorkingFolderProvider>
+                </VMProvider>
+              </CameraProvider>
+            </QRProvider>
+          </AuthProvider>
         </LiveViewProvider>
       </DndProvider>
     </React.StrictMode>,

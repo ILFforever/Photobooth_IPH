@@ -1,5 +1,6 @@
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from "react";
 import { invoke } from '@tauri-apps/api/core';
+import { useToast } from './ToastContext';
 
 // Session info structure matching the backend
 export interface PhotoboothSessionInfo {
@@ -41,6 +42,8 @@ interface PhotoboothSettingsContextType {
   setPhotoReviewTime: (value: number) => void;
   workingFolder: string | null;
   setWorkingFolder: (folder: string | null) => void;
+  photoNamingScheme: string;
+  setPhotoNamingScheme: (scheme: string) => void;
   // Session management
   currentSession: PhotoboothSession | null;
   sessions: PhotoboothSessionInfo[];
@@ -49,23 +52,28 @@ interface PhotoboothSettingsContextType {
   loadSession: (sessionId: string) => Promise<void>;
   setCurrentSession: (sessionId: string) => Promise<void>;
   updateSessionShotCount: (sessionId: string, shotCount: number) => void;
-  updateCurrentSessionFromDownload: (ptbSession: PhotoboothSession) => void;
+  updateCurrentSessionFromDownload: (ptbSession: PhotoboothSession, newPhotoFilename?: string) => void;
   isLoadingSessions: boolean;
 }
 
 const PhotoboothSettingsContext = createContext<PhotoboothSettingsContextType | undefined>(undefined);
 
 export function PhotoboothSettingsProvider({ children }: { children: ReactNode }) {
+  const { showToast } = useToast();
   const [autoCount, setAutoCount] = useState(3);
   const [timerDelay, setTimerDelay] = useState(5);
   const [delayBetweenPhotos, setDelayBetweenPhotos] = useState(2);
   const [photoReviewTime, setPhotoReviewTime] = useState(3);
   const [workingFolder, setWorkingFolder] = useState<string | null>(null);
+  const [photoNamingScheme, setPhotoNamingScheme] = useState('IPH_{number}');
 
   // Session management state
   const [currentSession, setCurrentSession] = useState<PhotoboothSession | null>(null);
   const [sessions, setSessions] = useState<PhotoboothSessionInfo[]>([]);
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
+
+  // Track last folder to detect when folder changes
+  const lastFolderRef = useRef<string | null>(null);
 
   // Refresh the list of sessions
   const refreshSessions = useCallback(async () => {
@@ -73,10 +81,50 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
 
     try {
       setIsLoadingSessions(true);
-      const sessionList = await invoke<PhotoboothSessionInfo[]>('list_photobooth_sessions', {
+      const [sessionList, ptbCreated] = await invoke<[PhotoboothSessionInfo[], boolean]>('list_photobooth_sessions', {
         folderPath: workingFolder,
       });
       setSessions(sessionList);
+
+      // If no sessions exist, create one automatically
+      if (sessionList.length === 0) {
+        const newSession = await invoke<PhotoboothSessionInfo>('create_photobooth_session', {
+          folderPath: workingFolder,
+          sessionName: 'Session 1',
+        });
+        setSessions([newSession]);
+
+        // Load the new session as current
+        const ptbSession = await invoke<any>('get_session_data', {
+          folderPath: workingFolder,
+          sessionId: newSession.id,
+        });
+        setCurrentSession({
+          id: ptbSession.id,
+          name: ptbSession.name,
+          createdAt: ptbSession.createdAt,
+          lastUsedAt: ptbSession.lastUsedAt,
+          shotCount: ptbSession.shotCount,
+          photos: ptbSession.photos,
+        });
+
+        showToast('New workspace created', 'success', 3000, 'Session 1 ready');
+        lastFolderRef.current = workingFolder;
+        setIsLoadingSessions(false);
+        return;
+      }
+
+      // Show toast based on whether ptb was created or loaded
+      if (ptbCreated) {
+        showToast('New workspace created', 'success', 3000, 'Ready to start capturing photos');
+      } else {
+        // Only show "loaded" toast if folder actually changed
+        if (lastFolderRef.current !== workingFolder) {
+          const sessionCount = sessionList.length;
+          showToast(`${sessionCount} session${sessionCount !== 1 ? 's' : ''} loaded`, 'info', 3000);
+        }
+      }
+      lastFolderRef.current = workingFolder;
 
       // Also update current session if we have one
       const currentSessionInfo = await invoke<PhotoboothSessionInfo | null>('get_current_session', {
@@ -103,7 +151,7 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
     } finally {
       setIsLoadingSessions(false);
     }
-  }, [workingFolder]);
+  }, [workingFolder, showToast]);
 
   // Create a new session
   const createNewSession = useCallback(async (name: string) => {
@@ -170,14 +218,45 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
   }, []);
 
   // Update current session from download response (avoids full refresh)
-  const updateCurrentSessionFromDownload = useCallback((ptbSession: PhotoboothSession) => {
+  const updateCurrentSessionFromDownload = useCallback(async (ptbSession: PhotoboothSession, newPhotoFilename?: string) => {
     setCurrentSession(ptbSession);
-    setSessions(prev => prev.map(s =>
-      s.id === ptbSession.id
-        ? { ...s, shotCount: ptbSession.shotCount, lastUsedAt: ptbSession.lastUsedAt }
-        : s
-    ));
-  }, []);
+
+    // If a new photo was added, generate its thumbnail and update the sessions list
+    if (workingFolder && newPhotoFilename) {
+      const folderName = ptbSession.id; // Session ID matches folder name
+
+      try {
+        // Generate thumbnail for the new photo only
+        const imagePath = `${workingFolder}/${folderName}/${newPhotoFilename}`;
+        const thumbnail = await invoke<string>('generate_cached_thumbnail', { imagePath });
+
+        setSessions(prev => prev.map(s =>
+          s.id === ptbSession.id
+            ? {
+                ...s,
+                shotCount: ptbSession.shotCount,
+                lastUsedAt: ptbSession.lastUsedAt,
+                thumbnails: [...s.thumbnails, thumbnail]
+              }
+            : s
+        ));
+      } catch (error) {
+        // Still update shotCount even if thumbnail generation fails
+        setSessions(prev => prev.map(s =>
+          s.id === ptbSession.id
+            ? { ...s, shotCount: ptbSession.shotCount, lastUsedAt: ptbSession.lastUsedAt }
+            : s
+        ));
+      }
+    } else {
+      // No new photo, just update shotCount and lastUsedAt
+      setSessions(prev => prev.map(s =>
+        s.id === ptbSession.id
+          ? { ...s, shotCount: ptbSession.shotCount, lastUsedAt: ptbSession.lastUsedAt }
+          : s
+      ));
+    }
+  }, [workingFolder]);
 
   // Refresh sessions when working folder changes
   useEffect(() => {
@@ -199,6 +278,8 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
         setPhotoReviewTime,
         workingFolder,
         setWorkingFolder,
+        photoNamingScheme,
+        setPhotoNamingScheme,
         currentSession,
         sessions,
         refreshSessions,

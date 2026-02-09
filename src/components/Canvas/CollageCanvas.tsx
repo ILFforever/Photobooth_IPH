@@ -1,6 +1,7 @@
 import { useRef, useMemo, useState, useCallback, useEffect } from "react";
 import { useDrop } from "react-dnd";
 import { motion } from "framer-motion";
+import { Image as ImageIcon } from "lucide-react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { useCollage } from "../../contexts/CollageContext";
 import { Frame, FrameZone, FrameShape } from "../../types/frame";

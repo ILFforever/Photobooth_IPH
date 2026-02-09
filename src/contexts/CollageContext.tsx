@@ -63,6 +63,10 @@ interface CollageContextType {
   setCopiedZone: (zone: FrameZone | null) => void;
   captureCanvasThumbnail: () => Promise<string | null>;
 
+  // Custom set tracking
+  selectedCustomSetName: string | null;
+  setSelectedCustomSetName: (name: string | null) => void;
+
   // Overlay layer state
   overlays: OverlayLayer[];
   setOverlays: (overlays: OverlayLayer[]) => void;
@@ -118,6 +122,7 @@ export function CollageProvider({ children }: { children: ReactNode }) {
   const [autoMatchBackground, setAutoMatchBackground] = useState(false);
   const [backgroundDimensions, setBackgroundDimensions] = useState<{ width: number; height: number } | null>(null);
   const [copiedZone, setCopiedZone] = useState<FrameZone | null>(null);
+  const [selectedCustomSetName, setSelectedCustomSetName] = useState<string | null>(null);
 
   // Overlay layer state
   const [overlays, setOverlays] = useState<OverlayLayer[]>([]);
@@ -410,6 +415,8 @@ export function CollageProvider({ children }: { children: ReactNode }) {
         copiedZone,
         setCopiedZone,
         captureCanvasThumbnail,
+        selectedCustomSetName,
+        setSelectedCustomSetName,
         overlays,
         setOverlays,
         selectedOverlayId,

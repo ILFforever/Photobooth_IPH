@@ -102,7 +102,7 @@ const MeteringIcons = {
 };
 
 type SettingType = 'shutter' | 'aperture' | 'iso' | 'ev' | 'wb' | 'metering' | 'folder' | 'mode' | null;
-type CollapsibleSection = 'camera' | 'liveview' | 'folder' | 'photobooth';
+type CollapsibleSection = 'camera' | 'liveview' | 'folder' | 'photobooth' | 'naming';
 
 interface CameraSectionProps {
   expandedSections: Record<CollapsibleSection, boolean>;

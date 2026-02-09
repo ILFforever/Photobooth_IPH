@@ -38,6 +38,7 @@ export function CustomSetsSidebar() {
     captureCanvasThumbnail,
     overlays,
     setOverlays,
+    setSelectedCustomSetName,
   } = useCollage();
 
   useEffect(() => {
@@ -225,7 +226,9 @@ export function CustomSetsSidebar() {
 
   const handleLoadSet = async (setId: string) => {
     try {
+      console.log('[CustomSetsSidebar] Loading set with ID:', setId);
       const set = await invoke<CustomSet>('get_custom_set', { setId });
+      console.log('[CustomSetsSidebar] Set loaded:', set.name);
 
       // Apply the set configuration
       setCanvasSize({
@@ -250,6 +253,10 @@ export function CustomSetsSidebar() {
 
       // Restore overlays
       setOverlays(set.overlays || []);
+
+      // Track the loaded custom set name
+      console.log('[CustomSetsSidebar] Setting selectedCustomSetName to:', set.name);
+      setSelectedCustomSetName(set.name);
 
       console.log('Custom set loaded successfully');
     } catch (error) {

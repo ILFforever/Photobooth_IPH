@@ -146,7 +146,7 @@ export function useLiveViewManager(): LiveViewManagerState {
 
       if (!mountedRef.current) return;
 
-      console.log('[LiveViewManager] Devices found:', videoDevices.length);
+      //console.log('[LiveViewManager] Devices found:', videoDevices.length);
       setDevices(videoDevices);
 
       if (videoDevices.length === 0) {

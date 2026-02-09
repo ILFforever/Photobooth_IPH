@@ -1,7 +1,9 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronRight, Calendar, Clock, Image as ImageIcon, WifiOff, RefreshCw, FolderOpen, X } from "lucide-react";
+import { useEffect } from "react";
+import { ChevronDown, ChevronRight, Calendar, Clock, Image as ImageIcon } from "lucide-react";
 import { type PhotoboothSessionInfo } from "../../contexts/PhotoboothSettingsContext";
 import { convertFileSrc } from '@tauri-apps/api/core';
+import { useToast } from "../../contexts/ToastContext";
 
 interface PhotoSessionsSidebarProps {
   sessions: PhotoboothSessionInfo[];
@@ -10,13 +12,10 @@ interface PhotoSessionsSidebarProps {
   hasEverConnected: boolean;
   isCameraConnected: boolean;
   isConnecting: boolean;
-  showWorkingFolderWarning: boolean;
-  showNoCameraWarning: boolean;
   onSetSelect: (setId: string) => void;
   onToggleSet: (setId: string) => void;
-  onCloseSetDetail: () => void;
-  onDismissWorkingFolderWarning: () => void;
-  onDismissNoCameraWarning: () => void;
+  onLoadSession?: (sessionId: string) => void;
+  currentSessionId?: string | null;
 }
 
 export default function PhotoSessionsSidebar({
@@ -26,14 +25,37 @@ export default function PhotoSessionsSidebar({
   hasEverConnected,
   isCameraConnected,
   isConnecting,
-  showWorkingFolderWarning,
-  showNoCameraWarning,
   onSetSelect,
   onToggleSet,
-  onCloseSetDetail,
-  onDismissWorkingFolderWarning,
-  onDismissNoCameraWarning,
+  onLoadSession,
+  currentSessionId,
 }: PhotoSessionsSidebarProps) {
+  const { showToast } = useToast();
+
+  const handleLoadSession = (set: PhotoboothSessionInfo, e: React.MouseEvent) => {
+    e.stopPropagation();
+    onLoadSession?.(set.id);
+  };
+
+  const handleToggleExpand = (setId: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    onSetSelect(setId);
+    onToggleSet(setId);
+  };
+
+  // Show toast when camera disconnects (only if it was connected before)
+  useEffect(() => {
+    if (hasEverConnected && !isCameraConnected && !isConnecting) {
+      showToast('Camera Disconnected', 'error', 10000, 'Attempting to reconnect...');
+    }
+  }, [isCameraConnected, isConnecting, hasEverConnected, showToast]);
+
+  // Show toast when connecting
+  useEffect(() => {
+    if (isConnecting) {
+      showToast('Connecting to Camera', 'info', 3000, 'Please wait...');
+    }
+  }, [isConnecting, showToast]);
   const selectedSet = sessions.find(set => set.id === selectedSetId);
 
   return (
@@ -44,7 +66,7 @@ export default function PhotoSessionsSidebar({
       </div>
 
       <div className="catalog-list">
-        <AnimatePresence mode="popLayout">
+        <AnimatePresence initial={false}>
           {sessions.map((set) => {
             // Format date from createdAt
             const date = new Date(set.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -59,14 +81,13 @@ export default function PhotoSessionsSidebar({
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
                 transition={{ duration: 0.2 }}
-                className={`photo-set-card ${selectedSetId === set.id ? 'selected' : ''}`}
+                className={`photo-set-card ${currentSessionId === set.id ? 'active' : ''} ${selectedSetId === set.id ? 'selected' : ''}`}
               >
-                <button
+                <div
                   className="photo-set-header"
-                  onClick={() => {
-                    onSetSelect(set.id);
-                    onToggleSet(set.id);
-                  }}
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => handleToggleExpand(set.id, e)}
                 >
                   <div className="photo-set-info">
                     <div className="photo-set-icon">
@@ -83,13 +104,27 @@ export default function PhotoSessionsSidebar({
                       </span>
                     </div>
                   </div>
-                  <div className="photo-set-time">
-                    <Clock size={12} />
-                    <span>{time}</span>
+                  <div className="photo-set-actions">
+                    {currentSessionId !== set.id ? (
+                      <button
+                        className="load-session-btn"
+                        onClick={(e) => handleLoadSession(set, e)}
+                      >
+                        Load
+                      </button>
+                    ) : (
+                      <div className="current-session-indicator">
+                        Active
+                      </div>
+                    )}
+                    <div className="photo-set-time">
+                      <Clock size={12} />
+                      <span>{time}</span>
+                    </div>
                   </div>
-                </button>
+                </div>
 
-                <AnimatePresence>
+                <AnimatePresence initial={false}>
                   {expandedSets.has(set.id) && (
                     <motion.div
                       initial={{ height: 0, opacity: 0 }}
@@ -97,28 +132,39 @@ export default function PhotoSessionsSidebar({
                       exit={{ height: 0, opacity: 0 }}
                       transition={{ duration: 0.2 }}
                       className="photo-set-content"
+                      style={{ overflow: 'hidden' }}
                     >
-                      <div className="photo-thumbnails">
-                        {set.thumbnails.length > 0 ? (
-                          set.thumbnails.map((thumbnail, idx) => (
-                            <div key={idx} className="thumbnail-item">
-                              <img
-                                src={convertFileSrc(thumbnail.replace('asset://', ''))}
-                                alt={`Photo ${idx + 1}`}
-                                className="thumbnail-image"
-                              />
-                            </div>
-                          ))
-                        ) : (
-                          // Fallback to placeholders if no thumbnails
-                          Array.from({ length: set.shotCount }).map((_, idx) => (
-                            <div key={idx} className="thumbnail-placeholder">
-                              <ImageIcon size={20} />
-                              <span>Photo {idx + 1}</span>
-                            </div>
-                          ))
-                        )}
-                      </div>
+                      {set.shotCount > 0 ? (
+                        <div className="photo-thumbnails">
+                          {set.thumbnails.length > 0 ? (
+                            set.thumbnails.map((thumbnail, idx) => (
+                              <div key={idx} className="thumbnail-item">
+                                <img
+                                  src={convertFileSrc(thumbnail.replace('asset://', ''))}
+                                  alt={`Photo ${idx + 1}`}
+                                  className="thumbnail-image"
+                                  loading="lazy"
+                                  decoding="async"
+                                />
+                              </div>
+                            ))
+                          ) : (
+                            // Fallback to placeholders if no thumbnails
+                            Array.from({ length: set.shotCount }).map((_, idx) => (
+                              <div key={idx} className="thumbnail-placeholder">
+                                <ImageIcon size={20} />
+                                <span>Photo {idx + 1}</span>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      ) : (
+                        // Empty state when session has no photos
+                        <div className="photo-thumbnails-empty">
+                          <ImageIcon size={24} />
+                          <span>No photos in this session yet</span>
+                        </div>
+                      )}
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -129,24 +175,18 @@ export default function PhotoSessionsSidebar({
       </div>
 
       {/* Selected Set Detail */}
-      <AnimatePresence>
+      <AnimatePresence initial={false}>
         {selectedSet && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2 }}
             className="selected-set-detail"
+            style={{ overflow: 'hidden' }}
           >
             <div className="detail-header">
               <h3>{selectedSet.name}</h3>
-              <button
-                className="close-detail"
-                onClick={onCloseSetDetail}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M18 6L6 18M6 6l12 12" />
-                </svg>
-              </button>
             </div>
             <div className="detail-meta">
               <span className="detail-item">
@@ -162,107 +202,6 @@ export default function PhotoSessionsSidebar({
                 {selectedSet.shotCount} photos
               </span>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Camera Connection Status Notification - Only show if camera was connected before */}
-      <AnimatePresence>
-        {hasEverConnected && !isCameraConnected && !isConnecting && (
-          <motion.div
-            className="connection-status-toast"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-          >
-            <WifiOff size={16} className="connection-status-icon" />
-            <div className="connection-status-text">
-              <span className="connection-status-title">Camera Disconnected</span>
-              <span className="connection-status-subtitle">
-                <RefreshCw size={12} className="spinning" />
-                Retrying connection...
-              </span>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Camera Connecting Toast */}
-      <AnimatePresence>
-        {isConnecting && (
-          <motion.div
-            className="connection-status-toast connecting-toast"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-          >
-            <RefreshCw size={16} className="connection-status-icon spinning" />
-            <div className="connection-status-text">
-              <span className="connection-status-title">Connecting to Camera</span>
-              <span className="connection-status-subtitle">
-                Please wait...
-              </span>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Working Folder Warning Toast */}
-      <AnimatePresence>
-        {showWorkingFolderWarning && (
-          <motion.div
-            className="connection-status-toast working-folder-warning"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-            onClick={onDismissWorkingFolderWarning}
-          >
-            <FolderOpen size={16} className="connection-status-icon" />
-            <div className="connection-status-text">
-              <span className="connection-status-title">No Working Folder Set</span>
-              <span className="connection-status-subtitle">
-                Photos cannot be saved. Set a working folder in Photobooth settings.
-              </span>
-            </div>
-            <button
-              className="toast-dismiss-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDismissWorkingFolderWarning();
-              }}
-            >
-              <X size={14} />
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* No Camera Warning Toast */}
-      <AnimatePresence>
-        {showNoCameraWarning && (
-          <motion.div
-            className="connection-status-toast no-camera-warning"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-            onClick={onDismissNoCameraWarning}
-          >
-            <WifiOff size={16} className="connection-status-icon" />
-            <div className="connection-status-text">
-              <span className="connection-status-title">No Camera Connected</span>
-              <span className="connection-status-subtitle">
-                Connect a camera to capture photos.
-              </span>
-            </div>
-            <button
-              className="toast-dismiss-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDismissNoCameraWarning();
-              }}
-            >
-              <X size={14} />
-            </button>
           </motion.div>
         )}
       </AnimatePresence>

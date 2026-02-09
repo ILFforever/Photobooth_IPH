@@ -70,6 +70,7 @@
   align-items: center;
   justify-content: center;
   padding: 32px;
+  position: relative;
 }
 
 .single-display .single-photo-content {
@@ -94,12 +95,12 @@
   align-items: center;
   justify-content: center;
   padding: 16px;
+  position: relative;
 }
 
 .center-main {
   height: 100%;
   max-height: 100%;
-  aspect-ratio: 3 / 2;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -108,6 +109,8 @@
   border-radius: 8px;
   position: relative;
   overflow: hidden;
+  min-height: 200px;
+  min-width: 300px;
 }
 
 .center-main-content {
@@ -124,6 +127,29 @@
   font-weight: 500;
 }
 
+/* Live view video elements with stretch transform */
+.single-liveview-video,
+.center-liveview-video {
+  width: 100%;
+  max-height: 100%;
+  aspect-ratio: 3 / 2;
+  object-fit: contain;
+  transform: scaleX(var(--video-stretch, 1)) scaleY(var(--video-stretch-v, 1));
+  transform-origin: center;
+}
+
+/* Capture preview also respects stretch settings */
+.capture-preview-in-place {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  animation: fadeIn 0.2s ease;
+  transform: scaleX(var(--video-stretch, 1)) scaleY(var(--video-stretch-v, 1));
+  transform-origin: center;
+}
+
 /* Grid Display */
 .grid-display {
   width: 100%;
@@ -135,6 +161,7 @@
   padding: 16px;
   overflow-y: auto;
   grid-auto-rows: 1fr;
+  position: relative;
 }
 
 .grid-display.grid-scrollable {
@@ -287,4 +314,56 @@
 .single-photo-label {
   font-size: 14px;
   font-weight: 500;
+}
+
+/* Capture Preview Overlay */
+.capture-preview-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.95);
+  z-index: 1000;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.capture-preview-image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  animation: scaleIn 0.4s ease;
+}
+
+@keyframes scaleIn {
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* In-place capture preview - replaces live view in the same container */
+.capture-preview-in-place {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  animation: fadeIn 0.2s ease;
 }

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { triggerCapture } from '../services/cameraCaptureService';
 
-export type SequenceState = 'idle' | 'scramble' | 'countdown' | 'capturing' | 'photoConfirm' | 'review' | 'betweenPhotos' | 'preCountdown' | 'complete';
+export type SequenceState = 'idle' | 'scramble' | 'countdown' | 'capturing' | 'photoConfirm' | 'waitingForPreview' | 'review' | 'betweenPhotos' | 'preCountdown' | 'complete' | 'manualReview';
 
 interface SequenceConfig {
   delayBeforeFirstPhoto: number;
@@ -9,10 +9,13 @@ interface SequenceConfig {
   photoReviewTime: number;
   autoCount: number;
   onPhotoCaptured?: (photoNumber: number) => void;
+  onPreviewLoaded?: () => void; // Called when entering waitingForPreview state
 }
 
+export type ManualPhase = 'idle' | 'waiting' | 'review';
+
 interface UsePhotoboothSequenceReturn {
-  // State
+  // Auto sequence state
   sequenceState: SequenceState;
   currentCountdown: number;
   reviewCountdown: number;
@@ -20,16 +23,23 @@ interface UsePhotoboothSequenceReturn {
   scrambleTick: number;
   isPaused: boolean;
 
+  // Manual capture state (completely separate from auto)
+  manualPhase: ManualPhase;
+  manualReviewCountdown: number;
+
   // Actions
   start: () => void;
   stop: () => void;
   stopIfActive: () => void;
   togglePause: () => void;
-  captureNow: () => void;  // Trigger immediate capture
-  notifyCaptureComplete: () => void;  // Call when photo_downloaded WS event arrives
+  captureNow: () => void;  // Single capture — uses manual state machine only
+  notifyCaptureComplete: () => void;  // Auto only: photo_downloaded WS event
+  startReviewCountdown: () => void;  // Called when preview image loads (handles both auto & manual)
+  startManualReview: () => void;  // External camera capture — enters manual waiting
 
   // Derived
   isActive: boolean;
+  isAutoRunning: boolean;
   isComplete: boolean;
 }
 
@@ -40,19 +50,47 @@ export function usePhotoboothSequence(config: SequenceConfig): UsePhotoboothSequ
   const [photosTaken, setPhotosTaken] = useState(0);
   const [scrambleTick, setScrambleTick] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
+  const [autoSequenceActive, setAutoSequenceActive] = useState(false);
+
+  // ── Manual capture state (completely independent of auto) ──
+  const [manualPhase, setManualPhase] = useState<ManualPhase>('idle');
+  const [manualReviewCountdown, setManualReviewCountdown] = useState(0);
+
+  // Ref mirror of sequenceState — updated synchronously so callbacks called
+  // in the same event handler as stop() see the real current state.
+  const sequenceStateRef = useRef<SequenceState>('idle');
+  // Track if preview loaded while in photoConfirm state (before waitingForPreview)
+  const previewLoadedRef = useRef(false);
+  // Track if an auto-capture is in flight (set true in capturing effect, false on complete/stop)
+  const capturingRef = useRef(false);
+  const photoNumberRef = useRef(1);
+
+  // Keep ref in sync with React state
+  useEffect(() => {
+    sequenceStateRef.current = sequenceState;
+  }, [sequenceState]);
 
   const isActive = sequenceState !== 'idle' && sequenceState !== 'complete';
 
-  // Start the sequence
+  // Start the auto sequence
   const start = useCallback(() => {
+    setManualPhase('idle'); // Cancel any manual capture in progress
+    setManualReviewCountdown(0);
     setPhotosTaken(0);
     setReviewCountdown(0);
     setIsPaused(false);
+    setAutoSequenceActive(true);
+    previewLoadedRef.current = false;
     setSequenceState('scramble');
   }, []);
 
-  // Stop the sequence
+  // Stop everything
   const stop = useCallback(() => {
+    sequenceStateRef.current = 'idle';
+    capturingRef.current = false;
+    setAutoSequenceActive(false);
+    setManualPhase('idle');
+    setManualReviewCountdown(0);
     setSequenceState('idle');
     setCurrentCountdown(config.delayBeforeFirstPhoto);
     setPhotosTaken(0);
@@ -74,36 +112,32 @@ export function usePhotoboothSequence(config: SequenceConfig): UsePhotoboothSequ
     }
   }, [isActive, stop]);
 
-  // Trigger immediate capture (for manual capture button)
+  // ── Manual single capture ──
+  // Completely separate from auto. Uses manualPhase state only.
   const captureNow = useCallback(() => {
-    console.log('[PhotoboothSequence] captureNow called, sequenceState:', sequenceState);
-    // If idle or complete, just trigger a single capture without starting sequence
-    if (sequenceState === 'idle' || sequenceState === 'complete') {
-      if (sequenceState === 'complete') {
-        setSequenceState('idle');
-        setPhotosTaken(0);
-        setCurrentCountdown(config.delayBeforeFirstPhoto);
-      }
-      console.log('[PhotoboothSequence] Triggering immediate capture...');
-      triggerCapture().then((response) => {
-        console.log('[PhotoboothSequence] Capture response:', response);
-        if (!response.success) {
-          console.error('[PhotoboothSequence] Capture failed:', response.error);
-        } else {
-          console.log('[PhotoboothSequence] Capture succeeded, photo #', photoNumberRef.current);
-          // Notify that a photo was captured
-          if (config.onPhotoCaptured) {
-            config.onPhotoCaptured(photoNumberRef.current);
-          }
-          photoNumberRef.current += 1;
-        }
-      }).catch((error) => {
-        console.error('[PhotoboothSequence] Capture error:', error);
-      });
-    } else {
-      console.log('[PhotoboothSequence] Skipping capture - not idle');
+    if (manualPhase !== 'idle') {
+      console.log('[PhotoboothSequence] captureNow skipped — manual capture already in progress');
+      return;
     }
-  }, [sequenceState, config.onPhotoCaptured, config.delayBeforeFirstPhoto]);
+    const autoState = sequenceStateRef.current;
+    if (autoState !== 'idle' && autoState !== 'complete') {
+      console.log('[PhotoboothSequence] captureNow skipped — auto sequence active:', autoState);
+      return;
+    }
+    console.log('[PhotoboothSequence] captureNow — starting manual capture');
+    setManualPhase('waiting');
+
+    triggerCapture().then((response) => {
+      console.log('[PhotoboothSequence] Manual capture response:', response);
+      if (!response.success) {
+        console.error('[PhotoboothSequence] Manual capture failed:', response.error);
+        setManualPhase('idle');
+      }
+    }).catch((error) => {
+      console.error('[PhotoboothSequence] Manual capture error:', error);
+      setManualPhase('idle');
+    });
+  }, [manualPhase]);
 
   // ========== STATE MACHINE ==========
 
@@ -142,15 +176,10 @@ export function usePhotoboothSequence(config: SequenceConfig): UsePhotoboothSequ
     }
   }, [sequenceState, isPaused]);
 
-  // Capturing: trigger camera capture, advance when notifyCaptureComplete is called
-  const capturingRef = useRef(false);
-  const photoNumberRef = useRef(1);
-
-  // Called by workspace when photo_downloaded WS event arrives
+  // Called by workspace when photo_downloaded WS event arrives (auto only).
   const notifyCaptureComplete = useCallback(() => {
-    if (sequenceState !== 'capturing' && capturingRef.current === false) {
-      // Manual capture (idle/complete) — just notify callback
-      console.log('[PhotoboothSequence] notifyCaptureComplete (manual mode)');
+    if (!capturingRef.current) {
+      console.log('[PhotoboothSequence] notifyCaptureComplete — no active auto capture, ignoring');
       return;
     }
 
@@ -164,11 +193,50 @@ export function usePhotoboothSequence(config: SequenceConfig): UsePhotoboothSequ
     }
     photoNumberRef.current += 1;
 
-    setSequenceState('photoConfirm');
-  }, [sequenceState, photosTaken, config.onPhotoCaptured]);
+    // Always go through review cycle, even for the last photo
+    if (previewLoadedRef.current) {
+      console.log('[PhotoboothSequence] Preview already loaded, starting review immediately');
+      setReviewCountdown(config.photoReviewTime);
+      setSequenceState('review');
+      previewLoadedRef.current = false;
+    } else {
+      setSequenceState('waitingForPreview');
+    }
+  }, [photosTaken, config.onPhotoCaptured, config.autoCount, config.photoReviewTime]);
+
+  // Called when preview image has loaded — routes to manual or auto path
+  const startReviewCountdown = useCallback(() => {
+    // Manual path: preview loaded during manual capture
+    if (manualPhase === 'waiting') {
+      console.log('[PhotoboothSequence] Preview loaded — starting manual review countdown');
+      setManualReviewCountdown(config.photoReviewTime);
+      setManualPhase('review');
+      return;
+    }
+
+    // Auto path: use ref to avoid stale closure (state may still be 'capturing'
+    // in the closure when the preview image onLoad fires)
+    const currentState = sequenceStateRef.current;
+    console.log('[PhotoboothSequence] startReviewCountdown (auto) — sequenceState:', currentState);
+    previewLoadedRef.current = true;
+    if (currentState === 'waitingForPreview') {
+      console.log('[PhotoboothSequence] Preview loaded — starting auto review countdown');
+      setReviewCountdown(config.photoReviewTime);
+      setSequenceState('review');
+    }
+  }, [manualPhase, config.photoReviewTime]);
+
+  // External camera capture (not via button) — enters manual waiting
+  const startManualReview = useCallback(() => {
+    if (manualPhase !== 'idle') return;
+    console.log('[PhotoboothSequence] startManualReview — entering manual waiting');
+    setManualPhase('waiting');
+  }, [manualPhase]);
 
   useEffect(() => {
     if (sequenceState === 'capturing' && !capturingRef.current) {
+      // Reset the preview loaded flag for the new capture
+      previewLoadedRef.current = false;
       capturingRef.current = true;
 
       // Trigger the actual camera capture via daemon
@@ -183,7 +251,7 @@ export function usePhotoboothSequence(config: SequenceConfig): UsePhotoboothSequ
       // Safety timeout: if no photo_downloaded arrives within 15s, advance anyway
       const safetyTimeout = setTimeout(() => {
         if (capturingRef.current) {
-          console.warn('[PhotoboothSequence] Safety timeout — advancing state machine after 15s');
+          console.warn('[PhotoboothSequence] Safety timeout — advancing after 15s');
           const newTaken = photosTaken + 1;
           setPhotosTaken(newTaken);
           capturingRef.current = false;
@@ -192,7 +260,12 @@ export function usePhotoboothSequence(config: SequenceConfig): UsePhotoboothSequ
             config.onPhotoCaptured(photoNumberRef.current);
           }
           photoNumberRef.current += 1;
-          setSequenceState('photoConfirm');
+
+          if (newTaken >= config.autoCount) {
+            setSequenceState('complete');
+          } else {
+            setSequenceState('waitingForPreview');
+          }
         }
       }, 15000);
 
@@ -200,32 +273,35 @@ export function usePhotoboothSequence(config: SequenceConfig): UsePhotoboothSequ
     }
   }, [sequenceState, photosTaken, config.autoCount, config.onPhotoCaptured]);
 
-  // PhotoConfirm: show "--" for 500ms, then review or complete
+  // Handle preview loading while in auto waitingForPreview state
   useEffect(() => {
-    if (sequenceState === 'photoConfirm') {
-      const confirmTimeout = setTimeout(() => {
-        if (photosTaken >= config.autoCount) {
-          setSequenceState('complete');
-        } else {
-          setReviewCountdown(config.photoReviewTime);
-          setSequenceState('review');
-        }
-      }, 500);
-      return () => clearTimeout(confirmTimeout);
+    if (sequenceState === 'waitingForPreview') {
+      if (previewLoadedRef.current) {
+        console.log('[PhotoboothSequence] Auto waitingForPreview — preview already loaded, starting review');
+        setReviewCountdown(config.photoReviewTime);
+        setSequenceState('review');
+        previewLoadedRef.current = false;
+      }
     }
-  }, [sequenceState, photosTaken, config.autoCount, config.photoReviewTime]);
+  }, [sequenceState, config.photoReviewTime]);
 
-  // Review: countdown review time, then go to betweenPhotos delay
+  // Auto review: countdown review time, then go to betweenPhotos for next photo
   useEffect(() => {
     if (sequenceState === 'review' && !isPaused && reviewCountdown > 0) {
       const interval = setInterval(() => {
         setReviewCountdown(prev => {
           if (prev <= 1) {
             clearInterval(interval);
-            // Use delayBetweenPhotos for subsequent photos (after the first one)
-            const nextDelay = photosTaken >= 1 ? config.delayBetweenPhotos : config.delayBeforeFirstPhoto;
-            setCurrentCountdown(nextDelay);
-            setSequenceState('betweenPhotos');
+            if (photosTaken >= config.autoCount) {
+              console.log('[PhotoboothSequence] Auto review ended — all photos taken, completing');
+              setCurrentCountdown(config.delayBeforeFirstPhoto);
+              setSequenceState('complete');
+            } else {
+              console.log('[PhotoboothSequence] Auto review ended, continuing to betweenPhotos');
+              const nextDelay = photosTaken >= 1 ? config.delayBetweenPhotos : config.delayBeforeFirstPhoto;
+              setCurrentCountdown(nextDelay);
+              setSequenceState('betweenPhotos');
+            }
             return 0;
           }
           return prev - 1;
@@ -233,7 +309,7 @@ export function usePhotoboothSequence(config: SequenceConfig): UsePhotoboothSequ
       }, 1000);
       return () => clearInterval(interval);
     }
-  }, [sequenceState, isPaused, config.delayBeforeFirstPhoto, config.delayBetweenPhotos, reviewCountdown, photosTaken]);
+  }, [sequenceState, isPaused, config.delayBeforeFirstPhoto, config.delayBetweenPhotos, config.autoCount, reviewCountdown, photosTaken]);
 
   // BetweenPhotos: wait delay, then show "--" before countdown
   useEffect(() => {
@@ -255,9 +331,40 @@ export function usePhotoboothSequence(config: SequenceConfig): UsePhotoboothSequ
     }
   }, [sequenceState]);
 
-  // Update countdown when config changes
+  // ── Manual capture effects ──
+
+  // Manual waiting: safety timeout if preview never loads
   useEffect(() => {
-    if (sequenceState === 'idle') {
+    if (manualPhase === 'waiting') {
+      const timeout = setTimeout(() => {
+        console.warn('[PhotoboothSequence] Manual waiting safety timeout — 20s');
+        setManualPhase('idle');
+      }, 20000);
+      return () => clearTimeout(timeout);
+    }
+  }, [manualPhase]);
+
+  // Manual review: countdown then return to idle
+  useEffect(() => {
+    if (manualPhase === 'review' && manualReviewCountdown > 0) {
+      const interval = setInterval(() => {
+        setManualReviewCountdown(prev => {
+          if (prev <= 1) {
+            clearInterval(interval);
+            console.log('[PhotoboothSequence] Manual review ended, returning to idle');
+            setManualPhase('idle');
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [manualPhase, manualReviewCountdown]);
+
+  // Update countdown when config changes or sequence finishes
+  useEffect(() => {
+    if (sequenceState === 'idle' || sequenceState === 'complete') {
       setCurrentCountdown(config.delayBeforeFirstPhoto);
     }
   }, [config.delayBeforeFirstPhoto, sequenceState]);
@@ -269,13 +376,18 @@ export function usePhotoboothSequence(config: SequenceConfig): UsePhotoboothSequ
     photosTaken,
     scrambleTick,
     isPaused,
+    manualPhase,
+    manualReviewCountdown,
     start,
     stop,
     stopIfActive,
     togglePause,
     captureNow,
     notifyCaptureComplete,
+    startReviewCountdown,
+    startManualReview,
     isActive,
+    isAutoRunning: autoSequenceActive && isActive,
     isComplete: sequenceState === 'complete',
   };
 }

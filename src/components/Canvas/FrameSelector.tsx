@@ -8,7 +8,7 @@ import "./FrameSelector.css";
 
 export default function FrameSelector() {
   const { frames, setFrames, loading, setLoading } = useAssets();
-  const { currentFrame, setCurrentFrame } = useCollage();
+  const { currentFrame, setCurrentFrame, setSelectedCustomSetName } = useCollage();
 
   useEffect(() => {
     loadFrames();
@@ -32,7 +32,11 @@ export default function FrameSelector() {
   };
 
   const handleSelectFrame = (frame: Frame) => {
+    console.log('[FrameSelector] handleSelectFrame called with:', frame.name);
     setCurrentFrame(frame);
+    // Clear custom set name when manually selecting a frame
+    console.log('[FrameSelector] Clearing selectedCustomSetName');
+    setSelectedCustomSetName(null);
   };
 
   if (loading) {

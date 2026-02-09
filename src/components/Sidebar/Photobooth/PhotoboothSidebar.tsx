@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
-import { ChevronDown, ChevronRight, Check, Layers, FolderOpen, Plus, Calendar, Image as ImageIcon, X, RefreshCw, AlertCircle } from "lucide-react";
+import { ChevronDown, ChevronRight, Check, Layers, X, RefreshCw, AlertCircle, RotateCw } from "lucide-react";
 import * as Slider from "@radix-ui/react-slider";
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
@@ -8,10 +8,12 @@ import { LiveViewSection } from "./LiveViewSection";
 import { ImageQuality } from "./ImageQuality";
 import { FocusSettings } from "./FocusSettings";
 import ConnectionLostModal from "../../Modals/ConnectionLostModal";
+import ConfirmDialog from "../../Modals/ConfirmDialog";
 import { useCamera } from "../../../contexts/CameraContext";
 import { useVM } from "../../../contexts/VMContext";
 import { usePhotoboothSettings, type PhotoboothSessionInfo } from "../../../contexts/PhotoboothSettingsContext";
 import { useToast } from "../../../contexts/ToastContext";
+import { useCollage } from "../../../contexts/CollageContext";
 import type { CameraStatus } from "../../../services/cameraWebSocket";
 import type { ConnectionState } from "../../../types/connection";
 import { getCameraSettingsService } from "../../../services/cameraSettingsService";
@@ -32,7 +34,7 @@ interface PhotoboothSidebarProps {
 
 type PhotoboothTab = 'camera' | 'settings';
 
-type CollapsibleSection = 'camera' | 'liveview' | 'folder' | 'photobooth' | 'frame' | 'session';
+type CollapsibleSection = 'camera' | 'liveview' | 'folder' | 'photobooth' | 'frame' | 'session' | 'naming';
 type SettingType = 'shutter' | 'aperture' | 'iso' | 'ev' | 'wb' | 'metering' | 'folder' | 'mode' | null;
 
 // VM Log Entry type
@@ -53,12 +55,23 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
   } = useCamera();
   const { isVmOnline } = useVM();
   const { showToast } = useToast();
+  const {
+    setCanvasSize,
+    setCurrentFrame,
+    setBackground,
+    setBackgroundTransform,
+    setAutoMatchBackground,
+    setOverlays,
+    setSelectedCustomSetName,
+  } = useCollage();
 
   // VM Logs modal state
   const [showVmLogs, setShowVmLogs] = useState(false);
   const [vmLogs, setVmLogs] = useState<VmLogEntry[]>([]);
   const [isLoadingLogs, setIsLoadingLogs] = useState(false);
   const [logsError, setLogsError] = useState<string | null>(null);
+  const [isRestartingVm, setIsRestartingVm] = useState(false);
+  const [showRestartConfirm, setShowRestartConfirm] = useState(false);
 
   const [activeTab, setActiveTab] = useState<PhotoboothTab>('camera');
   const [expandedSections, setExpandedSections] = useState<Record<CollapsibleSection, boolean>>({
@@ -68,6 +81,7 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
     photobooth: false,
     frame: false,
     session: false,
+    naming: false,
   });
   const [activeSetting, setActiveSetting] = useState<SettingType>(null);
 
@@ -90,7 +104,7 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
   useEffect(() => {
     if (connectionState !== previousConnectionStateRef.current) {
       if (connectionState === 'Connected' && previousConnectionStateRef.current === 'Reconnecting') {
-        showToast('Reconnected successfully!', 'success', 3000);
+        showToast('Reconnected successfully', 'success', 3000, 'Camera is ready');
       }
       previousConnectionStateRef.current = connectionState;
     }
@@ -162,6 +176,7 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
     delayBetweenPhotos, setDelayBetweenPhotos,
     photoReviewTime, setPhotoReviewTime,
     workingFolder, setWorkingFolder,
+    photoNamingScheme, setPhotoNamingScheme,
     currentSession,
     sessions,
     refreshSessions,
@@ -210,6 +225,48 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
       console.error('Failed to load custom sets:', error);
     } finally {
       setLoadingSets(false);
+    }
+  };
+
+  const handleLoadSet = async (set: CustomSet) => {
+    try {
+      console.log('[PhotoboothSidebar] Loading custom set:', set.name);
+
+      // Apply the set configuration
+      setCanvasSize({
+        width: set.canvasSize.width,
+        height: set.canvasSize.height,
+        name: set.canvasSize.name,
+        isCustom: set.canvasSize.isCustom,
+        createdAt: set.canvasSize.createdAt,
+      });
+
+      setCurrentFrame(set.frame);
+      setBackground(set.background.value);
+
+      setBackgroundTransform({
+        scale: set.backgroundTransform.scale,
+        offsetX: set.backgroundTransform.offsetX,
+        offsetY: set.backgroundTransform.offsetY,
+      });
+
+      // Restore auto-match background state
+      setAutoMatchBackground(set.autoMatchBackground);
+
+      // Restore overlays
+      setOverlays(set.overlays || []);
+
+      // Track the loaded custom set name
+      console.log('[PhotoboothSidebar] Setting selectedCustomSetName to:', set.name);
+      setSelectedCustomSetName(set.name);
+
+      // Update the selected set ID
+      setSelectedSetId(set.id);
+
+      showToast('Set loaded', 'success', 2000, `${set.name} has been applied`);
+    } catch (error) {
+      console.error('Failed to load custom set:', error);
+      showToast('Failed to load set', 'error', 3000);
     }
   };
 
@@ -287,6 +344,38 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
   const handleOpenVmLogs = () => {
     setShowVmLogs(true);
     fetchVmLogs();
+  };
+
+  // Restart VM
+  const handleRestartVm = () => {
+    setShowRestartConfirm(true);
+  };
+
+  const confirmRestartVm = async () => {
+    setShowRestartConfirm(false);
+    setIsRestartingVm(true);
+    setLogsError(null);
+
+    try {
+      const result = await invoke<string>('restart_vm');
+      showToast('VM restarted successfully', 'success', 3000, result);
+
+      // Refresh logs after a short delay to show new boot logs
+      setTimeout(() => {
+        fetchVmLogs();
+      }, 2000);
+    } catch (error) {
+      console.error('Failed to restart VM:', error);
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      setLogsError(`Failed to restart VM: ${errorMsg}`);
+      showToast('Failed to restart VM', 'error', 5000, errorMsg);
+    } finally {
+      setIsRestartingVm(false);
+    }
+  };
+
+  const cancelRestartVm = () => {
+    setShowRestartConfirm(false);
   };
 
   // Auto-refresh logs every 3 seconds when modal is open
@@ -854,7 +943,7 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
                                     )}
                                     <button
                                       className="custom-set-use-btn"
-                                      onClick={() => setSelectedSetId(set.id)}
+                                      onClick={() => handleLoadSet(set)}
                                     >
                                       {selectedSetId === set.id ? 'Selected' : 'Use This Set'}
                                     </button>
@@ -891,6 +980,37 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
                       <button className="folder-browse-btn" onClick={handleBrowseFolder}>
                         Browse...
                       </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Naming Scheme Section */}
+                <div className="collapsible-section">
+                  <button
+                    className="collapsible-header"
+                    onClick={() => toggleSection('naming' as CollapsibleSection)}
+                  >
+                    <div className="collapsible-header-left">
+                      {expandedSections.naming ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                      <span className="collapsible-title">Naming Scheme</span>
+                    </div>
+                  </button>
+                  {expandedSections.naming && (
+                    <div className="collapsible-content">
+                      <div className="setting-label-full" style={{ marginBottom: '8px' }}>
+                        Photo Naming Pattern
+                      </div>
+                      <input
+                        type="text"
+                        className="property-input"
+                        value={photoNamingScheme}
+                        onChange={(e) => setPhotoNamingScheme(e.target.value)}
+                        placeholder="IPH_{number}"
+                        style={{ width: '100%' }}
+                      />
+                      <div className="setting-hint" style={{ marginTop: '8px' }}>
+                        Use {'{number}'} as placeholder for 4-digit number (e.g., IPH_0001)
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1123,7 +1243,7 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
                   {vmLogs.map((log, index) => (
                     <div key={index} className="vm-logs-entry">
                       {log.timestamp && <span className="vm-logs-timestamp">{log.timestamp}</span>}
-                      <span className={`vm-logs-message ${log.level}`}>{log.message}</span>
+                      <span className={`vm-logs-message ${log.level} ${log.message.toLowerCase().includes('error') ? 'has-error' : ''} ${log.message.includes('GET') ? 'get-request' : ''} ${log.message.startsWith('Connection from') ? 'connection-log' : ''} ${log.message.includes('controller: Received') ? 'controller-received' : ''} ${log.message.includes('controller: Downloaded') ? 'controller-downloaded' : ''} ${log.message.includes('controller: Emitted') ? 'controller-emitted' : ''} ${log.message.includes('controller: Deleted') ? 'controller-deleted' : ''}`}>{log.message}</span>
                     </div>
                   ))}
                 </div>
@@ -1133,18 +1253,43 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
               <span className="vm-logs-status-text">
                 {isVmOnline ? 'Connected' : 'Disconnected'} • {vmLogs.length} entries
               </span>
-              <button
-                className={`vm-logs-refresh-btn ${isLoadingLogs ? 'spinning' : ''}`}
-                onClick={fetchVmLogs}
-                disabled={!isVmOnline || isLoadingLogs}
-              >
-                <RefreshCw size={14} />
-                Refresh
-              </button>
+              <div className="vm-logs-footer-buttons">
+                <button
+                  className={`vm-logs-restart-btn ${isRestartingVm ? 'spinning' : ''}`}
+                  onClick={handleRestartVm}
+                  disabled={isRestartingVm}
+                  title="Restart VM"
+                >
+                  <RotateCw size={14} />
+                  {isRestartingVm ? 'Restarting...' : 'Restart VM'}
+                </button>
+                <button
+                  className={`vm-logs-refresh-btn ${isLoadingLogs ? 'spinning' : ''}`}
+                  onClick={fetchVmLogs}
+                  disabled={!isVmOnline || isLoadingLogs}
+                >
+                  <RefreshCw size={14} />
+                  Refresh
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
+
+      {/* Restart VM Confirmation Modal */}
+      <div className="restart-vm-confirm-modal">
+        <ConfirmDialog
+          show={showRestartConfirm}
+          title="Restart Virtual Machine"
+          message="Are you sure you want to restart the VM? This will temporarily disconnect the camera."
+          confirmText="Restart VM"
+          cancelText="Cancel"
+          onConfirm={confirmRestartVm}
+          onCancel={cancelRestartVm}
+          isLoading={isRestartingVm}
+        />
+      </div>
     </>
   );
 }

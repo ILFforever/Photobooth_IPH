@@ -69,7 +69,7 @@ export function useHdmiCapture(): HdmiCaptureState {
       if (frameCountRef.current === 1) {
         console.log('[useHdmiCapture] ✓ First frame received via event, b64 length:', event.payload.length);
       } else if (frameCountRef.current % 100 === 0) {
-        console.log('[useHdmiCapture] Frames received:', frameCountRef.current);
+        //console.log('[useHdmiCapture] Frames received:', frameCountRef.current);
       }
 
       const blob = base64ToBlob(event.payload, 'image/jpeg');

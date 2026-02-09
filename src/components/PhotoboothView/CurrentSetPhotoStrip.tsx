@@ -1,4 +1,4 @@
-import { ChevronRight, Image as ImageIcon, Check } from "lucide-react";
+import { ChevronRight, Image as ImageIcon, Check, FileCheck } from "lucide-react";
 
 interface CurrentSetPhoto {
   id: string;
@@ -15,6 +15,7 @@ interface CurrentSetPhotoStripProps {
   requiredPhotos: number;
   onPhotoSelect: (photoId: string) => void;
   onNextSession: () => void;
+  onFinalize: () => void;
 }
 
 export default function CurrentSetPhotoStrip({
@@ -26,20 +27,19 @@ export default function CurrentSetPhotoStrip({
   requiredPhotos,
   onPhotoSelect,
   onNextSession,
+  onFinalize,
 }: CurrentSetPhotoStripProps) {
   return (
     <div className="current-set-strip">
       <div className="current-set-strip-header">
         <div className="current-set-name-section">
           <span className="current-set-name">{setName ?? 'No session'}</span>
-          {frameName && (
-            <span className="current-set-frame-name">{frameName}</span>
-          )}
+          <span className="current-set-frame-name">{frameName ?? 'No set'}</span>
         </div>
-        <span className="current-set-count">{currentSetPhotos.length} / {requiredPhotos} photos</span>
+        <span className="current-set-count">{selectedPhotos.size} / {requiredPhotos} photos</span>
       </div>
       <div className="current-set-body">
-        <div className="current-set-photos">
+        <div className={`current-set-photos ${currentSetPhotos.length >= 7 ? 'grid-layout' : ''}`}>
           {currentSetPhotos.length === 0 ? (
             <div className="current-set-empty">
               <ImageIcon size={32} />
@@ -53,7 +53,12 @@ export default function CurrentSetPhotoStrip({
                 onClick={() => onPhotoSelect(photo.id)}
               >
                 <div className="current-set-photo-inner">
-                  <img src={photo.thumbnailUrl} alt={`Photo ${idx + 1}`} />
+                  <img
+                    src={photo.thumbnailUrl}
+                    alt={`Photo ${idx + 1}`}
+                    loading="lazy"
+                    decoding="async"
+                  />
                 </div>
                 <span className="current-set-photo-number">{idx + 1}</span>
                 {selectedPhotos.has(photo.id) && (
@@ -65,15 +70,26 @@ export default function CurrentSetPhotoStrip({
             ))
           )}
         </div>
-        <button
-          className="next-session-side-btn"
-          onClick={onNextSession}
-          disabled={!workingFolder}
-          title="Create and switch to next session"
-        >
-          <ChevronRight size={16} />
-          <span>Next</span>
-        </button>
+        <div className="current-set-side-buttons">
+          <button
+            className="next-session-side-btn"
+            onClick={onNextSession}
+            disabled={!workingFolder || currentSetPhotos.length === 0}
+            title="Create and switch to next session"
+          >
+            <FileCheck size={16} />
+            <span>Finalize</span>
+          </button>
+          <button
+            className="finalize-session-btn"
+            onClick={onFinalize}
+            disabled={!workingFolder || selectedPhotos.size !== requiredPhotos}
+            title="View finalize page"
+          >
+            <ChevronRight size={16} />
+            <span>Next</span>
+          </button>
+        </div>
       </div>
     </div>
   );

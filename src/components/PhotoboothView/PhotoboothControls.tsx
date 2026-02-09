@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useState, useEffect } from "react";
 
 // 7-Segment Digit Component
 interface SevenSegmentDigitProps {
@@ -40,6 +40,39 @@ function SevenSegmentDigit({ value, dash }: SevenSegmentDigitProps) {
   );
 }
 
+// Loading Animation Component - cycles through segments
+function LoadingSegmentDigit() {
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => setTick(t => (t + 1) % 14), 80);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Cycle through segments in a pattern
+  const segments = {
+    a: tick % 14 < 7,
+    b: (tick + 2) % 14 < 7,
+    c: (tick + 4) % 14 < 7,
+    d: (tick + 6) % 14 < 7,
+    e: (tick + 8) % 14 < 7,
+    f: (tick + 10) % 14 < 7,
+    g: (tick + 12) % 14 < 7,
+  };
+
+  return (
+    <div className="segment-digit loading-animation">
+      <span className={`seg seg-h top ${segments.a ? 'on' : ''}`}></span>
+      <span className={`seg seg-v tl ${segments.f ? 'on' : ''}`}></span>
+      <span className={`seg seg-v tr ${segments.b ? 'on' : ''}`}></span>
+      <span className={`seg seg-h mid ${segments.g ? 'on' : ''}`}></span>
+      <span className={`seg seg-v bl ${segments.e ? 'on' : ''}`}></span>
+      <span className={`seg seg-v br ${segments.c ? 'on' : ''}`}></span>
+      <span className={`seg seg-h bot ${segments.d ? 'on' : ''}`}></span>
+    </div>
+  );
+}
+
 interface DisplayStripProps {
   sequenceState: string;
   currentCountdown: number;
@@ -47,6 +80,8 @@ interface DisplayStripProps {
   photosTaken: number;
   autoCount: number;
   scrambleTick: number;
+  manualPhase: string;
+  manualReviewCountdown: number;
   getScrambledDigit: (offset: number, stopTick: number) => number;
 }
 
@@ -57,8 +92,15 @@ function DisplayStrip({
   photosTaken,
   autoCount,
   scrambleTick,
+  manualPhase,
+  manualReviewCountdown,
   getScrambledDigit,
 }: DisplayStripProps) {
+  // Manual capture takes priority over auto display
+  const isManualActive = manualPhase !== 'idle';
+  const showReviewLabel = isManualActive || sequenceState === 'review' || sequenceState === 'waitingForPreview';
+  const showYellow = (isManualActive && manualPhase === 'review') || sequenceState === 'review';
+
   return (
     <div className="te-display-strip">
       {/* Corner brackets - TE style */}
@@ -70,10 +112,29 @@ function DisplayStrip({
       {/* Timer/Review Display */}
       <div className="te-display-section">
         <div className="display-label">
-          {sequenceState === 'review' ? 'REVIEW' : 'INT'}
+          {showReviewLabel ? 'REVIEW' : 'INT'}
         </div>
-        <div className={`seven-segment-display ${sequenceState === 'review' ? 'yellow-mode' : ''}`}>
-          {sequenceState === 'photoConfirm' || sequenceState === 'preCountdown' || sequenceState === 'betweenPhotos' ? (
+        <div className={`seven-segment-display ${showYellow ? 'yellow-mode' : ''}`}>
+          {/* Manual capture display (takes priority) */}
+          {isManualActive ? (
+            manualPhase === 'waiting' ? (
+              <>
+                <LoadingSegmentDigit />
+                <LoadingSegmentDigit />
+              </>
+            ) : (
+              <>
+                <SevenSegmentDigit value={Math.floor(manualReviewCountdown / 10)} />
+                <SevenSegmentDigit value={manualReviewCountdown % 10} />
+              </>
+            )
+          ) : /* Auto sequence display */
+          sequenceState === 'waitingForPreview' ? (
+            <>
+              <LoadingSegmentDigit />
+              <LoadingSegmentDigit />
+            </>
+          ) : sequenceState === 'preCountdown' || sequenceState === 'betweenPhotos' ? (
             <>
               <SevenSegmentDigit value={0} dash />
               <SevenSegmentDigit value={0} dash />
@@ -114,18 +175,18 @@ function DisplayStrip({
 }
 
 interface LEDBarProps {
-  isActive: boolean;
+  isAutoRunning: boolean;
   isPaused: boolean;
 }
 
-function LEDBar({ isActive, isPaused }: LEDBarProps) {
+function LEDBar({ isAutoRunning, isPaused }: LEDBarProps) {
   return (
     <div className="led-bar">
-      <div className={`led led-power ${isActive || isPaused ? 'led-on' : ''}`}>
+      <div className={`led led-power ${isAutoRunning ? 'led-on' : ''}`}>
         <span className="led-lens"></span>
         <span className="led-label">PWR</span>
       </div>
-      <div className={`led led-run ${isActive && !isPaused ? 'led-on' : ''}`}>
+      <div className={`led led-run ${isAutoRunning && !isPaused ? 'led-on' : ''}`}>
         <span className="led-lens"></span>
         <span className="led-label">RUN</span>
       </div>
@@ -137,6 +198,7 @@ interface ControlButtonsProps {
   delayBetweenPhotos: number;
   setDelayBetweenPhotos: (value: number) => void;
   isActive: boolean;
+  isAutoRunning: boolean;
   isPaused: boolean;
   isCameraConnected: boolean;
   hasWorkingFolder: boolean;
@@ -151,6 +213,7 @@ function ControlButtons({
   delayBetweenPhotos,
   setDelayBetweenPhotos,
   isActive,
+  isAutoRunning,
   isPaused,
   isCameraConnected,
   hasWorkingFolder,
@@ -190,18 +253,18 @@ function ControlButtons({
         <div className="control-label">TRANSPORT</div>
         <div className="button-row">
           <button
-            className={`ctrl-btn ${!isActive ? 'auto-idle' : 'auto-running'}`}
+            className={`ctrl-btn ${!isAutoRunning ? 'auto-idle' : 'auto-running'}`}
             onClick={onToggleActive}
-            disabled={!isActive && !canStartAuto}
+            disabled={!isAutoRunning && (!canStartAuto || isActive)}
             title={!canStartAuto ? (!isCameraConnected ? 'Camera not connected' : 'No working folder selected') : ''}
           >
-            <span>{isActive ? '■' : '▶'}</span>
-            <span className="btn-label">{isActive ? 'STOP' : 'AUTO'}</span>
+            <span>{isAutoRunning ? '■' : '▶'}</span>
+            <span className="btn-label">{isAutoRunning ? 'STOP' : 'AUTO'}</span>
           </button>
           <button
             className={`ctrl-btn ${isPaused ? 'hold-active' : ''}`}
             onClick={onPause}
-            disabled={!isActive}
+            disabled={!isAutoRunning}
           >
             <span>⏸</span>
             <span className="btn-label">HOLD</span>
@@ -212,7 +275,8 @@ function ControlButtons({
       <button
         className="capture-btn"
         onClick={handleCaptureClick}
-        title={!isCameraConnected ? 'Camera not connected' : ''}
+        disabled={isActive || isAutoRunning}
+        title={!isCameraConnected ? 'Camera not connected' : (isActive || isAutoRunning) ? 'Capture in progress' : ''}
       >
         <span className="capture-ring"></span>
       </button>
@@ -228,7 +292,10 @@ interface PhotoboothControlsProps {
   photosTaken: number;
   scrambleTick: number;
   isActive: boolean;
+  isAutoRunning: boolean;
   isPaused: boolean;
+  manualPhase: string;
+  manualReviewCountdown: number;
 
   // Settings
   delayBetweenPhotos: number;
@@ -257,7 +324,10 @@ export function PhotoboothControls({
   photosTaken,
   scrambleTick,
   isActive,
+  isAutoRunning,
   isPaused,
+  manualPhase,
+  manualReviewCountdown,
   delayBetweenPhotos,
   autoCount,
   isCameraConnected,
@@ -280,15 +350,18 @@ export function PhotoboothControls({
           photosTaken={photosTaken}
           autoCount={autoCount}
           scrambleTick={scrambleTick}
+          manualPhase={manualPhase}
+          manualReviewCountdown={manualReviewCountdown}
           getScrambledDigit={getScrambledDigit}
         />
 
-        <LEDBar isActive={isActive} isPaused={isPaused} />
+        <LEDBar isAutoRunning={isAutoRunning} isPaused={isPaused} />
 
         <ControlButtons
           delayBetweenPhotos={delayBetweenPhotos}
           setDelayBetweenPhotos={setDelayBetweenPhotos}
           isActive={isActive}
+          isAutoRunning={isAutoRunning}
           isPaused={isPaused}
           isCameraConnected={isCameraConnected}
           hasWorkingFolder={hasWorkingFolder}

@@ -104,6 +104,7 @@ const FloatingFrameSelector = () => {
     setAutoMatchBackground,
     backgroundDimensions,
     setBackgroundDimensions,
+    setSelectedCustomSetName,
   } = useCollage();
   const [openPanel, setOpenPanel] = useState<PanelType>(null);
   const [frames, setFrames] = useState<Frame[]>([]);
@@ -257,6 +258,8 @@ const FloatingFrameSelector = () => {
 
   const handleSelectFrame = (frame: Frame) => {
     setCurrentFrame(frame);
+    // Clear custom set name when manually selecting a frame
+    setSelectedCustomSetName(null);
   };
 
   const handleDeleteFrame = async (frameId: string) => {

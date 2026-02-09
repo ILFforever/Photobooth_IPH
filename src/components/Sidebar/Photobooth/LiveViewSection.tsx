@@ -3,7 +3,7 @@ import "./PhotoboothSidebar.css";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useLiveView } from "../../../contexts/LiveViewContext";
 
-type CollapsibleSection = 'camera' | 'liveview' | 'folder' | 'photobooth';
+type CollapsibleSection = 'camera' | 'liveview' | 'folder' | 'photobooth' | 'naming';
 type CaptureMethod = 'hdmi' | 'usbc';
 
 interface LiveViewSectionProps {
@@ -14,13 +14,9 @@ interface LiveViewSectionProps {
 export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSectionProps) {
   const {
     stream: liveViewStream,
-    devices: webrtcDevices,
     selectedDeviceId: webrtcSelectedDeviceId,
-    isLoadingDevices: webrtcLoadingDevices,
-    permissionError,
     startStream,
     stopStream,
-    setSelectedDevice: setWebrtcDevice,
     hdmi,
   } = useLiveView();
 
@@ -30,9 +26,12 @@ export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSec
   const [showDeviceDropdown, setShowDeviceDropdown] = useState(false);
   const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
   const [videoStretch, setVideoStretch] = useState(100);
+  const [videoStretchV, setVideoStretchV] = useState(100);
   const [isDragging, setIsDragging] = useState(false);
+  const [isDraggingV, setIsDraggingV] = useState(false);
   const dropdownButtonRef = useRef<HTMLButtonElement>(null);
   const sliderRef = useRef<HTMLDivElement>(null);
+  const sliderVRef = useRef<HTMLDivElement>(null);
 
   // Callback ref: attaches srcObject whenever the <video> DOM node mounts
   // (covers initial mount AND conditional re-mount when section collapses/expands)
@@ -45,51 +44,49 @@ export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSec
     }
   }, []);
 
-  // Load HDMI devices when switching to HDMI mode or expanding the section
+  // Load HDMI devices when switching to HDMI mode
   useEffect(() => {
-    console.log('[LiveViewSection] Device load effect — captureMethod:', captureMethod, 'liveview expanded:', expandedSections.liveview);
-    if (captureMethod === 'hdmi' && expandedSections.liveview) {
+    console.log('[LiveViewSection] Device load effect — captureMethod:', captureMethod);
+    if (captureMethod === 'hdmi') {
       hdmi.loadDevices();
     }
-  }, [captureMethod, expandedSections.liveview]);
+  }, [captureMethod]);
 
-  // Auto start/stop HDMI capture
+  // Auto start HDMI capture (keep running even when collapsed)
   useEffect(() => {
-    console.log('[LiveViewSection] HDMI capture effect — captureMethod:', captureMethod, 'liveview:', expandedSections.liveview, 'selectedDevice:', hdmi.selectedDevice);
-    if (captureMethod === 'hdmi' && expandedSections.liveview && hdmi.selectedDevice) {
+    console.log('[LiveViewSection] HDMI capture effect — captureMethod:', captureMethod, 'selectedDevice:', hdmi.selectedDevice);
+    if (captureMethod === 'hdmi' && hdmi.selectedDevice && !hdmi.isCapturing) {
       console.log('[LiveViewSection] → Starting HDMI capture for:', hdmi.selectedDevice);
       hdmi.startCapture(hdmi.selectedDevice);
-    } else if (captureMethod === 'hdmi') {
-      console.log('[LiveViewSection] → Stopping HDMI capture (no device or section closed)');
+    } else if (captureMethod === 'hdmi' && !hdmi.selectedDevice && hdmi.isCapturing) {
+      console.log('[LiveViewSection] → Stopping HDMI capture (no device selected)');
       hdmi.stopCapture();
     }
     // Stop getUserMedia stream when in HDMI mode
     if (captureMethod === 'hdmi') {
       stopStream();
     }
-  }, [hdmi.selectedDevice, captureMethod, expandedSections.liveview]);
+  }, [hdmi.selectedDevice, captureMethod, hdmi.isCapturing]);
 
-  // Auto start/stop getUserMedia stream for USB-C mode (kept for fallback)
+  // Auto start getUserMedia stream for USB-C mode (keep running even when collapsed)
   useEffect(() => {
-    if (webrtcSelectedDeviceId && captureMethod === 'usbc' && expandedSections.liveview) {
+    if (webrtcSelectedDeviceId && captureMethod === 'usbc' && !liveViewStream) {
       startStream(webrtcSelectedDeviceId);
-    } else if (captureMethod === 'usbc') {
+    } else if (captureMethod === 'usbc' && !webrtcSelectedDeviceId && liveViewStream) {
       stopStream();
     }
     // Stop HDMI capture when in USB-C mode
     if (captureMethod === 'usbc') {
       hdmi.stopCapture();
     }
-  }, [webrtcSelectedDeviceId, captureMethod, expandedSections.liveview, startStream, stopStream]);
+  }, [webrtcSelectedDeviceId, captureMethod, liveViewStream, startStream, stopStream]);
 
   const handleCaptureMethodChange = (method: CaptureMethod) => {
     if (method === 'usbc' && captureMethod === 'hdmi') {
       setShowUsbWarning(true);
     }
     setCaptureMethod(method);
-    // Clear device selections for both modes
-    setWebrtcDevice('');
-    hdmi.setSelectedDevice('');
+    // Don't clear device selections - preserve settings across method switches
   };
 
   // Handle video stretch slider drag
@@ -126,9 +123,41 @@ export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSec
     document.addEventListener('mouseup', handleMouseUp);
   };
 
-  // Initialize CSS variable on mount
+  // Vertical stretch slider
+  const handleSliderChangeV = (clientX: number) => {
+    if (!sliderVRef.current) return;
+
+    const rect = sliderVRef.current.getBoundingClientRect();
+    const x = Math.max(0, Math.min(clientX - rect.left, rect.width));
+    const percentage = x / rect.width;
+
+    const minStretch = 50;
+    const maxStretch = 150;
+    const newStretch = Math.round(minStretch + (maxStretch - minStretch) * percentage);
+
+    setVideoStretchV(newStretch);
+    document.documentElement.style.setProperty('--video-stretch-v', (newStretch / 100).toString());
+  };
+
+  const handleSliderMouseDownV = (e: React.MouseEvent) => {
+    setIsDraggingV(true);
+    handleSliderChangeV(e.clientX);
+
+    const handleMouseMove = (e: MouseEvent) => handleSliderChangeV(e.clientX);
+    const handleMouseUp = () => {
+      setIsDraggingV(false);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  // Initialize CSS variables on mount
   useEffect(() => {
     document.documentElement.style.setProperty('--video-stretch', (videoStretch / 100).toString());
+    document.documentElement.style.setProperty('--video-stretch-v', (videoStretchV / 100).toString());
   }, []);
 
   useEffect(() => {
@@ -283,7 +312,7 @@ export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSec
               </div>
             )}
 
-            {/* Video Stretch Slider */}
+            {/* Video Stretch Sliders */}
             <div className="video-stretch-control">
               <div className="stretch-control-header">
                 <span className="stretch-control-title">Horizontal Stretch</span>
@@ -301,6 +330,27 @@ export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSec
                 <div
                   className="stretch-slider-thumb"
                   style={{ left: `${((videoStretch - 50) / 100) * 100}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="video-stretch-control">
+              <div className="stretch-control-header">
+                <span className="stretch-control-title">Vertical Stretch</span>
+                <span className="stretch-control-value">{videoStretchV}%</span>
+              </div>
+              <div
+                ref={sliderVRef}
+                className={`stretch-slider ${isDraggingV ? 'dragging' : ''}`}
+                onMouseDown={handleSliderMouseDownV}
+              >
+                <div
+                  className="stretch-slider-fill"
+                  style={{ width: `${((videoStretchV - 50) / 100) * 100}%` }}
+                />
+                <div
+                  className="stretch-slider-thumb"
+                  style={{ left: `${((videoStretchV - 50) / 100) * 100}%` }}
                 />
               </div>
             </div>
