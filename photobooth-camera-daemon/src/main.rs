@@ -800,6 +800,73 @@ async fn handle_request(
             }
         }
 
+        (&Method::POST, "/api/liveview/ptp-stream/start") => {
+            // Start continuous PTP streaming
+            match send_controller_command("LIVEVIEW_STREAM_START").await {
+                Ok(_) => {
+                    Some(make_api_response(serde_json::json!({
+                        "success": true,
+                        "message": "PTP streaming started - connect to GET /api/liveview/ptp-stream to receive frames"
+                    })))
+                }
+                Err(e) => Some(make_api_response(serde_json::json!({
+                    "success": false,
+                    "error": format!("Failed to start PTP streaming: {}", e)
+                })))
+            }
+        }
+
+        (&Method::POST, "/api/liveview/ptp-stream/stop") => {
+            // Stop continuous PTP streaming
+            match send_controller_command("LIVEVIEW_STREAM_STOP").await {
+                Ok(_) => {
+                    Some(make_api_response(serde_json::json!({
+                        "success": true,
+                        "message": "PTP streaming stopped"
+                    })))
+                }
+                Err(e) => Some(make_api_response(serde_json::json!({
+                    "success": false,
+                    "error": format!("Failed to stop PTP streaming: {}", e)
+                })))
+            }
+        }
+
+        (&Method::GET, "/api/liveview/ptp-stream") => {
+            // Stream MJPEG directly from controller pipe (already in correct format)
+            use tokio::fs::File;
+
+            let stream_file = match File::open("/tmp/camera_stream").await {
+                Ok(f) => f,
+                Err(e) => {
+                    return Ok(Some(make_api_response(serde_json::json!({
+                        "success": false,
+                        "error": format!("Failed to open stream pipe: {}", e)
+                    }))));
+                }
+            };
+
+            // Pass through the stream directly - controller writes MJPEG format
+            // Use 256KB buffer for better throughput (default 8KB is too small for 200KB frames)
+            let byte_stream = ReaderStream::with_capacity(stream_file, 256 * 1024);
+            use http_body_util::BodyExt;
+
+            let body = StreamBody::new(byte_stream.map(|r| r.map(Frame::data)));
+            let boxed_body = BodyExt::boxed(body);
+
+            let response = Response::builder()
+                .status(StatusCode::OK)
+                .header("Content-Type", "multipart/x-mixed-replace; boundary=FRAME")
+                .header("Cache-Control", "no-cache, no-store, must-revalidate")
+                .header("Pragma", "no-cache")
+                .header("Expires", "0")
+                .header("Access-Control-Allow-Origin", "*")
+                .body(boxed_body)
+                .unwrap();
+
+            return Ok(Some(response));
+        }
+
         (&Method::GET, "/api/debug") => {
             let camera_id = parse_query_param(&uri_str, "camera");
             let debug = state.debug_camera(camera_id);
@@ -1074,6 +1141,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  POST   /api/liveview/stop   - Stop USB live view (unlocks camera, resumes polling)");
     println!("  GET    /api/liveview/status - Check live view status");
     println!("  GET    /api/liveview/frame  - Request preview frame (data via WebSocket)");
+    println!("  POST   /api/liveview/ptp-stream/start - Start continuous PTP streaming");
+    println!("  POST   /api/liveview/ptp-stream/stop  - Stop continuous PTP streaming");
+    println!("  GET    /api/liveview/ptp-stream       - MJPEG stream from PTP camera (multipart/x-mixed-replace)");
     println!();
 
     let listener = TcpListener::bind(addr).await?;

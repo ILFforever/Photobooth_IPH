@@ -61,6 +61,8 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  touch-action: pan-y;
+  overscroll-behavior-y: contain;
 }
 
 /* Copy Notification */
@@ -943,23 +945,27 @@
 
 /* Scrollbar Styling */
 .frame-creator::-webkit-scrollbar,
+.frame-creator-content::-webkit-scrollbar,
 .frames-list::-webkit-scrollbar {
   width: 6px;
 }
 
 .frame-creator::-webkit-scrollbar-track,
+.frame-creator-content::-webkit-scrollbar-track,
 .frames-list::-webkit-scrollbar-track {
   background: rgba(0, 0, 0, 0.1);
   border-radius: 3px;
 }
 
 .frame-creator::-webkit-scrollbar-thumb,
+.frame-creator-content::-webkit-scrollbar-thumb,
 .frames-list::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.2);
   border-radius: 3px;
 }
 
 .frame-creator::-webkit-scrollbar-thumb:hover,
+.frame-creator-content::-webkit-scrollbar-thumb:hover,
 .frames-list::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.3);
 }

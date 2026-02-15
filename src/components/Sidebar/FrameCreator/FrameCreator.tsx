@@ -46,6 +46,8 @@ function ZoneItem({
   onSelect: (zoneId: string) => void;
   onToggleLock: () => void;
 }) {
+  const [dragHandled, setDragHandled] = useState(false);
+
   const [{ isDragging }, drag] = useDrag({
     type: DRAG_TYPE,
     item: { index },
@@ -81,12 +83,23 @@ function ZoneItem({
       <div
         className={`zone-item ${isSelected ? 'selected' : ''}`}
         onClick={() => {
-          onSelect(zone.id);
-          onToggle();
+          if (!dragHandled) {
+            onSelect(zone.id);
+            onToggle();
+          }
+          setDragHandled(false);
         }}
       >
         <div className="zone-item-left">
-          <div className="zone-drag-handle">
+          <div
+            className="zone-drag-handle"
+            onMouseDown={() => setDragHandled(true)}
+            onMouseUp={() => setDragHandled(true)}
+            onClick={(e) => {
+              e.stopPropagation();
+              setDragHandled(false);
+            }}
+          >
             <span></span>
             <span></span>
             <span></span>
@@ -232,8 +245,8 @@ function ZoneItem({
   );
 }
 
-export default function FrameCreator() {
-  const { reloadFrames, currentFrame, setCurrentFrame, placedImages, setPlacedImages, activeSidebarTab, setActiveSidebarTab, copiedZone, setCopiedZone, setSelectedZone, showAllOverlays, setShowAllOverlays, snapEnabled, setSnapEnabled, customFrames, isFrameCreatorSaving, setIsFrameCreatorSaving } = useCollage();
+function FrameCreator() {
+  const { reloadFrames, currentFrame, setCurrentFrame, placedImages, setPlacedImages, activeSidebarTab, copiedZone, setCopiedZone, setSelectedZone, showAllOverlays, setShowAllOverlays, snapEnabled, setSnapEnabled, customFrames, isFrameCreatorSaving, setIsFrameCreatorSaving } = useCollage();
   const [newFrameName, setNewFrameName] = useState('');
   const [zones, setZones] = useState<FrameZone[]>([]);
   const [selectedZoneIndex, setSelectedZoneIndex] = useState<number | null>(null);
@@ -630,21 +643,29 @@ export default function FrameCreator() {
       setExistingFrameToReplace(null);
       setSaveSuccess(true);
 
-      // If apply after save, apply the saved frame but stay in frame creator
+      // If apply after save, switch to the saved frame and exit frame creator
       if (shouldApply) {
-        setTimeout(() => {
+        setTimeout(async () => {
           setShowSaveDialog(false);
           setSaveSuccess(false);
           setSaveError('');
-          // Update the blank frame with the saved frame's data so it shows in the pill
-          if (currentFrame?.id === 'system-blank') {
-            setCurrentFrame({
-              ...currentFrame,
-              name: frame.name,
-              width: frame.width,
-              height: frame.height,
-              zones: frame.zones,
-            });
+
+          // Load the saved frame - fetch it from the backend to ensure we have the latest version
+          try {
+            const loadedFrames = await invoke<Frame[]>('load_frames');
+            const savedFrame = loadedFrames.find(f => f.id === frame.id);
+
+            if (savedFrame) {
+              // Apply the saved frame to the canvas
+              setCurrentFrame(savedFrame);
+              // Clear placed images since we're switching to a new frame
+              setPlacedImages(new Map());
+              console.log('[saveFrame] Applied saved frame:', savedFrame.name);
+            } else {
+              console.warn('[saveFrame] Could not find saved frame after reload');
+            }
+          } catch (error) {
+            console.error('[saveFrame] Failed to load saved frame:', error);
           }
         }, 800);
       } else {
@@ -1140,3 +1161,6 @@ export default function FrameCreator() {
     </div>
   );
 }
+
+export default FrameCreator;
+export { FrameCreator };

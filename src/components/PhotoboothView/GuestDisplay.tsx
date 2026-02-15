@@ -15,6 +15,7 @@ type DisplayMode = 'single' | 'center' | 'canvas';
 interface CurrentSetPhoto {
   id: string;
   thumbnailUrl: string;
+  fullUrl?: string;
   timestamp: string;
 }
 
@@ -72,6 +73,15 @@ export default function GuestDisplay() {
     };
   }, [clearPreviewTimer]);
 
+  // Read initial display mode from URL parameter on mount
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const modeParam = urlParams.get('mode');
+    if (modeParam && ['single', 'center', 'canvas'].includes(modeParam)) {
+      setPhotoState(prev => ({ ...prev, displayMode: modeParam as DisplayMode }));
+    }
+  }, []);
+
   // Listen for HDMI frames
   useEffect(() => {
     let unlisten: UnlistenFn | null = null;
@@ -119,10 +129,8 @@ export default function GuestDisplay() {
       const [unlisten1, unlisten2, unlisten3, unlisten4, unlisten5] = await Promise.all([
         listen('guest-display:update', (event: { payload: Partial<PhotoState> }) => {
           const payload = event.payload;
-          console.log('[GuestDisplay] Received update event:', payload);
           setPhotoState(prev => {
             const newState = { ...prev, ...payload };
-            console.log('[GuestDisplay] Photo state updated, currentSetPhotos count:', newState.currentSetPhotos.length);
 
             // Handle capture preview trigger
             if (payload.showCapturePreview === true && payload.capturedPhotoUrl) {

@@ -58,7 +58,13 @@
       "Bash(./build.sh:*)",
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(gh repo clone:*)",
-      "Bash(ffmpeg:*)"
+      "Bash(ffmpeg:*)",
+      "Bash(docker:*)",
+      "Bash(Select-Object:*)",
+      "Bash(gcc:*)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\Asus\\Desktop\\New folder\\Photobooth_IPH"
     ]
   }
 }

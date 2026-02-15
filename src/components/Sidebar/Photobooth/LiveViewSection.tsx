@@ -2,6 +2,7 @@ import { ChevronDown, ChevronRight, HdmiPort, Usb, AlertTriangle, Info, X } from
 import "./PhotoboothSidebar.css";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useLiveView } from "../../../contexts/LiveViewContext";
+import { useMjpegStream } from "../../../hooks/useMjpegStream";
 
 type CollapsibleSection = 'camera' | 'liveview' | 'folder' | 'photobooth' | 'naming';
 type CaptureMethod = 'hdmi' | 'usbc';
@@ -13,10 +14,6 @@ interface LiveViewSectionProps {
 
 export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSectionProps) {
   const {
-    stream: liveViewStream,
-    selectedDeviceId: webrtcSelectedDeviceId,
-    startStream,
-    stopStream,
     hdmi,
   } = useLiveView();
 
@@ -29,20 +26,14 @@ export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSec
   const [videoStretchV, setVideoStretchV] = useState(100);
   const [isDragging, setIsDragging] = useState(false);
   const [isDraggingV, setIsDraggingV] = useState(false);
+  const [ptpStreamUrl, setPtpStreamUrl] = useState<string | null>(null);
+  const [ptpError, setPtpError] = useState<string | null>(null);
   const dropdownButtonRef = useRef<HTMLButtonElement>(null);
   const sliderRef = useRef<HTMLDivElement>(null);
   const sliderVRef = useRef<HTMLDivElement>(null);
 
-  // Callback ref: attaches srcObject whenever the <video> DOM node mounts
-  // (covers initial mount AND conditional re-mount when section collapses/expands)
-  const liveViewStreamRef = useRef<MediaStream | null>(liveViewStream);
-  liveViewStreamRef.current = liveViewStream;
-
-  const videoCallbackRef = useCallback((node: HTMLVideoElement | null) => {
-    if (node && liveViewStreamRef.current) {
-      node.srcObject = liveViewStreamRef.current;
-    }
-  }, []);
+  // Use custom MJPEG decoder for PTP streaming
+  const { currentFrame: ptpFrame, error: ptpStreamError } = useMjpegStream(ptpStreamUrl);
 
   // Load HDMI devices when switching to HDMI mode
   useEffect(() => {
@@ -62,24 +53,63 @@ export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSec
       console.log('[LiveViewSection] → Stopping HDMI capture (no device selected)');
       hdmi.stopCapture();
     }
-    // Stop getUserMedia stream when in HDMI mode
-    if (captureMethod === 'hdmi') {
-      stopStream();
-    }
   }, [hdmi.selectedDevice, captureMethod, hdmi.isCapturing]);
 
-  // Auto start getUserMedia stream for USB-C mode (keep running even when collapsed)
+  // PTP streaming management for USB-C mode
   useEffect(() => {
-    if (webrtcSelectedDeviceId && captureMethod === 'usbc' && !liveViewStream) {
-      startStream(webrtcSelectedDeviceId);
-    } else if (captureMethod === 'usbc' && !webrtcSelectedDeviceId && liveViewStream) {
-      stopStream();
-    }
-    // Stop HDMI capture when in USB-C mode
+    const DAEMON_URL = 'http://localhost:58321'; // Tauri sidecar daemon URL
+
+    const startPtpStreaming = async () => {
+      try {
+        setPtpError(null);
+        // Start the PTP streaming on the daemon
+        const response = await fetch(`${DAEMON_URL}/api/liveview/ptp-stream/start`, {
+          method: 'POST',
+        });
+        const data = await response.json();
+
+        if (!data.success) {
+          throw new Error(data.error || 'Failed to start PTP streaming');
+        }
+
+        // Set the MJPEG stream URL with cache-busting timestamp
+        setPtpStreamUrl(`${DAEMON_URL}/api/liveview/ptp-stream?t=${Date.now()}`);
+        console.log('[LiveViewSection] PTP streaming started');
+      } catch (error) {
+        console.error('[LiveViewSection] Failed to start PTP streaming:', error);
+        setPtpError(error instanceof Error ? error.message : 'Unknown error');
+      }
+    };
+
+    const stopPtpStreaming = async () => {
+      try {
+        setPtpStreamUrl(null);
+        await fetch(`${DAEMON_URL}/api/liveview/ptp-stream/stop`, {
+          method: 'POST',
+        });
+        console.log('[LiveViewSection] PTP streaming stopped');
+      } catch (error) {
+        console.error('[LiveViewSection] Failed to stop PTP streaming:', error);
+      }
+    };
+
     if (captureMethod === 'usbc') {
+      // Stop HDMI capture when in USB-C/PTP mode
       hdmi.stopCapture();
+      // Start PTP streaming
+      startPtpStreaming();
+    } else if (captureMethod === 'hdmi') {
+      // Stop PTP streaming when in HDMI mode
+      stopPtpStreaming();
     }
-  }, [webrtcSelectedDeviceId, captureMethod, liveViewStream, startStream, stopStream]);
+
+    // Cleanup: stop PTP streaming on unmount
+    return () => {
+      if (captureMethod === 'usbc') {
+        stopPtpStreaming();
+      }
+    };
+  }, [captureMethod]);
 
   const handleCaptureMethodChange = (method: CaptureMethod) => {
     if (method === 'usbc' && captureMethod === 'hdmi') {
@@ -192,14 +222,17 @@ export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSec
                   className="liveview-video"
                   alt="HDMI Live View"
                 />
-              ) : captureMethod === 'usbc' && liveViewStream ? (
-                <video
-                  ref={videoCallbackRef}
-                  autoPlay
-                  playsInline
-                  muted
+              ) : captureMethod === 'usbc' && ptpFrame ? (
+                <img
+                  src={ptpFrame}
                   className="liveview-video"
+                  alt="PTP Live Stream"
                 />
+              ) : captureMethod === 'usbc' && (ptpError || ptpStreamError) ? (
+                <div className="liveview-error">
+                  <AlertTriangle size={24} />
+                  <p>{ptpError || ptpStreamError}</p>
+                </div>
               ) : (
                 <>
                   <div className="grid-line grid-line-h-1" />
@@ -391,15 +424,17 @@ export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSec
               <div className="capture-method-info">
                 <div className="method-info-header">
                   <Usb size={20} className="method-info-icon" />
-                  <h4 className="method-info-title">USB C (Daemon)</h4>
+                  <h4 className="method-info-title">USB C (PTP Streaming)</h4>
                 </div>
                 <p className="method-info-description">
-                  Direct USB connection using libgphoto2 daemon to capture live view frames.
+                  Direct USB connection using continuous PTP streaming via libgphoto2 daemon at 15 FPS.
                 </p>
                 <ul className="method-info-features">
-                  <li className="feature-pro">✓ Only type C cable needed</li>
+                  <li className="feature-pro">✓ Only USB cable needed - no capture card</li>
+                  <li className="feature-pro">✓ Continuous streaming with auto pause/resume</li>
+                  <li className="feature-pro">✓ Works during capture and config changes</li>
                   <li className="feature-con">✗ Locks camera buttons (libgphoto2 limitation)</li>
-                  <li className="feature-con">✗ Slightly higher latency compared to HDMI</li>
+                  <li className="feature-con">✗ Slightly higher latency (~15 FPS) vs HDMI</li>
                 </ul>
               </div>
             </div>

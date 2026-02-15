@@ -89,6 +89,8 @@
   flex: 1;
   overflow-y: auto;
   padding: 8px;
+  touch-action: pan-y;
+  overscroll-behavior-y: contain;
 }
 
 .images-grid {

@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { PlacedImage } from '../types/collage';
 import { Frame, FrameZone } from '../types/frame';
 import { Background } from '../types/background';
@@ -62,10 +62,13 @@ interface CollageContextType {
   copiedZone: FrameZone | null;
   setCopiedZone: (zone: FrameZone | null) => void;
   captureCanvasThumbnail: () => Promise<string | null>;
+  exportCanvasAsPNG: () => Promise<{ bytes: Uint8Array; filename: string } | null>;
 
   // Custom set tracking
   selectedCustomSetName: string | null;
   setSelectedCustomSetName: (name: string | null) => void;
+  selectedCustomSetId: string | null;
+  setSelectedCustomSetId: (id: string | null) => void;
 
   // Overlay layer state
   overlays: OverlayLayer[];
@@ -123,6 +126,7 @@ export function CollageProvider({ children }: { children: ReactNode }) {
   const [backgroundDimensions, setBackgroundDimensions] = useState<{ width: number; height: number } | null>(null);
   const [copiedZone, setCopiedZone] = useState<FrameZone | null>(null);
   const [selectedCustomSetName, setSelectedCustomSetName] = useState<string | null>(null);
+  const [selectedCustomSetId, setSelectedCustomSetId] = useState<string | null>(null);
 
   // Overlay layer state
   const [overlays, setOverlays] = useState<OverlayLayer[]>([]);
@@ -248,9 +252,198 @@ export function CollageProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Helper: Load an image element from a source URL
+  const loadImage = useCallback((src: string): Promise<HTMLImageElement> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = src;
+    });
+  }, []);
+
+  // Helper: Load an image with fetch+objectURL fallback for CORS
+  const loadImageWithFallback = useCallback(async (src: string): Promise<HTMLImageElement> => {
+    try {
+      return await loadImage(src);
+    } catch {
+      const resp = await fetch(src);
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const img = await loadImage(url);
+      URL.revokeObjectURL(url);
+      return img;
+    }
+  }, [loadImage]);
+
+  // Helper: Draw an overlay layer onto a canvas context
+  const drawOverlayLayer = useCallback(async (ctx: CanvasRenderingContext2D, layer: OverlayLayer) => {
+    try {
+      const overlaySrc = convertFileSrc(layer.sourcePath.replace('asset://', ''));
+      const img = await loadImageWithFallback(overlaySrc);
+      ctx.save();
+      ctx.globalAlpha = layer.transform.opacity ?? 1;
+      const lx = layer.transform.x ?? 0;
+      const ly = layer.transform.y ?? 0;
+      const lScale = layer.transform.scale ?? 1;
+      const lRotation = layer.transform.rotation ?? 0;
+      ctx.translate(lx + (img.naturalWidth * lScale) / 2, ly + (img.naturalHeight * lScale) / 2);
+      ctx.rotate((lRotation * Math.PI) / 180);
+      ctx.scale(
+        lScale * (layer.transform.flipHorizontal ? -1 : 1),
+        lScale * (layer.transform.flipVertical ? -1 : 1)
+      );
+      ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+      ctx.restore();
+    } catch {
+      // Skip overlay if it fails to load
+    }
+  }, [loadImageWithFallback]);
+
+  // Helper: Check if background is a solid color
+  const isSolidColor = background ? /^#([0-9A-F]{3}){1,2}$/i.test(background) : false;
+
+  // Helper: Convert background path to displayable URL
+  const bgSrc = (background && !isSolidColor && !background.startsWith('http') && !background.startsWith('data:'))
+    ? convertFileSrc(background.replace('asset://', ''))
+    : background?.startsWith('http') || background?.startsWith('data:')
+      ? background
+      : null;
+
+  // Export canvas as full-resolution PNG
+  const exportCanvasAsPNG = useCallback(async (): Promise<{ bytes: Uint8Array; filename: string } | null> => {
+    try {
+      const frame = currentFrame;
+      if (!frame) {
+        console.error('No frame available for export');
+        return null;
+      }
+
+      // Calculate canvas dimensions
+      const canvasWidth = autoMatchBackground && backgroundDimensions ? backgroundDimensions.width : canvasSize?.width ?? frame.width;
+      const canvasHeight = autoMatchBackground && backgroundDimensions ? backgroundDimensions.height : canvasSize?.height ?? frame.height;
+
+      // Create canvas at full resolution
+      const canvas = document.createElement('canvas');
+      canvas.width = canvasWidth;
+      canvas.height = canvasHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        console.error('Failed to get canvas context');
+        return null;
+      }
+
+      // 1. Draw background
+      if (background) {
+        if (isSolidColor) {
+          ctx.fillStyle = background;
+          ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+        } else if (bgSrc) {
+          try {
+            const bgImg = await loadImageWithFallback(bgSrc);
+            ctx.save();
+            ctx.translate(canvasWidth / 2, canvasHeight / 2);
+            ctx.scale(backgroundTransform.scale, backgroundTransform.scale);
+            ctx.translate(backgroundTransform.offsetX, backgroundTransform.offsetY);
+            const bgAspect = bgImg.naturalWidth / bgImg.naturalHeight;
+            const canvasAspect = canvasWidth / canvasHeight;
+            let drawW: number, drawH: number;
+            if (bgAspect > canvasAspect) {
+              drawH = canvasHeight;
+              drawW = canvasHeight * bgAspect;
+            } else {
+              drawW = canvasWidth;
+              drawH = canvasWidth / bgAspect;
+            }
+            ctx.drawImage(bgImg, -drawW / 2, -drawH / 2, drawW, drawH);
+            ctx.restore();
+          } catch {
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+          }
+        }
+      } else {
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+      }
+
+      // 2. Draw below-frames overlay layers
+      const belowOverlays = overlays
+        .filter(o => o.position === 'below-frames' && o.visible)
+        .sort((a, b) => a.layerOrder - b.layerOrder);
+      for (const layer of belowOverlays) {
+        await drawOverlayLayer(ctx, layer);
+      }
+
+      // 3. Draw zones with placed images
+      for (const zone of frame.zones) {
+        const placed = placedImages.get(zone.id);
+        if (!placed) continue;
+
+        let img: HTMLImageElement;
+        try {
+          img = await loadImageWithFallback(convertFileSrc(placed.sourceFile.replace('asset://', '')));
+        } catch {
+          continue;
+        }
+
+        const t = placed.transform;
+        ctx.save();
+        ctx.translate(zone.x + zone.width / 2, zone.y + zone.height / 2);
+        if (zone.rotation) ctx.rotate((zone.rotation * Math.PI) / 180);
+        ctx.beginPath();
+        ctx.rect(-zone.width / 2, -zone.height / 2, zone.width, zone.height);
+        ctx.clip();
+        ctx.translate(t.offsetX, t.offsetY);
+        if (t.rotation) ctx.rotate((t.rotation * Math.PI) / 180);
+        ctx.scale(
+          t.scale * (t.flipHorizontal ? -1 : 1),
+          t.scale * (t.flipVertical ? -1 : 1)
+        );
+        const imgAspect = img.naturalWidth / img.naturalHeight;
+        const zoneAspect = zone.width / zone.height;
+        let drawW: number, drawH: number;
+        if (imgAspect > zoneAspect) {
+          drawW = zone.width;
+          drawH = zone.width / imgAspect;
+        } else {
+          drawH = zone.height;
+          drawW = zone.height * imgAspect;
+        }
+        ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
+        ctx.restore();
+      }
+
+      // 4. Draw above-frames overlay layers
+      const aboveOverlays = overlays
+        .filter(o => o.position === 'above-frames' && o.visible)
+        .sort((a, b) => a.layerOrder - b.layerOrder);
+      for (const layer of aboveOverlays) {
+        await drawOverlayLayer(ctx, layer);
+      }
+
+      // Convert to PNG bytes
+      const dataUrl = canvas.toDataURL('image/png');
+      const base64 = dataUrl.split(',')[1];
+      const binaryString = atob(base64);
+      const bytes = new Uint8Array(binaryString.length);
+
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+
+      const filename = `collage_${Date.now()}.png`;
+      return { bytes, filename };
+    } catch (error) {
+      console.error('Failed to export canvas:', error);
+      return null;
+    }
+  }, [currentFrame, canvasSize, autoMatchBackground, backgroundDimensions, background, isSolidColor, bgSrc, backgroundTransform, overlays, placedImages, loadImageWithFallback, drawOverlayLayer]);
+
   // Overlay CRUD operations
   const addOverlay = useCallback((overlay: Omit<OverlayLayer, 'id' | 'createdAt'>): string => {
-    const id = `overlay-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const id = `overlay-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
     const newOverlay: OverlayLayer = {
       ...overlay,
       id,
@@ -278,7 +471,7 @@ export function CollageProvider({ children }: { children: ReactNode }) {
       const original = prev.find(o => o.id === id);
       if (!original) return prev;
 
-      const newId = `overlay-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const newId = `overlay-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
       const duplicate: OverlayLayer = {
         ...original,
         id: newId,
@@ -417,6 +610,8 @@ export function CollageProvider({ children }: { children: ReactNode }) {
         captureCanvasThumbnail,
         selectedCustomSetName,
         setSelectedCustomSetName,
+        selectedCustomSetId,
+        setSelectedCustomSetId,
         overlays,
         setOverlays,
         selectedOverlayId,
@@ -435,11 +630,20 @@ export function CollageProvider({ children }: { children: ReactNode }) {
         importOverlayFiles,
         isFrameCreatorSaving,
         setIsFrameCreatorSaving,
+        exportCanvasAsPNG,
       }}
     >
       {children}
     </CollageContext.Provider>
   );
+}
+
+// Export canvas as PNG to bytes (convenience function that uses context)
+export async function exportCollageAsPNG(): Promise<{ bytes: Uint8Array; filename: string } | null> {
+  // This function needs to be called from within a component that has access to the context
+  // For now, we'll return an error to guide developers
+  console.error('exportCollageAsPNG() called directly. Please use the context method: useCollage().exportCanvasAsPNG()');
+  return null;
 }
 
 export function useCollage() {

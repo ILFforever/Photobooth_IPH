@@ -5,18 +5,24 @@
  * from physical shutter button while accepting commands via named pipe.
  *
  * Commands (write to /tmp/camera_cmd):
- *   CAPTURE          - Trigger software capture
- *   STATUS           - Get current status
- *   LIVEVIEW_START   - Enter live view mode (stops polling)
- *   LIVEVIEW_STOP    - Exit live view mode (resumes polling)
- *   LIVEVIEW_FRAME   - Capture one preview frame (base64 JPEG)
- *   QUIT             - Shutdown the controller
+ *   CAPTURE                 - Trigger software capture
+ *   STATUS                  - Get current status
+ *   LIVEVIEW_START          - Enter live view mode (stops polling)
+ *   LIVEVIEW_STOP           - Exit live view mode (resumes polling)
+ *   LIVEVIEW_FRAME          - Capture one preview frame (base64 JPEG)
+ *   LIVEVIEW_STREAM_START   - Start continuous PTP streaming (MJPEG to /tmp/camera_stream)
+ *   LIVEVIEW_STREAM_STOP    - Stop continuous PTP streaming
+ *   QUIT                    - Shutdown the controller
  *
  * Status output (writes to /tmp/camera_status):
- *   {"mode":"idle"}               - Polling for new files
- *   {"mode":"capture"}            - Capturing
- *   {"mode":"liveview"}           - Live view active
- *   {"mode":"idle","status":{...}}  - Camera status (ISO, aperture, etc)
+ *   {"mode":"idle"}                - Polling for new files
+ *   {"mode":"capture"}             - Capturing
+ *   {"mode":"liveview"}            - Live view active
+ *   {"mode":"liveview_streaming"}  - Continuous PTP streaming active
+ *   {"mode":"idle","status":{...}} - Camera status (ISO, aperture, etc)
+ *
+ * Stream output (writes to /tmp/camera_stream):
+ *   MJPEG stream with boundary markers: --FRAME\nContent-Length: XXX\n\n<JPEG data>
  */
 
 #include <stdio.h>
@@ -57,6 +63,7 @@ static void log_timestamped(const char *format, ...) {
 
 #define CMD_PIPE "/tmp/camera_cmd"
 #define STATUS_PIPE "/tmp/camera_status"
+#define STREAM_PIPE "/tmp/camera_stream"
 #define CONFIG_RESPONSE_FILE "/tmp/camera_config_response"
 #define MAX_FILES 100
 #define POLL_INTERVAL_MS 1000
@@ -66,6 +73,7 @@ static void log_timestamped(const char *format, ...) {
 #define CAMERA_SWITCH_GRACE_SEC 5  // Grace period after camera switch before reporting disconnect
 #define MAX_DOWNLOAD_RETRIES 3     // Max download attempts before skipping a file
 #define FAILED_FILE_RESET_SEC 300  // Reset failed files after 5 minutes
+#define STREAM_TARGET_FPS 15       // Target FPS for continuous streaming
 
 // Track files that have failed to download
 #define MAX_FAILED_FILES 50
@@ -80,10 +88,15 @@ static int g_failed_file_count = 0;
 
 static volatile sig_atomic_t g_running = 1;
 static int g_status_fd = -1;
+static int g_stream_fd = -1;  // File descriptor for stream output pipe
 static int g_widgets_listed = 0;  // Track if we've listed widgets for debug
 static time_t g_last_camera_switch = 0;  // Timestamp of last camera switch
 static CameraBrand g_current_brand = BRAND_UNKNOWN;  // Detected camera brand
 static CameraBrand g_last_logged_brand = BRAND_UNKNOWN;  // Track last logged brand
+
+// Streaming state
+static volatile sig_atomic_t g_streaming_active = 0;  // Flag for continuous streaming
+static volatile sig_atomic_t g_streaming_paused = 0;  // Flag for pause during operations
 
 // Persistent detection cache - only auto-detect once per camera connection
 static GPPortInfoList *g_cached_port_info_list = NULL;
@@ -1787,6 +1800,93 @@ static int do_capture(Camera *camera, GPContext *context) {
     return GP_OK;
 }
 
+/* Stream a single preview frame to the stream pipe (MJPEG format) */
+static int stream_preview_frame(Camera *camera, GPContext *context) {
+    CameraFile *file = NULL;
+    const char *data = NULL;
+    unsigned long size = 0;
+    int ret;
+
+    /* Check if paused */
+    if (g_streaming_paused) {
+        return GP_OK;  // Skip this frame
+    }
+
+    /* Lazy open stream pipe if not already open */
+    if (g_stream_fd < 0 && g_streaming_active) {
+        g_stream_fd = open(STREAM_PIPE, O_WRONLY | O_NONBLOCK);
+        if (g_stream_fd < 0) {
+            /* Pipe not ready yet (no reader), will retry next frame */
+            return GP_OK;
+        }
+        log_ts("controller: Stream pipe opened for writing\n");
+
+        /* Increase pipe buffer to 1MB for better throughput (default is 64KB) */
+        #ifndef F_SETPIPE_SZ
+        #define F_SETPIPE_SZ 1031  // Linux-specific fcntl command
+        #endif
+        int pipe_size = 1024 * 1024;  // 1MB
+        if (fcntl(g_stream_fd, F_SETPIPE_SZ, pipe_size) < 0) {
+            log_ts("controller: Warning - failed to set pipe buffer size: %s\n", strerror(errno));
+        } else {
+            log_ts("controller: Set stream pipe buffer to 1MB (was 64KB)\n");
+        }
+    }
+
+    ret = gp_file_new(&file);
+    if (ret < GP_OK) {
+        log_ts("stream: Failed to create file: %s\n", gp_result_as_string(ret));
+        return ret;
+    }
+
+    static int frame_count = 0;
+    if (frame_count++ % 30 == 0) {
+        log_ts("stream: Capturing preview frame #%d...\n", frame_count);
+    }
+
+    ret = gp_camera_capture_preview(camera, file, context);
+    if (ret < GP_OK) {
+        log_ts("stream: Failed to capture preview: %s\n", gp_result_as_string(ret));
+        gp_file_free(file);
+        return ret;
+    }
+
+    ret = gp_file_get_data_and_size(file, &data, &size);
+    if (ret < GP_OK || !data || size == 0) {
+        log_ts("stream: Failed to get file data: %s\n", gp_result_as_string(ret));
+        gp_file_free(file);
+        return ret;
+    }
+
+    /* Output frame with MJPEG boundary marker */
+    if (g_stream_fd >= 0) {
+        char header[256];
+        int header_len = snprintf(header, sizeof(header),
+                                 "--FRAME\r\nContent-Type: image/jpeg\r\nContent-Length: %lu\r\n\r\n", size);
+
+        ssize_t written = write(g_stream_fd, header, header_len);
+        if (written < 0) {
+            /* Stream pipe closed or error - close and retry next frame */
+            close(g_stream_fd);
+            g_stream_fd = -1;
+            gp_file_free(file);
+            return GP_OK;
+        }
+
+        written = write(g_stream_fd, data, size);
+        if (written < 0) {
+            /* Stream pipe closed or error - close and retry next frame */
+            close(g_stream_fd);
+            g_stream_fd = -1;
+            gp_file_free(file);
+            return GP_OK;
+        }
+    }
+
+    gp_file_free(file);
+    return GP_OK;
+}
+
 /* Main controller loop */
 int main(int argc, char *argv[]) {
     Camera *camera = NULL;
@@ -1813,6 +1913,10 @@ int main(int argc, char *argv[]) {
     } else {
         log_ts("controller: Status pipe opened for writing\n");
     }
+
+    /* Create stream pipe (for continuous PTP streaming) */
+    mkfifo(STREAM_PIPE, 0666);
+    /* Don't open yet - will be opened non-blocking when streaming starts */
 
     /* Create command pipe early so the daemon knows we're alive */
     mkfifo(CMD_PIPE, 0666);
@@ -1891,8 +1995,14 @@ int main(int argc, char *argv[]) {
                 clock_gettime(CLOCK_MONOTONIC, &ts_start);
                 log_ts("controller: [TIMING] CAPTURE command received\n");
 
+                // Pause streaming if active
+                if (g_streaming_active) {
+                    log_ts("controller: Pausing PTP stream for capture...\n");
+                    g_streaming_paused = 1;
+                }
+
                 // If live view is active, exit it first
-                if (live_view_active && camera) {
+                if (live_view_active && camera && !g_streaming_active) {
                     log_ts("controller: Exiting live view for capture...\n");
                     gp_camera_exit(camera, context);
                     gp_camera_free(camera);
@@ -1962,7 +2072,14 @@ int main(int argc, char *argv[]) {
                     }
                 }
 
-                mode = MODE_IDLE;
+                // Resume streaming if it was paused
+                if (g_streaming_active && g_streaming_paused) {
+                    log_ts("controller: Resuming PTP stream after capture\n");
+                    g_streaming_paused = 0;
+                    mode = MODE_LIVEVIEW;
+                } else {
+                    mode = MODE_IDLE;
+                }
                 /* NOTE: Not sending mode-only message - polling loop sends full status */
 
                 clock_gettime(CLOCK_MONOTONIC, &ts_end);
@@ -2049,6 +2166,86 @@ int main(int argc, char *argv[]) {
                     }
                 }
 
+            } else if (strcmp(cmd_line, "LIVEVIEW_STREAM_START") == 0) {
+                log_ts("controller: Starting continuous PTP streaming...\n");
+
+                /* Open camera if not already open */
+                if (!camera) {
+                    int lv_attempts = 0;
+                    while (lv_attempts < MAX_OPEN_RETRIES && g_running) {
+                        camera = open_camera(camera_index, &ret);
+                        if (camera) {
+                            consecutive_open_failures = 0;
+                            break;
+                        }
+                        lv_attempts++;
+                        log_ts("controller: Camera open failed for streaming (attempt %d/%d): %s\n",
+                                lv_attempts, MAX_OPEN_RETRIES, gp_result_as_string(ret));
+                        if (lv_attempts < MAX_OPEN_RETRIES) {
+                            usleep(OPEN_RETRY_DELAY_MS * 1000);
+                        }
+                    }
+                }
+
+                if (camera) {
+                    mode = MODE_LIVEVIEW;
+                    live_view_active = 1;
+                    g_streaming_active = 1;
+                    g_streaming_paused = 0;
+
+                    /* Note: Stream pipe will be opened lazily when first frame is written
+                     * This avoids timing issues with the reader connection */
+
+                    if (g_status_fd >= 0) {
+                        ssize_t written = write(g_status_fd, "{\"mode\":\"liveview_streaming\"}\n", 32);
+                        if (written < 0) {
+                            log_ts("controller: Failed to write mode=liveview_streaming: %s\n", strerror(errno));
+                        }
+                    }
+                    log_ts("controller: Continuous PTP streaming started at %d FPS\n", STREAM_TARGET_FPS);
+                } else {
+                    log_ts("controller: Failed to open camera for streaming after %d attempts\n", MAX_OPEN_RETRIES);
+                    consecutive_open_failures++;
+
+                    if (g_status_fd >= 0) {
+                        const char *err_msg = "{\"type\":\"error\",\"message\":\"Failed to open camera for streaming\"}\n";
+                        ssize_t written = write(g_status_fd, err_msg, strlen(err_msg));
+                        if (written < 0) {
+                            log_ts("controller: Failed to write error: %s\n", strerror(errno));
+                        }
+                    }
+                }
+
+            } else if (strcmp(cmd_line, "LIVEVIEW_STREAM_STOP") == 0) {
+                log_ts("controller: Stopping continuous PTP streaming...\n");
+
+                g_streaming_active = 0;
+                g_streaming_paused = 0;
+
+                /* Close stream pipe */
+                if (g_stream_fd >= 0) {
+                    close(g_stream_fd);
+                    g_stream_fd = -1;
+                }
+
+                /* Close camera */
+                if (camera && live_view_active) {
+                    gp_camera_exit(camera, context);
+                    gp_camera_free(camera);
+                    camera = NULL;
+                }
+
+                mode = MODE_IDLE;
+                live_view_active = 0;
+
+                if (g_status_fd >= 0) {
+                    ssize_t written = write(g_status_fd, "{\"mode\":\"idle\"}\n", 17);
+                    if (written < 0) {
+                        log_ts("controller: Failed to write mode=idle: %s\n", strerror(errno));
+                    }
+                }
+                log_ts("controller: Continuous PTP streaming stopped\n");
+
             } else if (strncmp(cmd_line, "SWITCH_CAMERA ", 14) == 0) {
                 int new_index = atoi(cmd_line + 14);
                 log_ts("controller: Switching to camera %d (was %d)\n", new_index, camera_index);
@@ -2092,8 +2289,16 @@ int main(int argc, char *argv[]) {
             } else if (strcmp(cmd_line, "CONFIG") == 0) {
                 struct timespec cfg_start, cfg_end;
                 clock_gettime(CLOCK_MONOTONIC, &cfg_start);
-                log_ts("controller: CONFIG command received (camera=%p, live_view=%d)\n",
-                        (void*)camera, live_view_active);
+                log_ts("controller: CONFIG command received (camera=%p, live_view=%d, streaming=%d)\n",
+                        (void*)camera, live_view_active, g_streaming_active);
+
+                // Pause streaming if active
+                if (g_streaming_active) {
+                    log_ts("controller: Pausing PTP stream for config read...\n");
+                    g_streaming_paused = 1;
+                    usleep(50000);  // 50ms delay to let current frame finish
+                }
+
                 int we_opened = 0;
 
                 /* Use existing camera if live view is active, otherwise open one */
@@ -2134,6 +2339,12 @@ int main(int argc, char *argv[]) {
                     log_ts("controller: CONFIG: Camera released\n");
                 }
 
+                // Resume streaming if it was paused
+                if (g_streaming_active && g_streaming_paused) {
+                    log_ts("controller: Resuming PTP stream after config read\n");
+                    g_streaming_paused = 0;
+                }
+
                 clock_gettime(CLOCK_MONOTONIC, &cfg_end);
                 log_ts("controller: CONFIG: Total time %ldms\n",
                         (cfg_end.tv_sec - cfg_start.tv_sec) * 1000 +
@@ -2142,6 +2353,14 @@ int main(int argc, char *argv[]) {
             } else if (strncmp(cmd_line, "SETCONFIG ", 10) == 0) {
                 const char *json_input = cmd_line + 10;
                 log_ts("controller: SETCONFIG command received: %s\n", json_input);
+
+                // Pause streaming if active
+                if (g_streaming_active) {
+                    log_ts("controller: Pausing PTP stream for config write...\n");
+                    g_streaming_paused = 1;
+                    usleep(50000);  // 50ms delay
+                }
+
                 int we_opened = 0;
 
                 if (!camera) {
@@ -2168,6 +2387,12 @@ int main(int argc, char *argv[]) {
                     gp_camera_exit(camera, context);
                     gp_camera_free(camera);
                     camera = NULL;
+                }
+
+                // Resume streaming if it was paused
+                if (g_streaming_active && g_streaming_paused) {
+                    log_ts("controller: Resuming PTP stream after config write\n");
+                    g_streaming_paused = 0;
                 }
 
             } else if (strcmp(cmd_line, "QUIT") == 0) {
@@ -2340,9 +2565,39 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        /* Wait up to 1.5s between polls — wake immediately if a command arrives.
-         * Uses poll() on the command pipe so CONFIG/SETCONFIG are responsive. */
-        {
+        /* Continuous PTP streaming loop - stream frames when active and not paused */
+        if (g_streaming_active && camera && !g_streaming_paused) {
+            static int debug_count = 0;
+            if (debug_count++ % 30 == 0) {
+                log_ts("DEBUG: Streaming loop running (active=%d, camera=%p, paused=%d)\n",
+                       g_streaming_active, (void*)camera, g_streaming_paused);
+            }
+
+            struct timespec frame_start, frame_end;
+            clock_gettime(CLOCK_MONOTONIC, &frame_start);
+
+            stream_preview_frame(camera, context);
+
+            /* Frame rate limiting - maintain target FPS */
+            clock_gettime(CLOCK_MONOTONIC, &frame_end);
+            long frame_duration_ms = (frame_end.tv_sec - frame_start.tv_sec) * 1000 +
+                                    (frame_end.tv_nsec - frame_start.tv_nsec) / 1000000;
+
+            long target_frame_time_ms = 1000 / STREAM_TARGET_FPS;
+            long sleep_ms = target_frame_time_ms - frame_duration_ms;
+
+            /* Use poll on command pipe with calculated timeout to maintain FPS */
+            if (sleep_ms > 0) {
+                struct pollfd pfd = { .fd = cmd_fd, .events = POLLIN };
+                poll(&pfd, 1, sleep_ms);
+            } else {
+                /* Frame took longer than target - check commands immediately */
+                struct pollfd pfd = { .fd = cmd_fd, .events = POLLIN };
+                poll(&pfd, 1, 0);
+            }
+        } else {
+            /* Not streaming - wait up to 1.5s between polls, wake immediately if command arrives.
+             * Uses poll() on the command pipe so CONFIG/SETCONFIG are responsive. */
             struct pollfd pfd = { .fd = cmd_fd, .events = POLLIN };
             poll(&pfd, 1, 1500);
         }
@@ -2369,8 +2624,10 @@ int main(int argc, char *argv[]) {
     gp_context_unref(context);
     if (cmd_fd >= 0) close(cmd_fd);
     if (g_status_fd >= 0) close(g_status_fd);
+    if (g_stream_fd >= 0) close(g_stream_fd);
     unlink(CMD_PIPE);
     unlink(STATUS_PIPE);
+    unlink(STREAM_PIPE);
 
     return 0;
 }

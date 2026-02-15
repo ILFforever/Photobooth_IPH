@@ -5,10 +5,11 @@
   padding: 16px;
   padding-bottom: 80px;
   display: flex;
+  flex-direction: column;
   justify-content: center;
   align-items: center;
-  min-height: 100%;
-  overflow: visible;
+  flex: 1;
+  overflow: auto;
   background: var(--bg-primary);
 }
 

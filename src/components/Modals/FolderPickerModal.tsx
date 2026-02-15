@@ -106,7 +106,7 @@ export default function FolderPickerModal({
                 </motion.div>
                 <div>Loading...</div>
               </div>
-            ) : driveFolders.length === 0 ? (
+            ) : !driveFolders || driveFolders.length === 0 ? (
               <p style={{ textAlign: 'center', color: '#666', padding: '2rem' }}>No folders found</p>
             ) : (
               driveFolders.map((folder) => (

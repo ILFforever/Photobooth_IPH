@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
-import { WebviewWindow, getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
+import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { emitTo } from '@tauri-apps/api/event';
 
 const GUEST_DISPLAY_LABEL = 'guest-display';
@@ -9,7 +9,7 @@ export function useSecondScreen() {
   const guestWindowRef = useRef<WebviewWindow | null>(null);
 
   const openSecondScreen = useCallback(async (initialData?: {
-    currentSetPhotos: Array<{ id: string; thumbnailUrl: string; timestamp: string }>;
+    currentSetPhotos: Array<{ id: string; thumbnailUrl: string; fullUrl?: string; timestamp: string }>;
     selectedPhotoIndex: number | null;
     displayMode: 'single' | 'center' | 'canvas';
     centerBrowseIndex: number | null;
@@ -23,14 +23,12 @@ export function useSecondScreen() {
           setIsSecondScreenOpen(true);
           // Sync current state even if window was already open
           if (initialData) {
-            setTimeout(() => {
-              emitTo(GUEST_DISPLAY_LABEL, 'guest-display:mode', initialData.displayMode);
-              emitTo(GUEST_DISPLAY_LABEL, 'guest-display:update', {
-                currentSetPhotos: initialData.currentSetPhotos,
-                selectedPhotoIndex: initialData.selectedPhotoIndex,
-              });
-              emitTo(GUEST_DISPLAY_LABEL, 'guest-display:center-browse', initialData.centerBrowseIndex);
-            }, 100);
+            emitTo(GUEST_DISPLAY_LABEL, 'guest-display:mode', initialData.displayMode);
+            emitTo(GUEST_DISPLAY_LABEL, 'guest-display:update', {
+              currentSetPhotos: initialData.currentSetPhotos,
+              selectedPhotoIndex: initialData.selectedPhotoIndex,
+            });
+            emitTo(GUEST_DISPLAY_LABEL, 'guest-display:center-browse', initialData.centerBrowseIndex);
           }
           return;
         } catch {
@@ -39,12 +37,12 @@ export function useSecondScreen() {
         }
       }
 
-      console.log('Creating guest display window...');
-
       // Create new window with same URL as main (index.html)
       // The main.tsx will detect the window label and render GuestDisplay
+      // Pass initial display mode via URL parameter for instant sync
+      const initialMode = initialData?.displayMode || 'center';
       const guestWindow = new WebviewWindow(GUEST_DISPLAY_LABEL, {
-        url: 'index.html',
+        url: `index.html?mode=${initialMode}`,
         width: 1280,
         height: 720,
         decorations: false,
@@ -56,29 +54,34 @@ export function useSecondScreen() {
       });
 
       guestWindowRef.current = guestWindow;
-      console.log('Guest display window created:', guestWindow.label);
 
       // Listen for window close
       guestWindow.onCloseRequested(() => {
-        console.log('Guest display window closed');
         setIsSecondScreenOpen(false);
         guestWindowRef.current = null;
       });
 
       setIsSecondScreenOpen(true);
 
-      // Send initial state after a delay to ensure the window is ready and listeners are set up
+      // Store initial data - will be sent when guest display requests it
       if (initialData) {
-        console.log('[useSecondScreen] Scheduling initial state send with', initialData.currentSetPhotos.length, 'photos');
-        setTimeout(() => {
-          console.log('[useSecondScreen] Sending initial state to guest display');
-          emitTo(GUEST_DISPLAY_LABEL, 'guest-display:mode', initialData.displayMode);
-          emitTo(GUEST_DISPLAY_LABEL, 'guest-display:update', {
-            currentSetPhotos: initialData.currentSetPhotos,
-            selectedPhotoIndex: initialData.selectedPhotoIndex,
-          });
-          emitTo(GUEST_DISPLAY_LABEL, 'guest-display:center-browse', initialData.centerBrowseIndex);
-        }, 500);
+        // Send immediately for already-ready windows, or after delay for new windows
+        const sendData = () => {
+          if (guestWindowRef.current) {
+            emitTo(GUEST_DISPLAY_LABEL, 'guest-display:mode', initialData.displayMode);
+            emitTo(GUEST_DISPLAY_LABEL, 'guest-display:update', {
+              currentSetPhotos: initialData.currentSetPhotos,
+              selectedPhotoIndex: initialData.selectedPhotoIndex,
+            });
+            emitTo(GUEST_DISPLAY_LABEL, 'guest-display:center-browse', initialData.centerBrowseIndex);
+          }
+        };
+
+        // Try immediately first, then retry after delays
+        sendData();
+        setTimeout(sendData, 200);
+        setTimeout(sendData, 500);
+        setTimeout(sendData, 1000);
       }
     } catch (error) {
       console.error('Failed to open second screen:', error);
@@ -98,19 +101,16 @@ export function useSecondScreen() {
   }, []);
 
   const updateGuestDisplay = useCallback((data: {
-    currentSetPhotos?: Array<{ id: string; thumbnailUrl: string; timestamp: string }>;
+    currentSetPhotos?: Array<{ id: string; thumbnailUrl: string; fullUrl?: string; timestamp: string }>;
     selectedPhotoIndex?: number | null;
     displayMode?: 'single' | 'center' | 'canvas';
-    liveViewStream?: boolean; // Indicates if live view stream is active
-    hdmiStreamActive?: boolean; // Indicates if HDMI stream is active
-    showCapturePreview?: boolean; // Show capture preview overlay
-    capturedPhotoUrl?: string | null; // URL of the captured photo to show in preview
+    liveViewStream?: boolean;
+    hdmiStreamActive?: boolean;
+    showCapturePreview?: boolean;
+    capturedPhotoUrl?: string | null;
   }) => {
     if (isSecondScreenOpen) {
-      console.log('[useSecondScreen] updateGuestDisplay called with:', data);
       emitTo(GUEST_DISPLAY_LABEL, 'guest-display:update', data);
-    } else {
-      console.log('[useSecondScreen] updateGuestDisplay called but second screen is not open');
     }
   }, [isSecondScreenOpen]);
 
@@ -126,7 +126,7 @@ export function useSecondScreen() {
     }
   }, [isSecondScreenOpen]);
 
-  const addPhoto = useCallback((photo: { id: string; thumbnailUrl: string; timestamp: string }) => {
+  const addPhoto = useCallback((photo: { id: string; thumbnailUrl: string; fullUrl?: string; timestamp: string }) => {
     if (isSecondScreenOpen) {
       emitTo(GUEST_DISPLAY_LABEL, 'guest-display:add-photo', photo);
     }

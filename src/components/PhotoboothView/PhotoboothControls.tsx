@@ -207,6 +207,7 @@ interface ControlButtonsProps {
   onStopIfActive: () => void;
   onCaptureNow: () => void;
   onShowNoCameraWarning: () => void;
+  onShowNoWorkingFolderWarning: () => void;
 }
 
 function ControlButtons({
@@ -222,6 +223,7 @@ function ControlButtons({
   onStopIfActive,
   onCaptureNow,
   onShowNoCameraWarning,
+  onShowNoWorkingFolderWarning,
 }: ControlButtonsProps) {
   const canStartAuto = isCameraConnected && hasWorkingFolder;
 
@@ -229,6 +231,10 @@ function ControlButtons({
     console.log('[PhotoboothControls] Capture button clicked, isActive:', isActive);
     if (!isCameraConnected) {
       onShowNoCameraWarning();
+      return;
+    }
+    if (!hasWorkingFolder) {
+      onShowNoWorkingFolderWarning();
       return;
     }
     onStopIfActive();
@@ -276,7 +282,7 @@ function ControlButtons({
         className="capture-btn"
         onClick={handleCaptureClick}
         disabled={isActive || isAutoRunning}
-        title={!isCameraConnected ? 'Camera not connected' : (isActive || isAutoRunning) ? 'Capture in progress' : ''}
+        title={!isCameraConnected ? 'Camera not connected' : !hasWorkingFolder ? 'No working folder selected' : (isActive || isAutoRunning) ? 'Capture in progress' : ''}
       >
         <span className="capture-ring"></span>
       </button>
@@ -312,6 +318,7 @@ interface PhotoboothControlsProps {
   onStopIfActive: () => void;
   onCaptureNow: () => void;
   onShowNoCameraWarning: () => void;
+  onShowNoWorkingFolderWarning: () => void;
 
   // Helpers
   getScrambledDigit: (offset: number, stopTick: number) => number;
@@ -338,6 +345,7 @@ export function PhotoboothControls({
   onStopIfActive,
   onCaptureNow,
   onShowNoCameraWarning,
+  onShowNoWorkingFolderWarning,
   getScrambledDigit,
 }: PhotoboothControlsProps) {
   return (
@@ -370,6 +378,7 @@ export function PhotoboothControls({
           onStopIfActive={onStopIfActive}
           onCaptureNow={onCaptureNow}
           onShowNoCameraWarning={onShowNoCameraWarning}
+          onShowNoWorkingFolderWarning={onShowNoWorkingFolderWarning}
         />
       </div>
 

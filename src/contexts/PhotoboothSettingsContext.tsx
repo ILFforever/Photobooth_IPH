@@ -1,6 +1,22 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from "react";
 import { invoke } from '@tauri-apps/api/core';
 import { useToast } from './ToastContext';
+import * as sessionDrive from '../utils/sessionDrive';
+
+// Google Drive uploaded image metadata
+export interface DriveUploadedImage {
+  filename: string;
+  driveFileId: string;
+  uploadedAt: string;
+}
+
+// Google Drive metadata for a session
+export interface GoogleDriveMetadata {
+  folderId?: string | null;
+  folderName?: string | null;
+  folderLink?: string | null;
+  uploadedImages: DriveUploadedImage[];
+}
 
 // Session info structure matching the backend
 export interface PhotoboothSessionInfo {
@@ -11,6 +27,7 @@ export interface PhotoboothSessionInfo {
   createdAt: string;
   lastUsedAt: string;
   thumbnails: string[]; // Thumbnail URLs for the session's photos
+  googleDriveMetadata: GoogleDriveMetadata;
 }
 
 // Photo entry in a session
@@ -29,6 +46,7 @@ export interface PhotoboothSession {
   lastUsedAt: string;
   shotCount: number;
   photos: SessionPhoto[];
+  googleDriveMetadata: GoogleDriveMetadata;
 }
 
 interface PhotoboothSettingsContextType {
@@ -54,6 +72,11 @@ interface PhotoboothSettingsContextType {
   updateSessionShotCount: (sessionId: string, shotCount: number) => void;
   updateCurrentSessionFromDownload: (ptbSession: PhotoboothSession, newPhotoFilename?: string) => void;
   isLoadingSessions: boolean;
+  // Google Drive metadata management
+  updateSessionDriveFolder: (sessionId: string, folderId: string | null, folderName: string | null, folderLink: string | null) => Promise<void>;
+  addDriveUploadToSession: (sessionId: string, filename: string, driveFileId: string) => Promise<void>;
+  checkImageUploadedToDrive: (sessionId: string, filename: string) => Promise<boolean>;
+  clearDriveUploadsForSession: (sessionId: string) => Promise<void>;
 }
 
 const PhotoboothSettingsContext = createContext<PhotoboothSettingsContextType | undefined>(undefined);
@@ -106,6 +129,7 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
           lastUsedAt: ptbSession.lastUsedAt,
           shotCount: ptbSession.shotCount,
           photos: ptbSession.photos,
+          googleDriveMetadata: ptbSession.googleDriveMetadata || { uploadedImages: [] },
         });
 
         showToast('New workspace created', 'success', 3000, 'Session 1 ready');
@@ -144,6 +168,7 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
           lastUsedAt: ptbSession.lastUsedAt,
           shotCount: ptbSession.shotCount,
           photos: ptbSession.photos,
+          googleDriveMetadata: ptbSession.googleDriveMetadata || { uploadedImages: [] },
         });
       }
     } catch (error) {
@@ -185,6 +210,7 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
         lastUsedAt: ptbSession.lastUsedAt,
         shotCount: ptbSession.shotCount,
         photos: ptbSession.photos,
+        googleDriveMetadata: ptbSession.googleDriveMetadata || { uploadedImages: [] },
       });
 
       // Also set as current session in workspace
@@ -258,6 +284,111 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
     }
   }, [workingFolder]);
 
+  // Google Drive metadata management functions
+  const updateSessionDriveFolder = useCallback(async (
+    sessionId: string,
+    folderId: string | null,
+    folderName: string | null,
+    folderLink: string | null
+  ) => {
+    if (!workingFolder) {
+      throw new Error('Working folder must be set first');
+    }
+
+    await sessionDrive.updateSessionDriveMetadata(
+      workingFolder,
+      sessionId,
+      folderId,
+      folderName,
+      folderLink
+    );
+
+    // Update the session in the local state
+    setSessions(prev => prev.map(s =>
+      s.id === sessionId
+        ? {
+            ...s,
+            googleDriveMetadata: {
+              ...s.googleDriveMetadata,
+              folderId,
+              folderName,
+              folderLink,
+            }
+          }
+        : s
+    ));
+  }, [workingFolder]);
+
+  const addDriveUploadToSession = useCallback(async (
+    sessionId: string,
+    filename: string,
+    driveFileId: string
+  ) => {
+    if (!workingFolder) {
+      throw new Error('Working folder must be set first');
+    }
+
+    await sessionDrive.addSessionDriveUpload(
+      workingFolder,
+      sessionId,
+      filename,
+      driveFileId
+    );
+
+    // Update the session in the local state
+    const uploadedAt = new Date().toISOString();
+    setSessions(prev => prev.map(s =>
+      s.id === sessionId
+        ? {
+            ...s,
+            googleDriveMetadata: {
+              ...s.googleDriveMetadata,
+              uploadedImages: [
+                ...s.googleDriveMetadata.uploadedImages,
+                { filename, driveFileId, uploadedAt }
+              ]
+            }
+          }
+        : s
+    ));
+  }, [workingFolder]);
+
+  const checkImageUploadedToDrive = useCallback(async (
+    sessionId: string,
+    filename: string
+  ): Promise<boolean> => {
+    if (!workingFolder) {
+      return false;
+    }
+
+    return await sessionDrive.isImageUploadedToDrive(
+      workingFolder,
+      sessionId,
+      filename
+    );
+  }, [workingFolder]);
+
+  const clearDriveUploadsForSession = useCallback(async (sessionId: string) => {
+    if (!workingFolder) {
+      throw new Error('Working folder must be set first');
+    }
+
+    await sessionDrive.clearSessionDriveUploads(workingFolder, sessionId);
+
+    // Update the session in the local state
+    setSessions(prev => prev.map(s =>
+      s.id === sessionId
+        ? {
+            ...s,
+            googleDriveMetadata: {
+              ...s.googleDriveMetadata,
+              uploadedImages: []
+            }
+          }
+        : s
+    ));
+  }, [workingFolder]);
+
   // Refresh sessions when working folder changes
   useEffect(() => {
     if (workingFolder) {
@@ -289,6 +420,10 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
         updateSessionShotCount,
         updateCurrentSessionFromDownload,
         isLoadingSessions,
+        updateSessionDriveFolder,
+        addDriveUploadToSession,
+        checkImageUploadedToDrive,
+        clearDriveUploadsForSession,
       }}
     >
       {children}

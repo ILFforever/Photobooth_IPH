@@ -1989,6 +1989,46 @@
   transform: scale(0.98);
 }
 
+.folder-browse-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+/* Loading dots animation */
+.loading-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  justify-content: center;
+}
+
+.loading-dots .dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background-color: currentColor;
+  animation: loadingDots 1.4s infinite ease-in-out both;
+}
+
+.loading-dots .dot:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.loading-dots .dot:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+@keyframes loadingDots {
+  0%, 80%, 100% {
+    opacity: 0;
+    transform: scale(0);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 /* Setting Hint */
 .setting-hint {
   font-size: 10px;
@@ -2960,19 +3000,7 @@
   width: 100%;
   box-sizing: border-box;
   pointer-events: auto;
-  animation: toastSlideIn 0.3s ease;
   backdrop-filter: blur(12px);
-}
-
-@keyframes toastSlideIn {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 /* Toast variants - translucent backgrounds */
@@ -3022,4 +3050,479 @@
 
 .toast-close {
   display: none;
+}
+
+/* ========== PRINTER SETTINGS ========== */
+
+.print-info-content {
+  padding: 12px;
+}
+
+.print-info-content p {
+  margin: 0 0 8px 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.print-hint {
+  color: var(--text-muted) !important;
+  font-size: 10px !important;
+  margin: 0 !important;
+}
+
+/* ========== PRINTER SETTINGS ========== */
+
+.print-settings-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.print-section {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.print-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.print-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex: 1;
+}
+
+.refresh-printers-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.refresh-printers-btn:hover:not(:disabled) {
+  background: var(--accent-blue);
+  border-color: var(--accent-blue);
+  color: white;
+}
+
+.refresh-printers-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.refresh-printers-btn.spinning svg {
+  animation: spin 1s linear infinite;
+}
+
+.print-loading {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.print-empty-state {
+  padding: 20px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+}
+
+.print-empty-state svg {
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+.print-empty-state p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.print-hint {
+  font-size: 11px !important;
+  color: var(--text-muted) !important;
+}
+
+/* Printer List */
+.printer-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.printer-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.printer-item:last-child {
+  border-bottom: none;
+}
+
+.printer-item:hover {
+  background: var(--bg-tertiary);
+}
+
+.printer-item.selected {
+  background: rgba(0, 120, 212, 0.1);
+  border-left: 3px solid var(--accent-blue);
+}
+
+.printer-item-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.printer-item-left svg {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.printer-item.selected .printer-item-left svg {
+  color: var(--accent-blue);
+}
+
+.printer-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.printer-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.printer-driver {
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.printer-default-badge {
+  font-size: 9px;
+  color: var(--accent-blue);
+  background: rgba(0, 120, 212, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+/* Printer Status */
+.printer-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-color);
+}
+
+.printer-status.online {
+  background: rgba(34, 197, 94, 0.05);
+}
+
+.printer-status.offline {
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.printer-status.error {
+  background: rgba(239, 68, 68, 0.05);
+  border-left: 3px solid #ef4444;
+}
+
+.printer-status.busy {
+  background: rgba(245, 158, 11, 0.05);
+}
+
+.printer-status-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.printer-status.online .printer-status-indicator {
+  color: #22c55e;
+}
+
+.printer-status.offline .printer-status-indicator {
+  color: #ef4444;
+}
+
+.printer-status.error .printer-status-indicator {
+  color: #ef4444;
+}
+
+.printer-status.busy .printer-status-indicator {
+  color: #f59e0b;
+}
+
+.printer-status-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.printer-status-main {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.printer-status-jobs {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.refresh-status-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.refresh-status-btn:hover:not(:disabled) {
+  background: var(--accent-blue);
+  border-color: var(--accent-blue);
+  color: white;
+}
+
+.refresh-status-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.refresh-status-btn.spinning svg {
+  animation: spin 1s linear infinite;
+}
+
+/* Print Settings */
+.print-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.print-setting-row:last-child {
+  border-bottom: none;
+}
+
+.print-setting-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.print-select {
+  flex: 1;
+  margin-left: 12px;
+  padding: 6px 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.print-select:hover {
+  border-color: var(--text-muted);
+}
+
+.print-select:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+}
+
+/* Copy Controls */
+.print-copy-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 4px;
+}
+
+.copy-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-tertiary);
+  border: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 3px;
+  transition: all 0.15s ease;
+}
+
+.copy-btn:hover:not(:disabled) {
+  background: var(--accent-blue);
+  color: white;
+}
+
+.copy-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.copy-count {
+  min-width: 24px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* Toggle Button */
+.toggle-btn {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 11px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 0;
+}
+
+.toggle-btn:hover {
+  border-color: var(--text-muted);
+}
+
+.toggle-btn.active {
+  background: var(--accent-blue);
+  border-color: var(--accent-blue);
+}
+
+.toggle-slider {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: white;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.toggle-btn.active .toggle-slider {
+  transform: translateX(18px);
+}
+
+/* Print Action Section */
+.print-action-section {
+  margin-top: 4px;
+}
+
+.print-action-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: rgba(34, 197, 94, 0.05);
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.print-action-summary svg {
+  color: #22c55e;
+  flex-shrink: 0;
+}
+
+.print-now-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  background: var(--accent-blue);
+  border: none;
+  border-radius: 0 0 8px 8px;
+  color: white;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.print-now-btn:hover:not(:disabled) {
+  background: var(--accent-blue-hover);
+  transform: translateY(-1px);
+}
+
+.print-now-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.print-now-btn:disabled {
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  cursor: not-allowed;
+  transform: none;
+}
+
+.print-now-btn.spinning svg {
+  animation: spin 1s linear infinite;
 }

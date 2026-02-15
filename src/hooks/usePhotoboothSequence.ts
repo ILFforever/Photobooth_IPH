@@ -281,6 +281,17 @@ export function usePhotoboothSequence(config: SequenceConfig): UsePhotoboothSequ
         setReviewCountdown(config.photoReviewTime);
         setSequenceState('review');
         previewLoadedRef.current = false;
+      } else {
+        // Safety timeout: if preview never loads, use photoReviewTime + 4s
+        const safetyTimeout = setTimeout(() => {
+          if (sequenceStateRef.current === 'waitingForPreview') {
+            console.warn('[PhotoboothSequence] waitingForPreview safety timeout — continuing');
+            setReviewCountdown(config.photoReviewTime);
+            setSequenceState('review');
+            previewLoadedRef.current = false;
+          }
+        }, (config.photoReviewTime + 4) * 1000);
+        return () => clearTimeout(safetyTimeout);
       }
     }
   }, [sequenceState, config.photoReviewTime]);
@@ -337,12 +348,12 @@ export function usePhotoboothSequence(config: SequenceConfig): UsePhotoboothSequ
   useEffect(() => {
     if (manualPhase === 'waiting') {
       const timeout = setTimeout(() => {
-        console.warn('[PhotoboothSequence] Manual waiting safety timeout — 20s');
+        console.warn('[PhotoboothSequence] Manual waiting safety timeout');
         setManualPhase('idle');
-      }, 20000);
+      }, (config.photoReviewTime + 3) * 1000);
       return () => clearTimeout(timeout);
     }
-  }, [manualPhase]);
+  }, [manualPhase, config.photoReviewTime]);
 
   // Manual review: countdown then return to idle
   useEffect(() => {

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import { useCollage } from '../../contexts/CollageContext';
 import { OverlayLayer as OverlayLayerType } from '../../types/overlay';
 import './OverlayLayer.css';
@@ -159,7 +160,11 @@ export function OverlayLayer({ layer, isSelected, canvasWidth, canvasHeight, zIn
       onMouseDown={interactive ? (e) => handleMouseDown(e, 'drag') : undefined}
     >
       <img
-        src={layer.sourcePath}
+        src={
+          layer.sourcePath.startsWith('asset://')
+            ? convertFileSrc(layer.sourcePath.replace('asset://', ''))
+            : layer.sourcePath
+        }
         alt={layer.name}
         draggable={false}
         style={{

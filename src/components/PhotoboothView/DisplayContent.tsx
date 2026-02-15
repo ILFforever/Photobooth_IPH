@@ -1,13 +1,14 @@
-import { Layers, Camera, Image as ImageIcon, Grid3x3, ArrowLeft } from "lucide-react";
+import { Layers, Camera, Image as ImageIcon, Grid3x3, ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
 import { mdiFlashTriangleOutline } from '@mdi/js';
 import Icon from '@mdi/react';
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 
 type DisplayMode = 'single' | 'center' | 'canvas';
 
 interface CurrentSetPhoto {
   id: string;
   thumbnailUrl: string;
+  fullUrl?: string;
   timestamp: string;
 }
 
@@ -40,7 +41,6 @@ export default function DisplayContent({
   onPhotoDoubleClick,
   onExitFullscreen,
   onNavClick,
-  showGridOverlay = false,
   showRecentPhotos = false,
   showBackButton = false,
   liveViewStream = null,
@@ -53,6 +53,17 @@ export default function DisplayContent({
   onCenterBack,
   onCenterNavClick,
 }: DisplayContentProps) {
+  // Pagination state for canvas mode
+  const [currentPage, setCurrentPage] = useState(0);
+  const PHOTOS_PER_PAGE = 9;
+
+  // Reset to first page when photos change
+  const prevPhotoCountRef = useRef(currentSetPhotos.length);
+  if (prevPhotoCountRef.current !== currentSetPhotos.length) {
+    prevPhotoCountRef.current = currentSetPhotos.length;
+    setCurrentPage(0);
+  }
+
   // Use a callback ref so srcObject is attached whenever the <video> DOM node
   // mounts (including after a display-mode switch that destroys/recreates it).
   const streamRef = useRef<MediaStream | null>(liveViewStream);
@@ -164,7 +175,7 @@ export default function DisplayContent({
                   </svg>
                 </button>
                 <div className="single-photo-content">
-                  <img src={browsePhoto.thumbnailUrl} alt={`Photo ${centerBrowseIndex + 1}`} className="fullscreen-photo-img" />
+                  <img src={browsePhoto.fullUrl || browsePhoto.thumbnailUrl} alt={`Photo ${centerBrowseIndex + 1}`} className="fullscreen-photo-img" />
                 </div>
                 <button
                   className="nav-arrow-btn nav-next"
@@ -220,11 +231,9 @@ export default function DisplayContent({
                   >
                     {photo ? (
                       <img
-                        src={photo.thumbnailUrl}
+                        src={photo.fullUrl || photo.thumbnailUrl}
                         alt={`Recent ${idx + 1}`}
                         className="center-recent-img"
-                        loading="lazy"
-                        decoding="async"
                       />
                     ) : (
                       <ImageIcon size={20} />
@@ -273,7 +282,7 @@ export default function DisplayContent({
                 </button>
                 <div className="single-photo-content">
                   {currentPhoto ? (
-                    <img src={currentPhoto.thumbnailUrl} alt={`Photo ${selectedPhotoIndex + 1}`} className="fullscreen-photo-img" />
+                    <img src={currentPhoto.fullUrl || currentPhoto.thumbnailUrl} alt={`Photo ${selectedPhotoIndex + 1}`} className="fullscreen-photo-img" />
                   ) : (
                     <>
                       <Layers size={64} />
@@ -302,40 +311,74 @@ export default function DisplayContent({
         );
       }
 
-      // Show grid - newest first, pad to fill last row (3 columns, min 6 slots)
-      const cols = 3;
-      const minSlots = 6;
-      const paddedPhotos: Array<{ id?: string; thumbnailUrl?: string } | null> = [...canvasPhotos];
-      const target = Math.max(minSlots, Math.ceil(paddedPhotos.length / cols) * cols);
-      while (paddedPhotos.length < target) {
+      // Pagination: 9 photos per page (3x3 grid)
+      const totalPages = Math.ceil(canvasPhotos.length / PHOTOS_PER_PAGE) || 1;
+
+      // Get photos for current page
+      const startIndex = currentPage * PHOTOS_PER_PAGE;
+      const pagePhotos = canvasPhotos.slice(startIndex, startIndex + PHOTOS_PER_PAGE);
+
+      // Pad to fill 3x3 grid
+      const paddedPhotos: Array<{ id?: string; thumbnailUrl?: string; fullUrl?: string } | null> = [...pagePhotos];
+      while (paddedPhotos.length < PHOTOS_PER_PAGE) {
         paddedPhotos.push(null);
       }
-      const displayPhotos = paddedPhotos;
+
+      // Navigate to next/prev page
+      const goToNextPage = () => setCurrentPage(prev => Math.min(prev + 1, totalPages - 1));
+      const goToPrevPage = () => setCurrentPage(prev => Math.max(prev - 1, 0));
 
       return withPreview(
-        <div className={`grid-display ${currentSetPhotos.length > 6 ? 'grid-scrollable' : ''}`}>
-          {displayPhotos.map((photo, idx) => {
-            const isRealPhoto = photo !== null && photo.id && photo.thumbnailUrl;
-            return (
-              <div
-                key={photo?.id || `placeholder-${idx}`}
-                className="grid-photo"
-                onDoubleClick={() => onPhotoDoubleClick?.(idx)}
+        <div className="grid-display-container">
+          <div className="grid-display grid-3x3">
+            {paddedPhotos.map((photo, idx) => {
+              const isRealPhoto = photo !== null && photo.id && (photo.thumbnailUrl || photo.fullUrl);
+              const imgSrc = isRealPhoto && photo ? (photo.fullUrl || photo.thumbnailUrl) : '';
+              const globalIndex = startIndex + idx; // Index in the full canvasPhotos array
+              return (
+                <div
+                  key={photo?.id || `placeholder-${idx}`}
+                  className="grid-photo"
+                  onDoubleClick={() => {
+                    if (isRealPhoto) {
+                      onPhotoDoubleClick?.(globalIndex);
+                    }
+                  }}
+                >
+                  {isRealPhoto ? (
+                    <img
+                      src={imgSrc}
+                      alt={`Photo ${globalIndex + 1}`}
+                      className="grid-photo-img"
+                    />
+                  ) : (
+                    <ImageIcon size={24} />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {totalPages > 1 && (
+            <div className="pagination-controls">
+              <button
+                className="pagination-btn pagination-prev"
+                onClick={goToPrevPage}
+                disabled={currentPage === 0}
               >
-                {isRealPhoto ? (
-                  <img
-                    src={photo.thumbnailUrl}
-                    alt={`Photo ${idx + 1}`}
-                    className="grid-photo-img"
-                    loading="lazy"
-                    decoding="async"
-                  />
-                ) : (
-                  <ImageIcon size={24} />
-                )}
-              </div>
-            );
-          })}
+                <ChevronLeft size={20} />
+              </button>
+              <span className="pagination-indicator">
+                Page {currentPage + 1} / {totalPages}
+              </span>
+              <button
+                className="pagination-btn pagination-next"
+                onClick={goToNextPage}
+                disabled={currentPage === totalPages - 1}
+              >
+                <ChevronRight size={20} />
+              </button>
+            </div>
+          )}
         </div>
       );
     }

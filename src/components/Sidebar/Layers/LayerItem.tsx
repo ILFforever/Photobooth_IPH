@@ -1,5 +1,6 @@
 import { useRef } from 'react';
 import { useDrag } from 'react-dnd';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import { OverlayLayer as OverlayLayerType } from '../../../types/overlay';
 
 interface LayerItemProps {
@@ -58,7 +59,14 @@ export function LayerItem({
 
       {/* Thumbnail */}
       <div className="layer-thumbnail">
-        <img src={layer.thumbnail || layer.sourcePath} alt={layer.name} />
+        <img
+          src={
+            (layer.thumbnail || layer.sourcePath).startsWith('asset://')
+              ? convertFileSrc((layer.thumbnail || layer.sourcePath).replace('asset://', ''))
+              : (layer.thumbnail || layer.sourcePath)
+          }
+          alt={layer.name}
+        />
       </div>
 
       {/* Name */}

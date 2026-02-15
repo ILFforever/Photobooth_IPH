@@ -501,28 +501,10 @@ const FloatingFrameSelector = () => {
         setBackgroundDimensions({ width: img.width, height: img.height });
         console.log('Set backgroundDimensions to:', { width: img.width, height: img.height });
 
-        // Calculate a canvas size that matches the background aspect ratio
-        // with a reasonable base dimension
-        const aspectRatio = img.width / img.height;
-        const baseDimension = 1200;
-
-        let newWidth: number;
-        let newHeight: number;
-
-        if (aspectRatio >= 1) {
-          // Landscape or square
-          newWidth = baseDimension;
-          newHeight = Math.round(baseDimension / aspectRatio);
-        } else {
-          // Portrait
-          newHeight = baseDimension;
-          newWidth = Math.round(baseDimension * aspectRatio);
-        }
-
-        // Create a custom canvas size
+        // When auto-match is enabled, canvas size should exactly match the background image dimensions
         const customSize: CanvasSize = {
-          width: newWidth,
-          height: newHeight,
+          width: img.width,
+          height: img.height,
           name: `${img.width}×${img.height}`,
           isCustom: true,
           createdAt: new Date().toISOString(),
@@ -530,7 +512,7 @@ const FloatingFrameSelector = () => {
 
         // Check if this size already exists
         const existing = customCanvasSizes.find(
-          c => c.width === newWidth && c.height === newHeight
+          c => c.width === img.width && c.height === img.height
         );
 
         if (existing) {
@@ -1291,7 +1273,7 @@ const FloatingFrameSelector = () => {
                                   className="item-delete-btn"
                                   title="Delete background"
                                 >
-                                  🗑
+                                  <Icon path={mdiDeleteOutline} size={0.8} />
                                 </button>
                               )}
                             </div>

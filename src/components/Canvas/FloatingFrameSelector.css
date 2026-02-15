@@ -426,9 +426,18 @@
   justify-content: center;
   cursor: pointer;
   font-size: 0.875rem;
+  color: white;
   z-index: 10;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
   transition: all 0.2s ease;
+}
+
+.item-delete-btn svg {
+  color: white !important;
+  fill: white !important;
+  pointer-events: none;
+  width: 16px;
+  height: 16px;
 }
 
 .item-delete-btn:hover {

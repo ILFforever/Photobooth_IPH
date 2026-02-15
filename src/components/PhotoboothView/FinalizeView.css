@@ -1,0 +1,369 @@
+.finalize-view {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: var(--bg-primary, #0a0a0a);
+}
+
+/* Header */
+.finalize-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: var(--bg-secondary, #111);
+  border-bottom: 1px solid #222;
+  min-height: 44px;
+}
+
+.finalize-back-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  background: #252525;
+  border: 1px solid #333;
+  border-radius: 6px;
+  color: #ccc;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.finalize-back-btn:hover {
+  background: #333;
+  border-color: #444;
+  color: #fff;
+}
+
+.finalize-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  flex: 1;
+}
+
+.finalize-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.finalize-display-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: #252525;
+  border: 1px solid #333;
+  border-radius: 6px;
+  color: #ccc;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.finalize-display-btn:hover:not(:disabled) {
+  background: #333;
+  border-color: #444;
+  color: #fff;
+}
+
+.finalize-display-btn.active {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: #fff;
+}
+
+.finalize-display-btn.active:hover {
+  background: #2563eb;
+}
+
+.finalize-display-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.finalize-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #555;
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: finalize-spin 0.6s linear infinite;
+}
+
+@keyframes finalize-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Zoom controls */
+.finalize-zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 6px;
+}
+
+.finalize-zoom-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: #252525;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #ccc;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.finalize-zoom-btn:hover:not(:disabled) {
+  background: #333;
+  border-color: #444;
+  color: #fff;
+}
+
+.finalize-zoom-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.finalize-zoom-level {
+  min-width: 42px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 500;
+  color: #999;
+  user-select: none;
+}
+
+/* Content - matches collage-canvas-container pattern */
+.finalize-content {
+  position: relative;
+  padding: 16px;
+  padding-bottom: 80px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  flex: 1;
+  overflow: auto;
+  background: var(--bg-primary, #0a0a0a);
+}
+
+.finalize-loading {
+  color: #666;
+  font-size: 14px;
+}
+
+/* Frame canvas - matches collage-canvas pattern */
+.finalize-frame-canvas {
+  position: relative;
+  user-select: none;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  transition: box-shadow 0.2s ease;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.finalize-frame-canvas:hover {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+/* Canvas info box - matches collage canvas-info */
+.finalize-canvas-info {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 11px;
+  color: white;
+  z-index: 100;
+  pointer-events: none;
+}
+
+.finalize-canvas-info .canvas-frame-name {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text-primary, #fff);
+  line-height: 1.2;
+  letter-spacing: 0.5px;
+}
+
+.finalize-canvas-info .canvas-dimensions {
+  font-size: 10px;
+  color: var(--text-muted, #888);
+  line-height: 1.1;
+}
+
+/* Zone - matches image-zone pattern */
+.finalize-zone {
+  position: absolute;
+  transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+  border-radius: 4px;
+}
+
+.finalize-zone:hover {
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.4);
+}
+
+.finalize-zone-empty {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.1);
+  border: 2px dashed rgba(255, 255, 255, 0.3);
+  color: #555;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.finalize-zone-hover-overlay {
+  position: absolute;
+  inset: 0;
+  border: 2px solid transparent;
+  pointer-events: none;
+  transition: all 0.15s ease;
+}
+
+.finalize-zone:hover .finalize-zone-hover-overlay {
+  border-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.08);
+}
+
+/* Zoom hint overlay */
+.finalize-zoom-hint {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 11px;
+  color: var(--text-muted, #888);
+  z-index: 100;
+  pointer-events: none;
+  animation: finalize-fade-in 0.3s ease;
+}
+
+@keyframes finalize-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Snap Guides */
+.snap-guide {
+  background: #3b82f6;
+  opacity: 0.8;
+}
+
+.snap-guide-horizontal {
+  height: 1px;
+}
+
+.snap-guide-vertical {
+  width: 1px;
+}
+
+/* Zone selection */
+.finalize-zone.selected {
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+}
+
+/* 3x3 Grid Overlay */
+.finalize-grid-overlay {
+  position: absolute;
+  pointer-events: none;
+  z-index: 50;
+}
+
+.finalize-grid-line {
+  position: absolute;
+  background-color: rgba(255, 255, 255, 0.2);
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
+}
+
+.finalize-grid-line-vertical {
+  width: 1px;
+  height: 100%;
+}
+
+.finalize-grid-line-horizontal {
+  width: 100%;
+  height: 1px;
+}
+
+/* Overflow visualization */
+.finalize-grid-overlay-overflow .finalize-grid-line {
+  background-color: rgba(0, 212, 255, 0.5);
+  box-shadow: 0 0 4px rgba(0, 212, 255, 0.4);
+}
+
+.finalize-overflow-frame {
+  border: 1px solid rgba(0, 212, 255, 0.25);
+  box-shadow: 0 0 0 1px rgba(0, 212, 255, 0.1);
+  border-radius: 4px;
+  opacity: 0.6;
+}
+
+/* Grab/Zoom Handles - Teenage Engineering style */
+.finalize-zoom-handle {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  opacity: 0.6;
+  background: linear-gradient(145deg, #1a1815 0%, #0a0908 100%);
+  border: 1px solid #252220;
+  border-radius: 4px;
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.4),
+    inset 0 1px 2px rgba(255, 255, 255, 0.05);
+  transition: all 0.15s ease;
+  cursor: nwse-resize;
+  pointer-events: all;
+  z-index: 60;
+}
+
+.finalize-zoom-handle:hover {
+  opacity: 1;
+  background: linear-gradient(145deg, #2a2825 0%, #1a1815 100%);
+  border-color: #3a3632;
+  box-shadow:
+    0 4px 8px rgba(0, 0, 0, 0.5),
+    inset 0 1px 2px rgba(255, 255, 255, 0.08);
+  transform: scale(1.1);
+}
+
+.finalize-zoom-handle:active {
+  transform: scale(0.95);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.5),
+    inset 0 2px 4px rgba(0, 0, 0, 0.4);
+}

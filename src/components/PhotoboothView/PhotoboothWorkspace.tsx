@@ -8,11 +8,13 @@ import { usePhotoboothSequence } from "../../hooks/usePhotoboothSequence";
 import { useCamera } from "../../contexts/CameraContext";
 import { useLiveView } from "../../contexts/LiveViewContext";
 import { useCollage } from "../../contexts/CollageContext";
+import { usePhotobooth } from "../../contexts/PhotoboothContext";
 import { useToast } from "../../contexts/ToastContext";
 import { PhotoboothControls } from "./PhotoboothControls";
 import DisplayContent from "./DisplayContent";
 import CurrentSetPhotoStrip from "./CurrentSetPhotoStrip";
 import PhotoSessionsSidebar from "./PhotoSessionsSidebar";
+import FinalizeView from "./FinalizeView";
 import { type PhotoDownloadedEvent } from "../../services/cameraWebSocket";
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
@@ -42,6 +44,7 @@ const displayPresets: DisplayPreset[] = [
 interface CurrentSetPhoto {
   id: string;
   thumbnailUrl: string;
+  fullUrl?: string;
   timestamp: string;
 }
 
@@ -80,7 +83,11 @@ export default function PhotoboothWorkspace() {
   const { captureError, clearCaptureError, isCameraConnected, hasEverConnected, isConnecting, addPhotoDownloadedListener, removePhotoDownloadedListener } = useCamera();
   const { stream: liveViewStream, hdmi } = useLiveView();
   const { showToast } = useToast();
-  const { currentFrame, selectedCustomSetName } = useCollage();
+  const { selectedCustomSetName } = useCollage();
+  const { photoboothFrame, finalizeViewMode, setFinalizeViewMode, setFinalizeEditingZoneId } = usePhotobooth();
+
+  // Local view mode synced with context
+  const viewMode = finalizeViewMode;
 
   // Debug: Log when selectedCustomSetName changes
   useEffect(() => {
@@ -101,8 +108,8 @@ export default function PhotoboothWorkspace() {
 
   // Workflow state
   const [selectedPhotos, setSelectedPhotos] = useState<Set<string>>(new Set());
-  // Calculate required photos from frame zones, fallback to autoCount
-  const requiredPhotos = currentFrame?.zones.length ?? autoCount;
+  // Calculate required photos from photobooth frame zones - 0 when no frame/set selected
+  const requiredPhotos = photoboothFrame?.zones.length ?? 0;
 
   const [ptbSession, setPtbSession] = useState<PtbSession | null>(null);
 
@@ -177,14 +184,21 @@ export default function PhotoboothWorkspace() {
 
   // Populate current set photos when loading an existing session
   const lastSessionIdRef = useRef<string | null>(null);
+  const lastWorkingFolderRef = useRef<string | null>(null);
   useEffect(() => {
-    // Only populate when session changes and has photos
-    if (currentSession && currentSession.id !== lastSessionIdRef.current) {
-      lastSessionIdRef.current = currentSession.id;
+    // Populate when session changes OR when working folder changes for an existing session
+    const sessionChanged = currentSession && currentSession.id !== lastSessionIdRef.current;
+    const folderChanged = workingFolder && workingFolder !== lastWorkingFolderRef.current;
+
+    if (currentSession && (sessionChanged || folderChanged)) {
+      if (sessionChanged) {
+        lastSessionIdRef.current = currentSession.id;
+      }
+      if (workingFolder) {
+        lastWorkingFolderRef.current = workingFolder;
+      }
 
       if (currentSession.photos && currentSession.photos.length > 0) {
-        console.log('[PhotoboothWorkspace] Loading existing photos from session:', currentSession.photos.length);
-
         // Get the session info for thumbnails
         const sessionInfo = sessions.find(s => s.id === currentSession.id);
         const folderName = sessionInfo?.folderName || currentSession.id;
@@ -194,18 +208,25 @@ export default function PhotoboothWorkspace() {
         const loadedPhotos: CurrentSetPhoto[] = currentSession.photos.map((photo, idx) => {
           // Use thumbnail if available, otherwise fall back to full-res image
           let thumbnailUrl = '';
+          let fullUrl: string | undefined;
           if (idx < thumbnails.length && thumbnails[idx]) {
             // Use cached thumbnail from backend
             thumbnailUrl = convertFileSrc(thumbnails[idx].replace('asset://', ''));
-          } else if (workingFolder) {
-            // Fall back to full-res image
+          }
+          // Always set fullUrl to the full-res image
+          if (workingFolder) {
             const filePath = `${workingFolder}/${folderName}/${photo.filename}`;
-            thumbnailUrl = convertFileSrc(filePath);
+            fullUrl = convertFileSrc(filePath);
+            // If no thumbnail available, use full-res as thumbnail
+            if (!thumbnailUrl) {
+              thumbnailUrl = fullUrl;
+            }
           }
 
           return {
             id: photo.filename || `photo-${idx}`,
             thumbnailUrl,
+            fullUrl,
             timestamp: new Date(photo.capturedAt).toLocaleTimeString(),
           };
         });
@@ -346,6 +367,7 @@ export default function PhotoboothWorkspace() {
       const newPhoto: CurrentSetPhoto = {
         id: customFilename,
         thumbnailUrl: photoUrl, // Use full-res for display quality
+        fullUrl: photoUrl,
         timestamp: new Date().toLocaleTimeString(),
       };
 
@@ -453,6 +475,11 @@ export default function PhotoboothWorkspace() {
     showToast('No Camera Connected', 'error', 3000, 'Connect a camera to capture photos');
   };
 
+  // Show no working folder warning toast
+  const handleShowNoWorkingFolderWarning = () => {
+    showToast('No Working Folder Set', 'warning', 5000, 'Select a folder in Photobooth settings');
+  };
+
   // Called when capture preview image has finished loading
   const handleCapturePreviewLoad = useCallback(() => {
     console.log('[PhotoboothWorkspace] handleCapturePreviewLoad called - sequenceState:', sequence.sequenceState, 'previewTimerStartedRef:', previewTimerStartedRef.current);
@@ -476,6 +503,12 @@ export default function PhotoboothWorkspace() {
     sequence.scrambleTick < stopTick ? (sequence.scrambleTick + offset) % 10 : 0;
 
   const togglePhotoSelection = (photoId: string) => {
+    // Completely lock photo selection when no set is selected
+    if (requiredPhotos === 0) {
+      showToast('No set selected', 'warning', 2000, 'Select a custom set in Control Center first');
+      return;
+    }
+
     setSelectedPhotos(prev => {
       const newSet = new Set(prev);
       if (newSet.has(photoId)) {
@@ -534,11 +567,26 @@ export default function PhotoboothWorkspace() {
     }
   };
 
-  // Handler for finalizing current session
+  // Handler for finalizing current session — switch to finalize view
   const handleFinalizeSession = () => {
-    // TODO: Implement finalize page navigation
-    console.log('[PhotoboothWorkspace] Finalize session clicked - to be implemented');
+    setFinalizeViewMode('finalize');
   };
+
+  const handleBackToCapture = () => {
+    setFinalizeViewMode('capture');
+    setFinalizeEditingZoneId(null); // Clear editing zone when going back
+  };
+
+  // Get selected photos in order (preserving capture order)
+  const getSelectedPhotosOrdered = () => {
+    return currentSetPhotos.filter(p => selectedPhotos.has(p.id));
+  };
+
+  // Derive session folder name for file paths
+  const sessionFolderName = (() => {
+    const sessionInfo = sessions.find(s => s.id === currentSession?.id);
+    return sessionInfo?.folderName || currentSession?.id || '';
+  })();
 
   const toggleSet = (setId: string) => {
     setExpandedSets(prev => {
@@ -736,7 +784,18 @@ export default function PhotoboothWorkspace() {
         )}
       </AnimatePresence>
 
-      <div className="photobooth-container">
+      <div className="photobooth-slide-container">
+        <AnimatePresence mode="sync">
+          {viewMode === 'capture' ? (
+            <motion.div
+              key="capture"
+              className="photobooth-container"
+              initial={false}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              transition={{ type: 'tween', duration: 0.35, ease: 'easeInOut' }}
+              style={{ position: 'absolute', inset: 0 }}
+            >
         {/* Main 16:9 Guest Display Area */}
         <div className="preview-area">
           <div className="preview-header">
@@ -753,7 +812,6 @@ export default function PhotoboothWorkspace() {
                     className={`mode-tab-compact ${displayMode === preset.id ? 'active' : ''}`}
                     onClick={() => {
                       setDisplayMode(preset.id);
-                      updateDisplayMode(preset.id);
                       setSelectedPhotoIndex(null);
                     }}
                     title={preset.description}
@@ -852,6 +910,7 @@ export default function PhotoboothWorkspace() {
             onStopIfActive={sequence.stopIfActive}
             onCaptureNow={sequence.captureNow}
             onShowNoCameraWarning={handleShowNoCameraWarning}
+            onShowNoWorkingFolderWarning={handleShowNoWorkingFolderWarning}
             getScrambledDigit={getScrambledDigit}
           />
         </div>
@@ -869,6 +928,29 @@ export default function PhotoboothWorkspace() {
           onLoadSession={loadSession}
           currentSessionId={currentSession?.id}
         />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="finalize"
+              className="photobooth-container finalize-mode"
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'tween', duration: 0.35, ease: 'easeInOut' }}
+              style={{ position: 'absolute', inset: 0 }}
+            >
+              <FinalizeView
+                frame={photoboothFrame!}
+                selectedPhotos={getSelectedPhotosOrdered()}
+                workingFolder={workingFolder!}
+                sessionFolderName={sessionFolderName}
+                onBack={handleBackToCapture}
+                updateGuestDisplay={updateGuestDisplay}
+                isSecondScreenOpen={isSecondScreenOpen}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Session Selection Modal */}

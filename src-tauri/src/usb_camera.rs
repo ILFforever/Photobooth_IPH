@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
-use tauri::Emitter;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UsbCamera {
@@ -96,6 +95,18 @@ impl CameraManager {
                         }
                     }
                     i += 1;
+                }
+
+                // EXCLUDE all printers - they should stay on Windows, not attach to VM
+                let product_lower = camera.product.to_lowercase();
+                if product_lower.contains("printer") {
+                    continue; // Skip all printers
+                }
+
+                // EXCLUDE Fuji ASK 400 Printer specifically (double protection)
+                // Printer: VendorId 04cb, ProductId 501a, Product "Photo Printer"
+                if camera.vendor_id.contains("04cb") && camera.product_id.contains("501a") {
+                    continue; // Skip Fuji ASK 400 printer
                 }
 
                 // Only include cameras (PTP class or camera-related keywords)

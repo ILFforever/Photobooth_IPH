@@ -12,9 +12,11 @@ import { AssetsProvider } from "./contexts/AssetsContext";
 import { QRProvider } from "./contexts/QRContext";
 import { CameraProvider } from "./contexts/CameraContext";
 import { PhotoboothSettingsProvider } from "./contexts/PhotoboothSettingsContext";
+import { PhotoboothProvider } from "./contexts/PhotoboothContext";
 import { LiveViewProvider } from "./contexts/LiveViewContext";
 import { VMProvider } from "./contexts/VMContext";
 import { ToastProvider, ToastContainer } from "./contexts/ToastContext";
+import { PrintSettingsProvider } from "./contexts/PrintSettingsContext";
 import "./components/PhotoboothView/GuestDisplay.css";
 
 // Determine which component to render based on the window label
@@ -52,12 +54,16 @@ async function renderApp() {
                   <WorkingFolderProvider>
                     <AssetsProvider>
                       <CollageProvider>
-                        <ToastProvider>
-                          <PhotoboothSettingsProvider>
-                            <AppComponent />
-                          </PhotoboothSettingsProvider>
-                          <ToastContainer />
-                        </ToastProvider>
+                        <PhotoboothProvider>
+                          <ToastProvider>
+                            <PhotoboothSettingsProvider>
+                              <PrintSettingsProvider>
+                                <AppComponent />
+                              </PrintSettingsProvider>
+                            </PhotoboothSettingsProvider>
+                            <ToastContainer />
+                          </ToastProvider>
+                        </PhotoboothProvider>
                       </CollageProvider>
                     </AssetsProvider>
                   </WorkingFolderProvider>

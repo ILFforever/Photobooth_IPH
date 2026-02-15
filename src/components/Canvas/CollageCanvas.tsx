@@ -266,23 +266,29 @@ function EditableZone({ zone, zIndex, frameWidth, frameHeight, isSelected, onSel
         switch (isResizing) {
           case 'resize-e':
             const rawWidthE = Math.max(minSize, zoneStart.width + deltaX);
-            updates.width = snapEnabled !== false ? applySnap(rawWidthE + zoneStart.x, frameWidth) + zoneStart.x - zoneStart.x : rawWidthE;
+            const rightEdgeE = rawWidthE + zoneStart.x;
+            const snappedRightE = snapEnabled !== false ? applySnap(rightEdgeE, frameWidth) : rightEdgeE;
+            updates.width = Math.round(snappedRightE === frameWidth ? frameWidth - zoneStart.x : rawWidthE);
             break;
           case 'resize-s':
             const rawHeightS = Math.max(minSize, zoneStart.height + deltaY);
-            updates.height = snapEnabled !== false ? applySnap(rawHeightS + zoneStart.y, frameHeight) + zoneStart.y - zoneStart.y : rawHeightS;
+            const bottomEdgeS = rawHeightS + zoneStart.y;
+            const snappedBottomS = snapEnabled !== false ? applySnap(bottomEdgeS, frameHeight) : bottomEdgeS;
+            updates.height = Math.round(snappedBottomS === frameHeight ? frameHeight - zoneStart.y : rawHeightS);
             break;
           case 'resize-w':
             const rawWidthW = Math.max(minSize, zoneStart.width - deltaX);
-            const finalXW = snapEnabled !== false && applySnap(zoneStart.x + zoneStart.width - rawWidthW, 0) === 0 ? zoneStart.x + zoneStart.width : rawWidthW;
-            updates.width = Math.round(finalXW === 0 ? zoneStart.x + zoneStart.width : rawWidthW);
-            updates.x = Math.round(finalXW === 0 ? 0 : zoneStart.x + zoneStart.width - finalXW);
+            const leftEdgeW = zoneStart.x + zoneStart.width - rawWidthW;
+            const snappedLeftW = snapEnabled !== false ? applySnap(leftEdgeW, 0) : leftEdgeW;
+            updates.width = Math.round(snappedLeftW === 0 ? zoneStart.x + zoneStart.width : rawWidthW);
+            updates.x = Math.round(snappedLeftW === 0 ? 0 : zoneStart.x + zoneStart.width - rawWidthW);
             break;
           case 'resize-n':
             const rawHeightN = Math.max(minSize, zoneStart.height - deltaY);
-            const finalYN = snapEnabled !== false && applySnap(zoneStart.y + zoneStart.height - rawHeightN, 0) === 0 ? zoneStart.y + zoneStart.height : rawHeightN;
-            updates.height = Math.round(finalYN === 0 ? zoneStart.y + zoneStart.height : rawHeightN);
-            updates.y = Math.round(finalYN === 0 ? 0 : zoneStart.y + zoneStart.height - finalYN);
+            const topEdgeN = zoneStart.y + zoneStart.height - rawHeightN;
+            const snappedTopN = snapEnabled !== false ? applySnap(topEdgeN, 0) : topEdgeN;
+            updates.height = Math.round(snappedTopN === 0 ? zoneStart.y + zoneStart.height : rawHeightN);
+            updates.y = Math.round(snappedTopN === 0 ? 0 : zoneStart.y + zoneStart.height - rawHeightN);
             break;
           case 'resize-ne':
             updates.width = Math.max(minSize, zoneStart.width + deltaX);
@@ -2120,11 +2126,12 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
                 ))
               ) : activeSidebarTab !== 'frames' && currentFrame ? (
                 <>
-                  {/* Image Zones - render non-selected first, then selected */}
-                  {currentFrame.zones.map((zone) => {
-                    if (selectedZone === zone.id) return null;
-                    return <ImageZone key={zone.id} zone={zone} />;
-                  })}
+                  {/* Image Zones - render non-selected zones first */}
+                  {currentFrame.zones
+                    .filter((zone) => zone.id !== selectedZone)
+                    .map((zone) => (
+                      <ImageZone key={zone.id} zone={zone} />
+                    ))}
                 </>
               ) : null}
 
@@ -2146,7 +2153,7 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
               {activeSidebarTab !== 'frames' && selectedZone && currentFrame && (() => {
                 const zone = currentFrame.zones.find(z => z.id === selectedZone);
                 if (!zone) return null;
-                return <ImageZone key={zone.id} zone={zone} />;
+                return <ImageZone key={`${zone.id}-selected`} zone={zone} />;
               })()}
 
               {/* Overlay Layers - Above Frames (z-index: 61-99) */}

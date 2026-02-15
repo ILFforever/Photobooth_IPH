@@ -35,6 +35,7 @@ export function CustomSetsSidebar() {
     setBackground,
     setBackgroundTransform,
     setAutoMatchBackground,
+    setBackgroundDimensions,
     captureCanvasThumbnail,
     overlays,
     setOverlays,
@@ -251,6 +252,26 @@ export function CustomSetsSidebar() {
       // Restore auto-match background state
       setAutoMatchBackground(set.autoMatchBackground);
 
+      // If auto-match is enabled and the background is an image, load its dimensions
+      if (set.autoMatchBackground && set.background.background_type === 'image') {
+        const bgValue = set.background.value.startsWith('asset://')
+          ? convertFileSrc(set.background.value.replace('asset://', ''))
+          : set.background.value;
+
+        const img = new Image();
+        img.src = bgValue;
+        img.onload = () => {
+          console.log('[CustomSetsSidebar] Background image loaded, dimensions:', img.width, 'x', img.height);
+          setBackgroundDimensions({ width: img.width, height: img.height });
+        };
+        img.onerror = () => {
+          console.error('[CustomSetsSidebar] Failed to load background image for dimensions');
+        };
+      } else if (!set.autoMatchBackground) {
+        // Clear background dimensions if auto-match is disabled
+        setBackgroundDimensions(null);
+      }
+
       // Restore overlays
       setOverlays(set.overlays || []);
 
@@ -440,7 +461,12 @@ export function CustomSetsSidebar() {
                   <p><strong>Current Configuration:</strong></p>
                   <p>Canvas: {canvasSize?.name} ({canvasSize?.width}x{canvasSize?.height})</p>
                   <p>Frame: {currentFrame?.name}</p>
-                  <p>Background: {backgrounds.find(bg => bg.value === background)?.name || 'Unknown'}</p>
+                  <p>Background: {(() => {
+                    const normalizedBg = background?.startsWith('http://asset.localhost/')
+                      ? `asset://${decodeURIComponent(background.replace('http://asset.localhost/', ''))}`
+                      : background;
+                    return backgrounds.find(bg => bg.value === background || bg.value === normalizedBg)?.name || 'Unknown';
+                  })()}</p>
                 </div>
                 <div className="form-actions">
                   <button

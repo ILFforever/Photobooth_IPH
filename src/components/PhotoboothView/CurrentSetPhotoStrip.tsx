@@ -3,6 +3,7 @@ import { ChevronRight, Image as ImageIcon, Check, FileCheck } from "lucide-react
 interface CurrentSetPhoto {
   id: string;
   thumbnailUrl: string;
+  fullUrl?: string;
   timestamp: string;
 }
 
@@ -83,8 +84,8 @@ export default function CurrentSetPhotoStrip({
           <button
             className="finalize-session-btn"
             onClick={onFinalize}
-            disabled={!workingFolder || selectedPhotos.size !== requiredPhotos}
-            title="View finalize page"
+            disabled={!workingFolder || requiredPhotos === 0 || selectedPhotos.size !== requiredPhotos}
+            title={requiredPhotos === 0 ? "Select a set first" : "View finalize page"}
           >
             <ChevronRight size={16} />
             <span>Next</span>
