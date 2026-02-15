@@ -511,6 +511,68 @@ error:
     return NULL;
 }
 
+/* Send camera_connected event to daemon for caching */
+static void send_camera_connected_event(Camera *camera, GPContext *context) {
+    if (g_status_fd < 0 || !camera) return;
+
+    CameraText summary;
+    char manufacturer[128] = "";
+    char model[128] = "";
+    char port[64] = "";
+    int ret;
+
+    // Get camera summary for manufacturer and model
+    ret = gp_camera_get_summary(camera, &summary, context);
+    if (ret >= GP_OK) {
+        const char *mfg_key = "Manufacturer:";
+        const char *mfg_pos = strstr(summary.text, mfg_key);
+        if (mfg_pos) {
+            mfg_pos += strlen(mfg_key);
+            while (*mfg_pos == ' ' || *mfg_pos == '\t') mfg_pos++;
+            int j = 0;
+            while (*mfg_pos && *mfg_pos != '\n' && *mfg_pos != '\r' && j < 127) {
+                manufacturer[j++] = *mfg_pos++;
+            }
+            manufacturer[j] = '\0';
+        }
+
+        const char *model_key = "Model:";
+        const char *model_pos = strstr(summary.text, model_key);
+        if (model_pos) {
+            model_pos += strlen(model_key);
+            while (*model_pos == ' ' || *model_pos == '\t') model_pos++;
+            int j = 0;
+            while (*model_pos && *model_pos != '\n' && *model_pos != '\r' && j < 127) {
+                model[j++] = *model_pos++;
+            }
+            model[j] = '\0';
+        }
+    }
+
+    // Get port info
+    GPPortInfo port_info;
+    ret = gp_camera_get_port_info(camera, &port_info);
+    if (ret >= GP_OK) {
+        char *port_path = NULL;
+        gp_port_info_get_path(port_info, &port_path);
+        if (port_path) {
+            snprintf(port, sizeof(port), "%s", port_path);
+        }
+    }
+
+    // Send camera_connected event
+    if (strlen(manufacturer) > 0 && strlen(model) > 0) {
+        char event[512];
+        snprintf(event, sizeof(event),
+                "{\"camera_connected\":[{\"id\":\"0\",\"manufacturer\":\"%s\",\"model\":\"%s\",\"port\":\"%s\",\"usb_version\":\"USB 3.x (5 Gbps)\"}]}\n",
+                manufacturer, model, port);
+        ssize_t written = write(g_status_fd, event, strlen(event));
+        if (written > 0) {
+            log_ts("controller: Sent camera_connected event: %s %s at %s\n", manufacturer, model, port);
+        }
+    }
+}
+
 /* Extract number from filename like DSCF0042.JPG */
 static int extract_file_number(const char *filename) {
     const char *p = filename;
@@ -1950,6 +2012,9 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    /* Send camera_connected event with full camera info to daemon for caching */
+    send_camera_connected_event(camera, context);
+
     /* Get initial file number before releasing */
     {
         char tmp[128];
@@ -2087,8 +2152,18 @@ int main(int argc, char *argv[]) {
                         (ts_end.tv_sec - ts_start.tv_sec) * 1000 + (ts_end.tv_nsec - ts_start.tv_nsec) / 1000000);
 
             } else if (strcmp(cmd_line, "STATUS") == 0) {
-                const char *mode_str = (mode == MODE_IDLE) ? "idle" :
-                                      (mode == MODE_CAPTURE) ? "capture" : "liveview";
+                /* Determine correct mode string - check streaming state first */
+                const char *mode_str;
+                if (g_streaming_active) {
+                    mode_str = "liveview_streaming";
+                } else if (mode == MODE_IDLE) {
+                    mode_str = "idle";
+                } else if (mode == MODE_CAPTURE) {
+                    mode_str = "capture";
+                } else {
+                    mode_str = "liveview";
+                }
+
                 if (g_status_fd >= 0) {
                     char status[128];
                     snprintf(status, sizeof(status), "{\"mode\":\"%s\"}\n", mode_str);
@@ -2437,6 +2512,13 @@ int main(int argc, char *argv[]) {
             }
 
             if (camera) {
+                // Send camera_connected event if this is a reconnection after disconnect
+                if (consecutive_open_failures > 0) {
+                    log_ts("controller: Camera reconnected after %d failures\n", consecutive_open_failures);
+                    send_camera_connected_event(camera, context);
+                }
+                consecutive_open_failures = 0;  /* Reset counter on success */
+
                 clock_gettime(CLOCK_MONOTONIC, &camera_open_end);
                 long camera_open_ms = (camera_open_end.tv_sec - cycle_start.tv_sec) * 1000 +
                                      (camera_open_end.tv_nsec - cycle_start.tv_nsec) / 1000000;
@@ -2499,9 +2581,22 @@ int main(int argc, char *argv[]) {
                 //         wb ? wb : "N/A");
 
                 if (g_status_fd >= 0) {
+                    /* Determine correct mode string - check streaming state first */
+                    const char *current_mode_str;
+                    if (g_streaming_active) {
+                        current_mode_str = "liveview_streaming";
+                    } else if (mode == MODE_IDLE) {
+                        current_mode_str = "idle";
+                    } else if (mode == MODE_CAPTURE) {
+                        current_mode_str = "capture";
+                    } else {
+                        current_mode_str = "liveview";
+                    }
+
                     char status_msg[1536];
                     snprintf(status_msg, sizeof(status_msg),
-                            "{\"mode\":\"idle\",\"shootingmode\":\"%s\",\"battery\":\"%s\",\"iso\":\"%s\",\"aperture\":\"%s\",\"shutter\":\"%s\",\"ev\":\"%s\",\"wb\":\"%s\"}\n",
+                            "{\"mode\":\"%s\",\"shootingmode\":\"%s\",\"battery\":\"%s\",\"iso\":\"%s\",\"aperture\":\"%s\",\"shutter\":\"%s\",\"ev\":\"%s\",\"wb\":\"%s\"}\n",
+                            current_mode_str,
                             shootingmode ? shootingmode : "",
                             battery ? battery : "",
                             iso ? iso : "",

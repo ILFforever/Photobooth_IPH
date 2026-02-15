@@ -118,11 +118,8 @@ export function useMjpegStream(streamUrl: string | null) {
             const blob = new Blob([jpegData], { type: 'image/jpeg' });
             const frameUrl = URL.createObjectURL(blob);
 
-            // Update current frame (cleanup old URL)
-            setCurrentFrame((prev) => {
-              if (prev) URL.revokeObjectURL(prev);
-              return frameUrl;
-            });
+            // Update current frame (cleanup handled by usePtpStream consumer)
+            setCurrentFrame(frameUrl);
 
             // Remove processed frame from buffer
             buffer = buffer.slice(jpegEnd);

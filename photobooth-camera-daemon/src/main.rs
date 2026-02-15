@@ -225,6 +225,11 @@ struct SharedState {
     liveview_active: Arc<tokio::sync::Mutex<bool>>,
     /// Cached camera status: camera_id -> (status_json, last_update_time)
     cached_status: Arc<tokio::sync::Mutex<HashMap<String, (serde_json::Value, std::time::Instant)>>>,
+    /// Cached camera info from controller (manufacturer, model, port)
+    /// Only populated when controller successfully connects to camera
+    cached_cameras: Arc<tokio::sync::Mutex<Vec<CameraInfo>>>,
+    /// Controller running flag
+    controller_active: Arc<tokio::sync::Mutex<bool>>,
 }
 
 impl SharedState {
@@ -234,6 +239,8 @@ impl SharedState {
             ws_tx: tx,
             liveview_active: Arc::new(tokio::sync::Mutex::new(false)),
             cached_status: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+            cached_cameras: Arc::new(tokio::sync::Mutex::new(Vec::new())),
+            controller_active: Arc::new(tokio::sync::Mutex::new(false)),
         }
     }
 }
@@ -269,10 +276,15 @@ impl CameraState {
             Ok(output) => {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                println!("gphoto2 list stdout: {}", stdout);
-                if !stderr.is_empty() {
+
+                // Only log if not silent (reduce spam)
+                if !stderr.contains("Could not claim the USB device") {
+                    println!("gphoto2 list stdout: {}", stdout);
+                }
+                if !stderr.is_empty() && !stderr.contains("Could not claim the USB device") {
                     eprintln!("gphoto2 list stderr: {}", stderr);
                 }
+
                 match serde_json::from_str::<Vec<CameraInfo>>(stdout.trim()) {
                     Ok(cameras) => cameras,
                     Err(e) => {
@@ -386,6 +398,8 @@ async fn start_controller_process(shared_state: &SharedState) {
         // This task will die when the controller dies and pipe closes
         let ws_tx = shared_state.ws_tx.clone();
         let cached_status = shared_state.cached_status.clone();
+        let cached_cameras = shared_state.cached_cameras.clone();
+        let controller_active = shared_state.controller_active.clone();
         let _status_monitor = tokio::spawn(async move {
             let mut retry_count = 0;
             loop {
@@ -396,11 +410,16 @@ async fn start_controller_process(shared_state: &SharedState) {
                         let mut line = String::new();
                         retry_count = 0; // Reset retry count on success
 
+                        // Mark controller as active
+                        *controller_active.lock().await = true;
+
                         loop {
                             line.clear();
                             match reader.read_line(&mut line).await {
                                 Ok(0) => {
                                     eprintln!("Status pipe closed (controller died?)");
+                                    // Mark controller as inactive
+                                    *controller_active.lock().await = false;
                                     break;
                                 }
                                 Ok(_) => {
@@ -416,6 +435,27 @@ async fn start_controller_process(shared_state: &SharedState) {
 
                                     // Parse and cache the status for /api/camera/status endpoint
                                     if let Ok(status_json) = serde_json::from_str::<serde_json::Value>(&trimmed) {
+                                        // Check for camera_connected event with full camera info
+                                        if let Some(camera_info_array) = status_json.get("camera_connected").and_then(|v| v.as_array()) {
+                                            println!("[status-pipe] Camera connected event, caching camera info");
+                                            // Parse camera info and cache it
+                                            let mut cameras_vec = Vec::new();
+                                            for cam in camera_info_array {
+                                                if let Ok(cam_info) = serde_json::from_value::<CameraInfo>(cam.clone()) {
+                                                    cameras_vec.push(cam_info);
+                                                }
+                                            }
+                                            if !cameras_vec.is_empty() {
+                                                *cached_cameras.lock().await = cameras_vec;
+                                            }
+                                        }
+
+                                        // Check for camera_disconnected event - clear cache
+                                        if status_json.get("type").and_then(|v| v.as_str()) == Some("camera_disconnected") {
+                                            println!("[status-pipe] Camera disconnected event, clearing camera cache");
+                                            cached_cameras.lock().await.clear();
+                                        }
+
                                         let mut cached = cached_status.lock().await;
                                         // Use "0" as default camera ID for single camera setup
                                         cached.insert("0".to_string(), (status_json, std::time::Instant::now()));
@@ -435,6 +475,7 @@ async fn start_controller_process(shared_state: &SharedState) {
                                 }
                                 Err(e) => {
                                     eprintln!("Error reading status pipe: {}", e);
+                                    *controller_active.lock().await = false;
                                     break;
                                 }
                             }
@@ -448,6 +489,7 @@ async fn start_controller_process(shared_state: &SharedState) {
                             continue;
                         } else {
                             eprintln!("Failed to open status pipe after {} attempts, giving up: {}", retry_count, e);
+                            *controller_active.lock().await = false;
                             break;
                         }
                     }
@@ -690,7 +732,33 @@ async fn handle_request(
         }
 
         (&Method::GET, "/api/cameras") => {
-            let cameras = state.list_cameras();
+            // Check if we have cached camera info from the controller
+            let controller_active = *shared_state.controller_active.lock().await;
+            let cached_cameras = shared_state.cached_cameras.lock().await.clone();
+
+            let cameras = if controller_active && !cached_cameras.is_empty() {
+                // Controller is running and has sent camera info - use cache to avoid USB conflict
+                println!("GET /api/cameras - returning cached info from controller (avoiding USB conflict)");
+                cached_cameras
+            } else if controller_active {
+                // Controller is running but hasn't sent camera info yet - don't call wrapper
+                // (it would fail with "Could not claim the USB device")
+                println!("GET /api/cameras - controller active but no cache yet, returning empty");
+                vec![]
+            } else {
+                // Controller is NOT active - safe to call gphoto2-wrapper list
+                println!("GET /api/cameras - controller not active, calling gphoto2-wrapper list");
+                let cameras = state.list_cameras();
+
+                // If we get "Unknown Camera", it means wrapper couldn't open the camera
+                // This shouldn't happen when controller is inactive, but log it if it does
+                if cameras.iter().any(|c| c.model == "Unknown Camera") {
+                    eprintln!("WARNING: Got 'Unknown Camera' even though controller is inactive");
+                }
+
+                cameras
+            };
+
             Some(make_api_response(cameras))
         }
 

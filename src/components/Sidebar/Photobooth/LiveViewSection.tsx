@@ -1,8 +1,7 @@
 import { ChevronDown, ChevronRight, HdmiPort, Usb, AlertTriangle, Info, X } from "lucide-react";
 import "./PhotoboothSidebar.css";
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useLiveView } from "../../../contexts/LiveViewContext";
-import { useMjpegStream } from "../../../hooks/useMjpegStream";
 
 type CollapsibleSection = 'camera' | 'liveview' | 'folder' | 'photobooth' | 'naming';
 type CaptureMethod = 'hdmi' | 'usbc';
@@ -15,6 +14,7 @@ interface LiveViewSectionProps {
 export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSectionProps) {
   const {
     hdmi,
+    ptp,
   } = useLiveView();
 
   const [captureMethod, setCaptureMethod] = useState<CaptureMethod>('hdmi');
@@ -26,18 +26,12 @@ export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSec
   const [videoStretchV, setVideoStretchV] = useState(100);
   const [isDragging, setIsDragging] = useState(false);
   const [isDraggingV, setIsDraggingV] = useState(false);
-  const [ptpStreamUrl, setPtpStreamUrl] = useState<string | null>(null);
-  const [ptpError, setPtpError] = useState<string | null>(null);
   const dropdownButtonRef = useRef<HTMLButtonElement>(null);
   const sliderRef = useRef<HTMLDivElement>(null);
   const sliderVRef = useRef<HTMLDivElement>(null);
 
-  // Use custom MJPEG decoder for PTP streaming
-  const { currentFrame: ptpFrame, error: ptpStreamError } = useMjpegStream(ptpStreamUrl);
-
   // Load HDMI devices when switching to HDMI mode
   useEffect(() => {
-    console.log('[LiveViewSection] Device load effect — captureMethod:', captureMethod);
     if (captureMethod === 'hdmi') {
       hdmi.loadDevices();
     }
@@ -45,71 +39,32 @@ export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSec
 
   // Auto start HDMI capture (keep running even when collapsed)
   useEffect(() => {
-    console.log('[LiveViewSection] HDMI capture effect — captureMethod:', captureMethod, 'selectedDevice:', hdmi.selectedDevice);
     if (captureMethod === 'hdmi' && hdmi.selectedDevice && !hdmi.isCapturing) {
-      console.log('[LiveViewSection] → Starting HDMI capture for:', hdmi.selectedDevice);
       hdmi.startCapture(hdmi.selectedDevice);
     } else if (captureMethod === 'hdmi' && !hdmi.selectedDevice && hdmi.isCapturing) {
-      console.log('[LiveViewSection] → Stopping HDMI capture (no device selected)');
       hdmi.stopCapture();
     }
   }, [hdmi.selectedDevice, captureMethod, hdmi.isCapturing]);
 
   // PTP streaming management for USB-C mode
   useEffect(() => {
-    const DAEMON_URL = 'http://localhost:58321'; // Tauri sidecar daemon URL
-
-    const startPtpStreaming = async () => {
-      try {
-        setPtpError(null);
-        // Start the PTP streaming on the daemon
-        const response = await fetch(`${DAEMON_URL}/api/liveview/ptp-stream/start`, {
-          method: 'POST',
-        });
-        const data = await response.json();
-
-        if (!data.success) {
-          throw new Error(data.error || 'Failed to start PTP streaming');
-        }
-
-        // Set the MJPEG stream URL with cache-busting timestamp
-        setPtpStreamUrl(`${DAEMON_URL}/api/liveview/ptp-stream?t=${Date.now()}`);
-        console.log('[LiveViewSection] PTP streaming started');
-      } catch (error) {
-        console.error('[LiveViewSection] Failed to start PTP streaming:', error);
-        setPtpError(error instanceof Error ? error.message : 'Unknown error');
-      }
-    };
-
-    const stopPtpStreaming = async () => {
-      try {
-        setPtpStreamUrl(null);
-        await fetch(`${DAEMON_URL}/api/liveview/ptp-stream/stop`, {
-          method: 'POST',
-        });
-        console.log('[LiveViewSection] PTP streaming stopped');
-      } catch (error) {
-        console.error('[LiveViewSection] Failed to stop PTP streaming:', error);
-      }
-    };
-
     if (captureMethod === 'usbc') {
       // Stop HDMI capture when in USB-C/PTP mode
       hdmi.stopCapture();
-      // Start PTP streaming
-      startPtpStreaming();
+      // Start PTP streaming via context hook
+      ptp.startStream();
     } else if (captureMethod === 'hdmi') {
       // Stop PTP streaming when in HDMI mode
-      stopPtpStreaming();
+      ptp.stopStream();
     }
 
     // Cleanup: stop PTP streaming on unmount
     return () => {
       if (captureMethod === 'usbc') {
-        stopPtpStreaming();
+        ptp.stopStream();
       }
     };
-  }, [captureMethod]);
+  }, [captureMethod, hdmi.stopCapture, ptp.startStream, ptp.stopStream]);
 
   const handleCaptureMethodChange = (method: CaptureMethod) => {
     if (method === 'usbc' && captureMethod === 'hdmi') {
@@ -222,16 +177,16 @@ export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSec
                   className="liveview-video"
                   alt="HDMI Live View"
                 />
-              ) : captureMethod === 'usbc' && ptpFrame ? (
+              ) : captureMethod === 'usbc' && ptp.frameUrl ? (
                 <img
-                  src={ptpFrame}
+                  src={ptp.frameUrl}
                   className="liveview-video"
                   alt="PTP Live Stream"
                 />
-              ) : captureMethod === 'usbc' && (ptpError || ptpStreamError) ? (
+              ) : captureMethod === 'usbc' && ptp.error ? (
                 <div className="liveview-error">
                   <AlertTriangle size={24} />
-                  <p>{ptpError || ptpStreamError}</p>
+                  <p>{ptp.error}</p>
                 </div>
               ) : (
                 <>

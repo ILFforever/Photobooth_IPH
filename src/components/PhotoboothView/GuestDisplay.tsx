@@ -49,10 +49,11 @@ export default function GuestDisplay() {
   // Center mode photo browsing
   const [centerBrowseIndex, setCenterBrowseIndex] = useState<number | null>(null);
 
-  // HDMI frame handling - listen to the same events as the main window
-  const [hdmiFrameUrl, setHdmiFrameUrl] = useState<string | null>(null);
+  // Live stream frame handling - supports both HDMI and PTP streams
+  const [liveStreamUrl, setLiveStreamUrl] = useState<string | null>(null);
   const prevUrlRef = useRef<string | null>(null);
-  const frameCountRef = useRef(0);
+  const hdmiFrameCountRef = useRef(0);
+  const ptpFrameCountRef = useRef(0);
 
   // Capture preview timer - auto-switch back to live view after photoReviewTime
   const previewTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -88,8 +89,8 @@ export default function GuestDisplay() {
 
     const setupHdmiListener = async () => {
       unlisten = await listen<string>('hdmi-frame', (event) => {
-        frameCountRef.current++;
-        if (frameCountRef.current === 1) {
+        hdmiFrameCountRef.current++;
+        if (hdmiFrameCountRef.current === 1) {
           console.log('[GuestDisplay] ✓ First HDMI frame received');
         }
 
@@ -102,10 +103,8 @@ export default function GuestDisplay() {
         }
         prevUrlRef.current = url;
 
-        setHdmiFrameUrl(url);
+        setLiveStreamUrl(url);
       });
-
-      console.log('[GuestDisplay] HDMI frame listener setup complete');
     };
 
     setupHdmiListener();
@@ -116,7 +115,42 @@ export default function GuestDisplay() {
       }
       if (prevUrlRef.current) {
         URL.revokeObjectURL(prevUrlRef.current);
+        prevUrlRef.current = null;
       }
+    };
+  }, []);
+
+  // Listen for PTP frames (USB-C streaming)
+  useEffect(() => {
+    let unlisten: UnlistenFn | null = null;
+
+    const setupPtpListener = async () => {
+      unlisten = await listen<string>('ptp-frame', (event) => {
+        ptpFrameCountRef.current++;
+        if (ptpFrameCountRef.current === 1) {
+          console.log('[GuestDisplay] ✓ First PTP frame received');
+        }
+
+        const blob = base64ToBlob(event.payload, 'image/jpeg');
+        const url = URL.createObjectURL(blob);
+
+        // Revoke previous URL to prevent memory leak
+        if (prevUrlRef.current) {
+          URL.revokeObjectURL(prevUrlRef.current);
+        }
+        prevUrlRef.current = url;
+
+        setLiveStreamUrl(url);
+      });
+    };
+
+    setupPtpListener();
+
+    return () => {
+      if (unlisten) {
+        unlisten();
+      }
+      // Note: prevUrlRef cleanup is shared with HDMI listener
     };
   }, []);
 
@@ -161,7 +195,6 @@ export default function GuestDisplay() {
         }),
       ]);
       unlisteners = [unlisten1, unlisten2, unlisten3, unlisten4, unlisten5];
-      console.log('[GuestDisplay] All listeners set up successfully');
     };
 
     setupListeners();
@@ -255,7 +288,7 @@ export default function GuestDisplay() {
             onPhotoDoubleClick={handlePhotoDoubleClick}
             onExitFullscreen={handleExitFullscreen}
             onNavClick={handleNavClick}
-            hdmiStreamUrl={hdmiFrameUrl}
+            hdmiStreamUrl={liveStreamUrl}
             showRecentPhotos={displayMode === 'center'}
             showCapturePreview={showCapturePreview}
             capturedPhotoUrl={capturedPhotoUrl}

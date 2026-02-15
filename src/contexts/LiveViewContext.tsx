@@ -1,9 +1,11 @@
 import { createContext, useContext, useEffect, useRef, ReactNode } from "react";
 import { useLiveViewManager, type LiveViewManagerState } from "../hooks/useLiveViewManager";
 import { useHdmiCapture, type HdmiCaptureState } from "../hooks/useHdmiCapture";
+import { usePtpStream, type PtpStreamState } from "../hooks/usePtpStream";
 
 interface LiveViewContextValue extends LiveViewManagerState {
   hdmi: HdmiCaptureState;
+  ptp: PtpStreamState;
 }
 
 const LiveViewContext = createContext<LiveViewContextValue | undefined>(undefined);
@@ -61,8 +63,9 @@ function StreamKeepAlive({ stream }: { stream: MediaStream | null }) {
 export function LiveViewProvider({ children }: { children: ReactNode }) {
   const manager = useLiveViewManager();
   const hdmi = useHdmiCapture();
+  const ptp = usePtpStream();
 
-  const value: LiveViewContextValue = { ...manager, hdmi };
+  const value: LiveViewContextValue = { ...manager, hdmi, ptp };
 
   return (
     <LiveViewContext.Provider value={value}>

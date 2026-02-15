@@ -81,7 +81,7 @@ export default function PhotoboothWorkspace() {
     createNewSession
   } = usePhotoboothSettings();
   const { captureError, clearCaptureError, isCameraConnected, hasEverConnected, isConnecting, addPhotoDownloadedListener, removePhotoDownloadedListener } = useCamera();
-  const { stream: liveViewStream, hdmi } = useLiveView();
+  const { stream: liveViewStream, hdmi, ptp } = useLiveView();
   const { showToast } = useToast();
   const { selectedCustomSetName } = useCollage();
   const { photoboothFrame, finalizeViewMode, setFinalizeViewMode, setFinalizeEditingZoneId } = usePhotobooth();
@@ -852,7 +852,7 @@ export default function PhotoboothWorkspace() {
                   onPhotoDoubleClick={setSelectedPhotoIndex}
                   onExitFullscreen={() => setSelectedPhotoIndex(null)}
                   liveViewStream={liveViewStream}
-                  hdmiStreamUrl={hdmi.frameUrl}
+                  hdmiStreamUrl={hdmi.frameUrl || ptp.frameUrl}
                   onNavClick={handleNavClick}
                   showGridOverlay={true}
                   showRecentPhotos={true}
