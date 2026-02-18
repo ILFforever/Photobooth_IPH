@@ -223,6 +223,8 @@ struct SharedState {
     ws_tx: broadcast::Sender<Message>,
     /// Live view active flag
     liveview_active: Arc<tokio::sync::Mutex<bool>>,
+    /// PTP streaming active flag
+    ptp_streaming_active: Arc<tokio::sync::Mutex<bool>>,
     /// Cached camera status: camera_id -> (status_json, last_update_time)
     cached_status: Arc<tokio::sync::Mutex<HashMap<String, (serde_json::Value, std::time::Instant)>>>,
     /// Cached camera info from controller (manufacturer, model, port)
@@ -238,6 +240,7 @@ impl SharedState {
         Self {
             ws_tx: tx,
             liveview_active: Arc::new(tokio::sync::Mutex::new(false)),
+            ptp_streaming_active: Arc::new(tokio::sync::Mutex::new(false)),
             cached_status: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             cached_cameras: Arc::new(tokio::sync::Mutex::new(Vec::new())),
             controller_active: Arc::new(tokio::sync::Mutex::new(false)),
@@ -767,6 +770,7 @@ async fn handle_request(
             ensure_storage_space(50).await;
 
             // Send CAPTURE command to controller
+            // Controller handles pause/resume of streaming gracefully
             match send_controller_command("CAPTURE").await {
                 Ok(_) => Some(make_api_response(serde_json::json!({
                     "success": true,
@@ -872,6 +876,7 @@ async fn handle_request(
             // Start continuous PTP streaming
             match send_controller_command("LIVEVIEW_STREAM_START").await {
                 Ok(_) => {
+                    *shared_state.ptp_streaming_active.lock().await = true;
                     Some(make_api_response(serde_json::json!({
                         "success": true,
                         "message": "PTP streaming started - connect to GET /api/liveview/ptp-stream to receive frames"
@@ -888,6 +893,7 @@ async fn handle_request(
             // Stop continuous PTP streaming
             match send_controller_command("LIVEVIEW_STREAM_STOP").await {
                 Ok(_) => {
+                    *shared_state.ptp_streaming_active.lock().await = false;
                     Some(make_api_response(serde_json::json!({
                         "success": true,
                         "message": "PTP streaming stopped"

@@ -17,6 +17,7 @@ import { LiveViewProvider } from "./contexts/LiveViewContext";
 import { VMProvider } from "./contexts/VMContext";
 import { ToastProvider, ToastContainer } from "./contexts/ToastContext";
 import { PrintSettingsProvider } from "./contexts/PrintSettingsContext";
+import { UploadQueueProvider } from "./contexts/UploadQueueContext";
 import "./components/PhotoboothView/GuestDisplay.css";
 
 // Determine which component to render based on the window label
@@ -56,11 +57,13 @@ async function renderApp() {
                       <CollageProvider>
                         <PhotoboothProvider>
                           <ToastProvider>
-                            <PhotoboothSettingsProvider>
-                              <PrintSettingsProvider>
-                                <AppComponent />
-                              </PrintSettingsProvider>
-                            </PhotoboothSettingsProvider>
+                            <UploadQueueProvider>
+                              <PhotoboothSettingsProvider>
+                                <PrintSettingsProvider>
+                                  <AppComponent />
+                                </PrintSettingsProvider>
+                              </PhotoboothSettingsProvider>
+                            </UploadQueueProvider>
                             <ToastContainer />
                           </ToastProvider>
                         </PhotoboothProvider>

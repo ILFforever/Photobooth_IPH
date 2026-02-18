@@ -9,6 +9,8 @@ export function useMjpegStream(streamUrl: string | null) {
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const rafIdRef = useRef<number | null>(null);
+  const pendingFrameRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!streamUrl) {
@@ -38,7 +40,6 @@ export function useMjpegStream(streamUrl: string | null) {
         }
 
         const reader = response.body.getReader();
-        const decoder = new TextDecoder();
         let buffer = new Uint8Array();
 
         const readChunk = async () => {
@@ -61,6 +62,9 @@ export function useMjpegStream(streamUrl: string | null) {
         };
 
         const parseFrames = () => {
+          let latestFrameUrl: string | null = null;
+          let foundFrame = false;
+
           while (true) {
             // Look for frame boundary: --FRAME\r\n
             const boundaryText = '--FRAME\r\n';
@@ -118,11 +122,32 @@ export function useMjpegStream(streamUrl: string | null) {
             const blob = new Blob([jpegData], { type: 'image/jpeg' });
             const frameUrl = URL.createObjectURL(blob);
 
-            // Update current frame (cleanup handled by usePtpStream consumer)
-            setCurrentFrame(frameUrl);
+            // Store as latest frame - consumer (usePtpStream) handles cleanup
+            latestFrameUrl = frameUrl;
+            foundFrame = true;
 
             // Remove processed frame from buffer
             buffer = buffer.slice(jpegEnd);
+          }
+
+          // Schedule state update using requestAnimationFrame to prevent excessive updates
+          // This ensures setState is called in sync with browser's paint cycle
+          if (foundFrame && latestFrameUrl) {
+            // Store the latest frame
+            pendingFrameRef.current = latestFrameUrl;
+
+            // Cancel any pending RAF update
+            if (rafIdRef.current !== null) {
+              cancelAnimationFrame(rafIdRef.current);
+            }
+
+            // Schedule a single state update on the next animation frame
+            rafIdRef.current = requestAnimationFrame(() => {
+              if (pendingFrameRef.current) {
+                setCurrentFrame(pendingFrameRef.current);
+                rafIdRef.current = null;
+              }
+            });
           }
         };
 
@@ -140,23 +165,6 @@ export function useMjpegStream(streamUrl: string | null) {
               }
             }
             if (found) return i;
-          }
-          return -1;
-        };
-
-        const findJpegStart = (data: Uint8Array): number => {
-          // Look for JPEG header \r\n\r\n followed by JPEG magic bytes
-          for (let i = 0; i < data.length - 4; i++) {
-            // Check for \r\n\r\n (end of headers)
-            if (
-              data[i] === 0x0d &&
-              data[i + 1] === 0x0a &&
-              data[i + 2] === 0x0d &&
-              data[i + 3] === 0x0a
-            ) {
-              // JPEG data starts after \r\n\r\n
-              return i + 4;
-            }
           }
           return -1;
         };
@@ -180,11 +188,13 @@ export function useMjpegStream(streamUrl: string | null) {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
-      // Cleanup current frame URL
-      setCurrentFrame((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return null;
-      });
+      // Cancel any pending RAF updates
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
+      // Note: Consumer (usePtpStream) handles blob URL cleanup
+      setCurrentFrame(null);
     };
   }, [streamUrl]);
 

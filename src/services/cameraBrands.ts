@@ -29,6 +29,8 @@ export interface CameraBrand {
     evSetting?: string; // e.g., '5010' for Fuji PTP property (uses mapped EV values)
     // Metering mode setting name
     meteringSetting?: string;
+    // Shooting mode setting name (gphoto2 widget name to write when changing mode)
+    modeSetting?: string; // e.g., 'autoexposuremode' for Canon, 'expprogram' for Fuji
     // Available metering mode choices for this brand
     meteringChoices?: string[];
     // Available focus mode choices for this brand
@@ -90,38 +92,79 @@ const CANON: CameraBrand = {
   id: 'canon',
   name: 'Canon',
   modeMap: {
+    // Standard PASM — use exact gphoto2 autoexposuremode strings as primary keys
     'P': 'P',
-    'Program': 'P',
-    'Tv': 'S', // Canon calls Shutter Priority "Tv" (Time Value)
-    'Time Value': 'S',
-    'Av': 'A', // Canon calls Aperture Priority "Av" (Aperture Value)
-    'Aperture Value': 'A',
-    'M': 'M',
-    'Manual': 'M',
-    'B': 'M', // Bulb mode
+    'TV': 'S',               // Canon Shutter Priority (gphoto2 string: "TV")
+    'AV': 'A',               // Canon Aperture Priority (gphoto2 string: "AV")
+    'Manual': 'M',           // Canon Manual (gphoto2 string: "Manual")
+    'Bulb': 'M',             // Bulb long-exposure maps to M
+    // Flexible-priority (Canon EOS R/RP/R5/R6 etc.)
+    'Fv': 'P',               // Flexible Value
+    // Depth of field AE (older Canon bodies)
+    'DEP': 'P',
+    'A_DEP': 'P',
+    // Custom / saved shooting modes
+    'Custom': 'M',           // gphoto2: "Custom"
+    'Lock': 'P',             // AE Lock mode
+    // Fully-automatic and scene modes — all map to P
+    'Green': 'P',            // Scene Intelligent Auto (green zone)
+    'Auto': 'P',
+    'CA': 'P',               // Creative Auto
+    'SCN': 'P',              // Scene mode selector
+    'Sports': 'P',
+    'Portrait': 'P',
+    'Landscape': 'P',
+    'Closeup': 'P',          // gphoto2 string: "Closeup" (not "Close-Up")
+    'Night Portrait': 'P',
+    'Handheld Night Scene': 'P',
+    'HDR Backlight Control': 'P',
+    'Flash Off': 'P',        // gphoto2 string: "Flash Off" (not "FlashOff")
+    'Hybrid Auto': 'P',
+    'Self Portrait': 'P',
+    'Food': 'P',
+    'Panning': 'P',
+    'Smooth skin': 'P',
+    // Creative filters — map to P (camera controls everything)
+    'Grainy B/W': 'P',
+    'Soft focus': 'P',
+    'Toy camera effect': 'P',
+    'Fish-eye effect': 'P',
+    'Water painting effect': 'P',
+    'Miniature effect': 'P',
+    'HDR art standard': 'P',
+    'HDR art vivid': 'P',
+    'HDR art bold': 'P',
+    'HDR art embossed': 'P',
   },
   settingMap: {},
   modeCapabilities: {
-    'P': { shutter: true, aperture: true, iso: true, ev: true, wb: true, metering: true, mode: true, focusmode: true },
-    'A': { shutter: false, aperture: true, iso: true, ev: true, wb: true, metering: true, mode: true, focusmode: true },
-    'S': { shutter: true, aperture: false, iso: true, ev: true, wb: true, metering: true, mode: true, focusmode: true },
-    'M': { shutter: true, aperture: true, iso: true, ev: false, wb: true, metering: true, mode: true, focusmode: true },
+    // P: camera selects shutter + aperture automatically (program shift exists but not settable per-value)
+    'P': { shutter: false, aperture: false, iso: true, ev: true, wb: true, metering: true, mode: true, focusmode: true },
+    'A': { shutter: false, aperture: true,  iso: true, ev: true, wb: true, metering: true, mode: true, focusmode: true },
+    'S': { shutter: true,  aperture: false, iso: true, ev: true, wb: true, metering: true, mode: true, focusmode: true },
+    'M': { shutter: true,  aperture: true,  iso: true, ev: false, wb: true, metering: true, mode: true, focusmode: true },
   },
   quirks: {
-    apertureSetting: 'aperture',
+    apertureSetting: 'aperture',          // Canon uses 'aperture' (under capturesettings), not 'f-number'
     evSetting: 'exposurecompensation',
+    meteringSetting: 'meteringmode',
+    modeSetting: 'autoexposuremode',      // Canon mode widget (not 'expprogram' like Fuji)
+    // gphoto2 Canon AF mode choices (exact strings from gphoto2 focusmode widget)
     focusModeChoices: ['One Shot', 'AI Servo', 'AI Focus'],
+    // Canon white balance: cameraValue (gphoto2 string) -> display label
     whiteBalanceLabels: {
       'Auto': 'Auto',
+      'AWB White': 'AWB White',
       'Daylight': 'Daylight',
       'Shadow': 'Shade',
       'Cloudy': 'Cloudy',
       'Tungsten': 'Tungsten',
       'Fluorescent': 'Fluorescent',
       'Flash': 'Flash',
-      'Manual': 'Custom',
-      'Color Temperature': 'K',
-      'AWB White': 'AWB White',
+      'Manual': 'Custom',          // Custom WB (grey card)
+      'Manual2': 'Custom 2',
+      'Manual3': 'Custom 3',
+      'Color Temperature': 'K',    // Kelvin
     },
   },
 };

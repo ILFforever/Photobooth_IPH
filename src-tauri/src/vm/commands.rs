@@ -3,26 +3,36 @@ use std::fs;
 use std::path::PathBuf;
 
 /// Read the VM console log file
-/// In dev mode, reads from linux-build/vbox-console.log
-/// In prod mode, path will be configured via app settings
+/// Production: reads from %LOCALAPPDATA%\Photobooth_IPH\logs\vbox-console.log
+/// Dev mode: falls back to linux-build/vbox-console.log
 #[tauri::command]
 pub async fn get_vm_logs(lines: Option<usize>) -> Result<VmLogsResponse, String> {
     let num_lines = lines.unwrap_or(100).min(1000); // Max 1000 lines
+
+    let mut possible_paths: Vec<PathBuf> = vec![];
+
+    // Production location: %LOCALAPPDATA%\Photobooth_IPH\logs\vbox-console.log
+    if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+        possible_paths.push(
+            PathBuf::from(local_app_data)
+                .join("Photobooth_IPH")
+                .join("logs")
+                .join("vbox-console.log"),
+        );
+    }
 
     // Get the current executable's directory to resolve relative paths
     let exe_dir = std::env::current_dir()
         .map_err(|e| format!("Failed to get current directory: {}", e))?;
 
-    // Try to find the log file in multiple possible locations
-    let mut possible_paths: Vec<PathBuf> = vec![
-        // Dev mode: in the linux-build folder (relative to exe dir)
-        exe_dir.join("linux-build").join("vbox-console.log"),
-        exe_dir.join("../linux-build").join("vbox-console.log"),
-        // Also try parent directory (for dev builds)
+    // Dev mode fallbacks: in the linux-build folder (relative to exe dir)
+    possible_paths.push(exe_dir.join("linux-build").join("vbox-console.log"));
+    possible_paths.push(exe_dir.join("../linux-build").join("vbox-console.log"));
+    possible_paths.push(
         exe_dir
             .join("../../linux-build")
             .join("vbox-console.log"),
-    ];
+    );
 
     // In development, also try the project root (up from src-tauri/target/debug)
     if cfg!(debug_assertions) {

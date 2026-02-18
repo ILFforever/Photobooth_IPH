@@ -33,7 +33,8 @@ export async function updateSessionDriveMetadata(
   sessionId: string,
   folderId: string | null,
   folderName: string | null,
-  folderLink: string | null
+  folderLink: string | null,
+  accountId?: string | null
 ): Promise<void> {
   await invoke("update_session_drive_metadata", {
     folderPath,
@@ -41,6 +42,7 @@ export async function updateSessionDriveMetadata(
     folderId,
     folderName,
     folderLink,
+    accountId,
   });
 }
 
@@ -97,7 +99,8 @@ export async function clearSessionDriveUploads(
 export async function initializeSessionDriveFolder(
   folderPath: string,
   sessionId: string,
-  parentFolderId: string | null
+  parentFolderId: string | null,
+  accountId?: string | null
 ): Promise<GoogleDriveMetadata> {
   // Extract base name from the working folder path
   const baseName = getBaseNameFromPath(folderPath);
@@ -116,13 +119,15 @@ export async function initializeSessionDriveFolder(
     sessionId,
     driveFolder.id,
     randomFolderName,
-    folderLink
+    folderLink,
+    accountId
   );
 
   return {
     folderId: driveFolder.id,
     folderName: randomFolderName,
     folderLink,
+    accountId,
     uploadedImages: [],
   };
 }
@@ -134,7 +139,8 @@ export async function ensureSessionDriveFolder(
   folderPath: string,
   sessionId: string,
   currentMetadata: GoogleDriveMetadata,
-  parentFolderId: string | null
+  parentFolderId: string | null,
+  accountId?: string | null
 ): Promise<GoogleDriveMetadata> {
   // If folder already exists, return current metadata
   if (currentMetadata.folderId) {
@@ -142,5 +148,5 @@ export async function ensureSessionDriveFolder(
   }
 
   // Otherwise, initialize a new folder
-  return await initializeSessionDriveFolder(folderPath, sessionId, parentFolderId);
+  return await initializeSessionDriveFolder(folderPath, sessionId, parentFolderId, accountId);
 }

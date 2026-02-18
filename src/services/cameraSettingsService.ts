@@ -54,8 +54,29 @@ export type MeteringValue = 'Evaluative' | 'Partial' | 'Spot' | 'Center-Weighted
 export type ModeValue = 'P' | 'A' | 'S' | 'M';
 export type FocusModeValue = 'AF-S' | 'AF-C' | 'MF';
 
-/** Export Fuji EV and ISO maps for use in UI components */
-export { FUJI_EV_MAP, FUJI_EV_REVERSE_MAP, FUJI_ISO_MAP, FUJI_ISO_REVERSE_MAP };
+/**
+ * Canon EV helpers
+ *
+ * Canon gphoto2 reports EV (exposurecompensation) as plain decimal strings with no
+ * "+" prefix on positive values: e.g., "-3", "-2.6", "-1.3", "0", "0.3", "1.6", "3".
+ * For display we add a "+" prefix to positive values.  Sending is the reverse.
+ */
+function canonEvToDisplay(cameraEv: string): string {
+  const num = parseFloat(cameraEv);
+  if (isNaN(num)) return cameraEv;
+  if (num > 0) return `+${cameraEv}`;
+  return cameraEv;
+}
+
+function canonEvToCamera(displayEv: string): string {
+  return displayEv.startsWith('+') ? displayEv.slice(1) : displayEv;
+}
+
+/** Export EV and ISO maps for use in UI components */
+export {
+  FUJI_EV_MAP, FUJI_EV_REVERSE_MAP, FUJI_ISO_MAP, FUJI_ISO_REVERSE_MAP,
+  canonEvToDisplay, canonEvToCamera,
+};
 
 interface CameraSettingsServiceConfig {
   cameraId?: string;
@@ -139,9 +160,11 @@ class CameraSettingsService {
    */
   async setMode(mode: ModeValue): Promise<boolean> {
     const cameraMode = this.getCameraModeName(mode);
-    console.log(`[CameraSettingsService] setMode: ${mode} -> camera mode: "${cameraMode}"`);
+    // Use brand-specific mode widget name (Canon: 'autoexposuremode', Fuji/others: 'expprogram')
+    const modeSetting = this.brand.quirks.modeSetting || 'expprogram';
+    console.log(`[CameraSettingsService] setMode: ${mode} -> camera mode: "${cameraMode}" (setting: ${modeSetting})`);
 
-    const result = await this.sendSetting('expprogram', cameraMode);
+    const result = await this.sendSetting(modeSetting, cameraMode);
 
     if (result && this.onSettingChangeCallback) {
       this.onSettingChangeCallback('mode', mode);
@@ -170,7 +193,7 @@ class CameraSettingsService {
    * Set aperture (f-number)
    */
   async setAperture(value: ApertureValue): Promise<boolean> {
-    console.log(`[CameraSettingsService] setAperture: ${value}`);
+    console.log(`[CameraSettingsService] setAperture: ${value}, brand: ${this.brand.name} (${this.brand.id}), apertureSetting: ${this.brand.quirks.apertureSetting}`);
 
     // Get brand-specific aperture setting name
     const settingName = this.brand.quirks.apertureSetting || 'f-number';
@@ -221,8 +244,8 @@ class CameraSettingsService {
     const evSetting = this.brand.quirks.evSetting || 'exposurecompensation';
     let sendValue = value;
 
-    // Only Fuji needs special EV value mapping (×1000 format)
     if (this.brand.id === 'fuji') {
+      // Fuji: convert display decimal to ×1000 integer format
       const mapped = FUJI_EV_MAP[value];
       if (mapped) {
         sendValue = mapped;
@@ -230,8 +253,12 @@ class CameraSettingsService {
       } else {
         console.warn(`[CameraSettingsService] No Fuji EV map entry for ${value}, sending as-is`);
       }
+    } else if (this.brand.id === 'canon') {
+      // Canon: strip "+" prefix — camera expects plain decimal (e.g., "+0.3" -> "0.3")
+      sendValue = canonEvToCamera(value);
+      console.log(`[CameraSettingsService] Canon EV: ${value} -> ${sendValue}`);
     }
-    // Canon and others use the value directly (e.g., "0", "-1", "+1")
+    // Others: use the value directly
 
     const result = await this.sendSetting(evSetting, sendValue);
 
@@ -327,10 +354,11 @@ class CameraSettingsService {
         };
         break;
       case 'canon':
+        // Exact gphoto2 meteringmode choices from canon.json
         meteringMap = {
-          'Evaluative': 'Evaluative metering',
-          'Partial': 'Partial metering',
-          'Spot': 'Spot metering',
+          'Evaluative': 'Evaluative',
+          'Partial': 'Partial',
+          'Spot': 'Spot',
           'Center-Weighted': 'Center-weighted average',
         };
         break;
@@ -456,8 +484,11 @@ class CameraSettingsService {
       }
       // Convert to display value using Fuji map (e.g., "-333" -> "-0.3")
       displayEv = FUJI_EV_REVERSE_MAP[evKey] || cameraEv;
+    } else if (this.brand.id === 'canon') {
+      // Canon: add "+" prefix to positive decimal values for display
+      displayEv = canonEvToDisplay(cameraEv);
     } else {
-      // Canon and others: EV values are already in display format (e.g., "0", "-1", "+1")
+      // Others: EV values already in display format
       displayEv = cameraEv;
     }
 
@@ -505,10 +536,14 @@ class CameraSettingsService {
     const displayValue = options[index];
 
     if (this.brand.id === 'fuji') {
-      // Fuji: Convert display value to ×1000 format
+      // Fuji: Convert display decimal to ×1000 format
       return FUJI_EV_MAP[displayValue] || displayValue;
     }
-    // Canon and others: Use display value directly
+    if (this.brand.id === 'canon') {
+      // Canon: strip "+" prefix before sending (camera expects plain decimal)
+      return canonEvToCamera(displayValue);
+    }
+    // Others: Use display value directly
     return displayValue;
   }
 
@@ -530,7 +565,11 @@ class CameraSettingsService {
         return formatted;
       });
     }
-    // Canon and others: EV choices are already in display format
+    if (this.brand.id === 'canon') {
+      // Canon: add "+" prefix to positive decimal EV values for display
+      return choices.map((v: string) => canonEvToDisplay(v));
+    }
+    // Others: EV choices are already in display format
     return choices;
   }
 
@@ -545,11 +584,15 @@ class CameraSettingsService {
     let mappedValue: string;
 
     if (this.brand.id === 'fuji') {
-      // Fuji: Convert display value to ×1000 format
+      // Fuji: Convert display decimal to ×1000 format
       mappedValue = FUJI_EV_MAP[displayValue] || displayValue;
       console.log(`[CameraSettingsService] Fuji EV conversion: ${displayValue} -> ${mappedValue} (setting: ${evSetting})`);
+    } else if (this.brand.id === 'canon') {
+      // Canon: strip "+" prefix — camera expects plain decimal (e.g., "+0.3" -> "0.3")
+      mappedValue = canonEvToCamera(displayValue);
+      console.log(`[CameraSettingsService] Canon EV: ${displayValue} -> ${mappedValue} (setting: ${evSetting})`);
     } else {
-      // Canon and others: Use display value directly
+      // Others: Use display value directly
       mappedValue = displayValue;
       console.log(`[CameraSettingsService] Setting EV: ${displayValue} (setting: ${evSetting})`);
     }
@@ -579,7 +622,7 @@ class CameraSettingsService {
         return v;
       });
     }
-    // Canon and others: ISO choices are already in display format ("Auto", "100", etc.)
+    // Others (including Canon): ISO choices are already in display format ("Auto", "100", etc.)
     return choices;
   }
 
@@ -592,7 +635,6 @@ class CameraSettingsService {
       // Fuji: Convert "Auto 1" etc. to "-1" etc.
       return FUJI_ISO_MAP[displayValue] || displayValue;
     }
-    // Canon and others: Use display value directly
     return displayValue;
   }
 
@@ -603,7 +645,6 @@ class CameraSettingsService {
     if (this.brand.id === 'fuji') {
       return FUJI_ISO_REVERSE_MAP[cameraValue] || cameraValue;
     }
-    // Canon and others: Camera value is already display-friendly
     return cameraValue;
   }
 
@@ -623,10 +664,11 @@ class CameraSettingsService {
     }
 
     if (this.brand.id === 'canon') {
+      // Exact gphoto2 meteringmode choices -> standard display names
       const canonMeteringMap: Record<string, string> = {
-        'Evaluative metering': 'Evaluative',
-        'Partial metering': 'Partial',
-        'Spot metering': 'Spot',
+        'Evaluative': 'Evaluative',
+        'Partial': 'Partial',
+        'Spot': 'Spot',
         'Center-weighted average': 'Center-Weighted',
       };
       return canonMeteringMap[cameraValue] || cameraValue;

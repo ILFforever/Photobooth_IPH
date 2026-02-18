@@ -45,7 +45,7 @@ function App() {
   const gallery = useGalleryState();
 
   // App mode state
-  const [appMode, setAppMode] = useState<AppMode>('collage');
+  const [appMode, setAppMode] = useState<AppMode>('photobooth');
 
   // UI state
   const [showAccountMenu, setShowAccountMenu] = useState(false);

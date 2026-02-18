@@ -1,6 +1,6 @@
 use crate::photobooth_sessions::types::{
-    DriveUploadedImage, GoogleDriveMetadata, PhotoboothSessionInfo, PtbPhoto, PtbSessionData,
-    PtbWorkspace,
+    DelaySettings, DriveUploadedImage, GoogleDriveMetadata, PhotoboothSessionInfo, PtbPhoto,
+    PtbSessionData, PtbWorkspace,
 };
 use crate::working_folder::commands::generate_cached_thumbnail_high_res;
 use std::fs;
@@ -138,6 +138,7 @@ async fn load_ptb_workspace_internal(folder_path: String) -> Result<(PtbWorkspac
             last_used_at: now,
             current_session_id: existing_sessions.first().map(|s| s.id.clone()),
             sessions: existing_sessions,
+            delay_settings: DelaySettings::default(),
         };
 
         // Save the new workspace to disk
@@ -181,6 +182,21 @@ pub async fn save_ptb_workspace(
 
     fs::write(&ptb_path, json).map_err(|e| format!("Failed to write .ptb file: {}", e))?;
 
+    Ok(())
+}
+
+/// Save delay settings to the .ptb workspace file
+#[tauri::command]
+pub async fn save_delay_settings(
+    folder_path: String,
+    delay_settings: DelaySettings,
+) -> Result<(), String> {
+    let (mut workspace, _) = load_ptb_workspace_internal(folder_path.clone()).await?;
+
+    workspace.delay_settings = delay_settings;
+    workspace.last_used_at = chrono::Utc::now().to_rfc3339();
+
+    save_ptb_workspace(folder_path, workspace).await?;
     Ok(())
 }
 
@@ -452,6 +468,7 @@ pub async fn update_session_drive_metadata(
     folder_id: Option<String>,
     folder_name: Option<String>,
     folder_link: Option<String>,
+    account_id: Option<String>,
 ) -> Result<(), String> {
     let (mut workspace, _) = load_ptb_workspace_internal(folder_path.clone()).await?;
 
@@ -459,6 +476,7 @@ pub async fn update_session_drive_metadata(
         session.google_drive_metadata.folder_id = folder_id;
         session.google_drive_metadata.folder_name = folder_name;
         session.google_drive_metadata.folder_link = folder_link;
+        session.google_drive_metadata.account_id = account_id;
         session.last_used_at = chrono::Utc::now().to_rfc3339();
 
         save_ptb_workspace(folder_path, workspace).await?;
@@ -834,4 +852,101 @@ pub async fn download_photo_from_daemon(
 
     println!("[Rust::download_photo_from_daemon] END - returning session");
     Ok(updated_session.unwrap())
+}
+
+/// Delete a photobooth session
+/// Removes the session folder from disk and removes it from the workspace
+#[tauri::command]
+pub async fn delete_photobooth_session(
+    folder_path: String,
+    session_id: String,
+) -> Result<(), String> {
+    println!("[delete_photobooth_session] Starting deletion for session: {}", session_id);
+
+    let (mut workspace, _) = load_ptb_workspace_internal(folder_path.clone()).await?;
+
+    // Find the session to get its folder name
+    let session_folder_name = workspace
+        .sessions
+        .iter()
+        .find(|s| s.id == session_id)
+        .map(|s| s.folder_name.clone());
+
+    if session_folder_name.is_none() {
+        println!("[delete_photobooth_session] Session not found: {}", session_id);
+        return Err(format!("Session not found: {}", session_id));
+    }
+
+    let session_folder_name = session_folder_name.unwrap();
+    println!(
+        "[delete_photobooth_session] Found session folder name: {}",
+        session_folder_name
+    );
+
+    // Delete the session folder from disk
+    let session_folder_path = std::path::Path::new(&folder_path).join(&session_folder_name);
+    println!(
+        "[delete_photobooth_session] Deleting folder: {:?}",
+        session_folder_path
+    );
+
+    if session_folder_path.exists() {
+        fs::remove_dir_all(&session_folder_path)
+            .map_err(|e| {
+                format!(
+                    "Failed to delete session folder '{}': {}",
+                    session_folder_path.display(),
+                    e
+                )
+            })?;
+        println!(
+            "[delete_photobooth_session] Successfully deleted folder: {:?}",
+            session_folder_path
+        );
+    } else {
+        println!(
+            "[delete_photobooth_session] Session folder does not exist: {:?}",
+            session_folder_path
+        );
+    }
+
+    // Remove session from workspace
+    let original_len = workspace.sessions.len();
+    workspace.sessions.retain(|s| s.id != session_id);
+
+    if workspace.sessions.len() == original_len {
+        println!(
+            "[delete_photobooth_session] WARN: Session was not in workspace list: {}",
+            session_id
+        );
+    } else {
+        println!(
+            "[delete_photobooth_session] Removed session from workspace, remaining: {}",
+            workspace.sessions.len()
+        );
+    }
+
+    // If the deleted session was the current session, clear current_session_id
+    // or set it to the first available session
+    if workspace.current_session_id.as_ref() == Some(&session_id) {
+        if let Some(first_session) = workspace.sessions.first() {
+            workspace.current_session_id = Some(first_session.id.clone());
+            println!(
+                "[delete_photobooth_session] Changed current session to: {}",
+                first_session.id
+            );
+        } else {
+            workspace.current_session_id = None;
+            println!(
+                "[delete_photobooth_session] No sessions remaining, cleared current_session_id"
+            );
+        }
+    }
+
+    // Save updated workspace
+    save_ptb_workspace(folder_path, workspace).await?;
+    println!("[delete_photobooth_session] Workspace saved successfully");
+
+    println!("[delete_photobooth_session] END - deletion complete");
+    Ok(())
 }

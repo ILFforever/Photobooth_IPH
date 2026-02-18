@@ -697,8 +697,18 @@ async fn generate_thumbnail_with_settings(
         .and_then(|n| n.to_str())
         .ok_or("Invalid filename")?;
 
-    let thumbnail_path = thumbnails_dir.join(format!("{}_{}", thumb_prefix, filename));
-    let metadata_path = thumbnails_dir.join(format!("{}_{}.meta", thumb_prefix, filename));
+    // Get parent folder name to prevent cache collisions between sessions with same filenames
+    // e.g., "Myshoot_001/photo_001.jpg" vs "Myshoot_002/photo_001.jpg" should have different thumbnails
+    let parent_folder = path_buf
+        .parent()
+        .and_then(|p| p.file_name())
+        .and_then(|n| n.to_str())
+        .unwrap_or("shared");
+
+    // Include parent folder in cache key for uniqueness
+    let cache_key = format!("{}--{}", parent_folder, filename);
+    let thumbnail_path = thumbnails_dir.join(format!("{}_{}", thumb_prefix, cache_key));
+    let metadata_path = thumbnails_dir.join(format!("{}_{}.meta", thumb_prefix, cache_key));
 
     // Check if thumbnail and metadata already exist and are newer than source
     if thumbnail_path.exists() && metadata_path.exists() {

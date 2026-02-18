@@ -34,7 +34,7 @@ export function PhotoboothSettingsSection({
       >
         <div className="collapsible-header-left">
           {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-          <span className="collapsible-title">Photobooth Settings</span>
+          <span className="collapsible-title">Delay Settings</span>
         </div>
       </button>
       {expanded && (

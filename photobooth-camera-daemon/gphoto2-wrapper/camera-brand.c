@@ -101,8 +101,43 @@ const BrandWidgets* get_widgets_for_brand(CameraBrand brand) {
 
 /*
  * Map Canon raw ISO values to display values.
- * Canon uses hex values like "0001" for ISO 100, "0002" for ISO 200, etc.
- * gphoto2 sometimes returns these as "Unknown value XXXX".
+ * Canon EOS cameras use PTP ISO speed codes over USB (EOS_ISOSpeed property).
+ * gphoto2 may return these as "Unknown value XXXX" on unsupported models.
+ *
+ * Canon ISO PTP encoding (EOS_ISOSpeed, 0x9203):
+ *   0x0000 = Auto
+ *   0x0028 = ISO 6 (extended low)
+ *   0x0030 = ISO 12
+ *   0x0038 = ISO 25
+ *   0x0040 = ISO 50
+ *   0x0048 = ISO 100   (base value, each full stop adds 8)
+ *   0x004B = ISO 125   (1/3 stop above 100)
+ *   0x004F = ISO 160   (2/3 stop above 100)
+ *   0x0050 = ISO 200
+ *   0x0053 = ISO 250
+ *   0x0057 = ISO 320
+ *   0x0058 = ISO 400
+ *   0x005B = ISO 500
+ *   0x005F = ISO 640
+ *   0x0060 = ISO 800
+ *   0x0063 = ISO 1000
+ *   0x0067 = ISO 1250
+ *   0x0068 = ISO 1600
+ *   0x006B = ISO 2000
+ *   0x006F = ISO 2500
+ *   0x0070 = ISO 3200
+ *   0x0073 = ISO 4000
+ *   0x0077 = ISO 5000
+ *   0x0078 = ISO 6400
+ *   0x0080 = ISO 12800
+ *   0x0088 = ISO 25600
+ *   0x0090 = ISO 51200
+ *   0x0098 = ISO 102400
+ *   0x00A0 = ISO 204800 (extended high, camera-dependent)
+ *
+ * Note: Most modern Canon cameras via gphoto2 return ISO as plain text
+ * (e.g., "100", "800", "Auto") — this function handles the rare "Unknown
+ * value XXXX" format seen on some older or partially-supported models.
  */
 const char* map_canon_iso_value(const char *raw_value) {
     if (!raw_value) return NULL;
@@ -114,37 +149,41 @@ const char* map_canon_iso_value(const char *raw_value) {
         /* Parse hex value */
         unsigned int hex_val = 0;
         if (sscanf(hex_str, "%x", &hex_val) == 1) {
-            /* Canon ISO mapping (hex to ISO) */
+            /* Canon EOS ISO PTP encoding */
             switch (hex_val) {
                 case 0x0000: return "Auto";
-                case 0x0001: return "100";
-                case 0x0002: return "200";
-                case 0x0003: return "400";
-                case 0x0004: return "400";
-                case 0x0005: return "800";
-                case 0x0006: return "800";
-                case 0x0007: return "1600";
-                case 0x0008: return "1600";
-                case 0x0009: return "3200";
-                case 0x000A: return "3200";
-                case 0x000B: return "6400";
-                case 0x000C: return "6400";
-                case 0x000D: return "12800";
-                case 0x000E: return "12800";
-                case 0x000F: return "25600";
-                case 0x0010: return "25600";
-                case 0x0011: return "51200";
-                case 0x0012: return "51200";
-                case 0x0013: return "102400";
-                case 0x0014: return "102400";
-                case 0x0015: return "204800";
-                case 0x0016: return "204800";
-                case 0x0017: return "409600";
-                case 0x0018: return "409600";
+                case 0x0028: return "6";
+                case 0x0030: return "12";
+                case 0x0038: return "25";
+                case 0x0040: return "50";
+                case 0x0048: return "100";
+                case 0x004B: return "125";
+                case 0x004F: return "160";
+                case 0x0050: return "200";
+                case 0x0053: return "250";
+                case 0x0057: return "320";
+                case 0x0058: return "400";
+                case 0x005B: return "500";
+                case 0x005F: return "640";
+                case 0x0060: return "800";
+                case 0x0063: return "1000";
+                case 0x0067: return "1250";
+                case 0x0068: return "1600";
+                case 0x006B: return "2000";
+                case 0x006F: return "2500";
+                case 0x0070: return "3200";
+                case 0x0073: return "4000";
+                case 0x0077: return "5000";
+                case 0x0078: return "6400";
+                case 0x0080: return "12800";
+                case 0x0088: return "25600";
+                case 0x0090: return "51200";
+                case 0x0098: return "102400";
+                case 0x00A0: return "204800";
             }
         }
     }
 
-    /* If not an unknown value or not mapped, return as-is */
+    /* Not an "Unknown value" format or no mapping found — return as-is */
     return raw_value;
 }

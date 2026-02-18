@@ -16,6 +16,7 @@ mod hdmi_capture;
 mod working_folder;
 mod custom_sets;
 mod photobooth_sessions;
+mod upload_queue;
 
 // Re-export state
 use state::AppState;
@@ -35,9 +36,13 @@ use utils::*;
 use working_folder::*;
 use custom_sets::*;
 use photobooth_sessions::*;
+use upload_queue::*;
+use upload_queue::queue::UploadQueue;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    use tauri::Manager;
+
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
@@ -47,6 +52,22 @@ pub fn run() {
             account: Mutex::new(None),
             root_folder: Mutex::new(None),
             upload_cancelled: Arc::new(AtomicBool::new(false)),
+        })
+        .manage(UploadQueueStateWrapper {
+            queue: Arc::new(UploadQueue::new()),
+        })
+        .setup(|app| {
+            // Set the app handle on the upload queue (processor will start lazily)
+            let queue_state = app.state::<UploadQueueStateWrapper>();
+
+            // Spawn a task to set the app handle asynchronously
+            let queue = queue_state.queue.clone();
+            let app_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                queue.set_app_handle(app_handle).await;
+            });
+
+            Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             // Google Drive
@@ -61,6 +82,7 @@ pub fn run() {
             get_root_folder,
             process_photos,
             cancel_upload,
+            upload_photo_to_drive,
             // File helpers
             select_folder,
             select_file,
@@ -99,7 +121,9 @@ pub fn run() {
             // Photobooth Sessions
             load_ptb_workspace,
             save_ptb_workspace,
+            save_delay_settings,
             create_photobooth_session,
+            delete_photobooth_session,
             list_photobooth_sessions,
             get_current_session,
             set_current_session,
@@ -112,6 +136,13 @@ pub fn run() {
             file_exists_in_session,
             save_file_to_session_folder,
             download_photo_from_daemon,
+            // Upload Queue
+            enqueue_upload_items,
+            get_session_upload_queue,
+            get_upload_queue_stats,
+            retry_upload,
+            cancel_queued_upload,
+            remove_session_uploads,
             // History
             get_history,
             clear_history,

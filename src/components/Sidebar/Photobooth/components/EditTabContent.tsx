@@ -58,18 +58,72 @@ export function EditTabContent({ zoneId, placedImage, onUpdate }: EditTabContent
 
   return (
     <div className="edit-tab-content" style={{ padding: '12px 16px' }}>
-      {/* Single Preview Element with Zone Name Overlay */}
+      {/* Zone Name Header */}
+      <div style={{
+        marginBottom: '12px',
+        padding: '10px 12px',
+        background: 'linear-gradient(135deg, #1f1f1f 0%, #0f0f0f 100%)',
+        borderRadius: '10px',
+        border: '1px solid #282828',
+        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.4)',
+      }}>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+        }}>
+          <div style={{
+            width: '32px',
+            height: '32px',
+            borderRadius: '8px',
+            background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 2px 8px rgba(59, 130, 246, 0.4)',
+          }}>
+            <span style={{
+              fontSize: '14px',
+              fontWeight: 800,
+              color: '#fff',
+              marginTop: '-2px',
+            }}>
+              {zoneIndex + 1}
+            </span>
+          </div>
+          <div>
+            <div style={{
+              fontSize: '13px',
+              fontWeight: 700,
+              color: '#fff',
+              letterSpacing: '0.5px',
+              textTransform: 'uppercase',
+            }}>
+              {zoneName}
+            </div>
+            <div style={{
+              fontSize: '10px',
+              color: '#666',
+              fontWeight: 500,
+              marginTop: '1px',
+            }}>
+              Photo Editing
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Full-Width Preview */}
       <div style={{
         position: 'relative',
-        width: '140px',
-        height: '140px',
-        margin: '0 auto 16px',
+        width: '100%',
+        height: '180px',
+        marginBottom: '14px',
         background: 'linear-gradient(145deg, #1f1f1f, #0f0f0f)',
         borderRadius: '12px',
         padding: '8px',
         boxShadow: '0 4px 16px rgba(0, 0, 0, 0.5), inset 0 1px 2px rgba(255, 255, 255, 0.05)',
       }}>
-        {/* Photo Preview */}
         <div
           className="edit-tab-preview"
           style={{
@@ -101,29 +155,6 @@ export function EditTabContent({ zoneId, placedImage, onUpdate }: EditTabContent
             }}
             draggable={false}
           />
-        </div>
-
-        {/* Zone Name Badge - Top Left Overlay */}
-        <div style={{
-          position: 'absolute',
-          top: '12px',
-          left: '12px',
-          background: 'rgba(59, 130, 246, 0.95)',
-          backdropFilter: 'blur(8px)',
-          padding: '4px 10px',
-          borderRadius: '6px',
-          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
-          border: '1px solid rgba(255, 255, 255, 0.1)',
-        }}>
-          <span style={{
-            fontSize: '10px',
-            color: '#fff',
-            fontWeight: 700,
-            letterSpacing: '0.8px',
-            textTransform: 'uppercase',
-          }}>
-            {zoneName}
-          </span>
         </div>
       </div>
 

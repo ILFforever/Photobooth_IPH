@@ -26,6 +26,7 @@ interface FinalizeViewProps {
     [key: string]: any;
   }) => void;
   isSecondScreenOpen: boolean;
+  openSecondScreen: () => void;
 }
 
 export default function FinalizeView({
@@ -36,6 +37,7 @@ export default function FinalizeView({
   onBack,
   updateGuestDisplay,
   isSecondScreenOpen,
+  openSecondScreen,
 }: FinalizeViewProps) {
   const {
     photoboothBackground: background,
@@ -470,6 +472,13 @@ export default function FinalizeView({
       return;
     }
 
+    // Auto-open second screen if not already open
+    if (!isSecondScreenOpen) {
+      openSecondScreen();
+      // Wait a moment for the second screen to open
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
     setIsCompositing(true);
     try {
       const dataUrl = await compositeFrame();
@@ -483,7 +492,7 @@ export default function FinalizeView({
     } finally {
       setIsCompositing(false);
     }
-  }, [isDisplayingOnGuest, compositeFrame, updateGuestDisplay]);
+  }, [isDisplayingOnGuest, isSecondScreenOpen, compositeFrame, updateGuestDisplay, openSecondScreen]);
 
   // Sorted overlay layers for rendering
   const belowFrameOverlays = useMemo(() =>
@@ -544,11 +553,9 @@ export default function FinalizeView({
           <button
             className={`finalize-display-btn ${isDisplayingOnGuest ? 'active' : ''}`}
             onClick={handleToggleDisplay}
-            disabled={!isSecondScreenOpen || isCompositing || placedImages.size === 0}
+            disabled={isCompositing || placedImages.size === 0}
             title={
-              !isSecondScreenOpen
-                ? 'Open second screen first'
-                : isDisplayingOnGuest
+              isDisplayingOnGuest
                 ? 'Clear from display'
                 : 'Send to guest display'
             }

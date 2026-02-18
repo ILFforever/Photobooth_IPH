@@ -95,7 +95,7 @@ export function CameraProvider({ children }: { children: ReactNode }) {
   const wasCameraConnectedRef = useRef(false);
   // Count consecutive empty status messages (to avoid false disconnects during capture)
   const emptyStatusCountRef = useRef(0);
-  const DISCONNECT_THRESHOLD = 3; // Require 3 consecutive empty statuses before marking disconnected
+  const DISCONNECT_THRESHOLD = 3; // Require 3 consecutive empty statuses before marking disconnected (~4.5 seconds)
 
   const addStatusListener = useCallback((cb: (status: CameraStatus) => void) => {
     statusListenersRef.current.add(cb);
@@ -182,7 +182,9 @@ export function CameraProvider({ children }: { children: ReactNode }) {
 
       // Detect if a real camera is connected based on status data
       // Check for meaningful values (not defaults like empty strings or generic values)
+      // NOTE: "liveview_streaming" or "liveview" mode alone proves camera is connected!
       const hasRealData = Boolean(
+        (data.mode === 'liveview_streaming' || data.mode === 'liveview') ||  // Streaming/liveview = camera connected
         (data.shootingmode && data.shootingmode !== '' && data.shootingmode !== 'undefined') ||
         (data.battery && data.battery !== '' && data.battery !== '0') ||
         (data.iso && data.iso !== '') ||

@@ -35,15 +35,38 @@ export function usePtpStream(): PtpStreamState {
   const emitIntervalRef = useRef(0);
 
   // Use MJPEG decoder to get individual frames
-  const { currentFrame, error: streamError } = useMjpegStream(streamUrl);
+  const { currentFrame, error: streamError, isStreaming: streamActive } = useMjpegStream(streamUrl);
 
-  // Handle stream errors
+  // Handle stream errors and auto-reconnect after capture
   useEffect(() => {
     if (streamError) {
       console.error('[usePtpStream] Stream error:', streamError);
       setError(streamError);
     }
   }, [streamError]);
+
+  // Auto-reconnect when stream stops during capture
+  useEffect(() => {
+    // If we're supposed to be streaming but the stream stopped, reconnect
+    // This happens when controller closes pipe during capture (~300ms interruption)
+    // Only reconnect if there's no error (errors mean real problems, not capture)
+    if (streamingRef.current && !streamActive && streamUrl !== null && !error) {
+      console.log('[usePtpStream] Stream interrupted, reconnecting in 400ms...');
+
+      const reconnectTimer = setTimeout(() => {
+        // Double-check we still want to be streaming and no error occurred
+        if (streamingRef.current && !error) {
+          console.log('[usePtpStream] Reconnecting to stream...');
+          // Refresh URL to trigger useMjpegStream to reconnect
+          setStreamUrl(`${DAEMON_URL}/api/liveview/ptp-stream?t=${Date.now()}`);
+        } else {
+          console.log('[usePtpStream] Reconnect cancelled (stopped or error)');
+        }
+      }, 400); // Wait for capture to complete (300ms) + buffer
+
+      return () => clearTimeout(reconnectTimer);
+    }
+  }, [streamActive, streamUrl, error]);
 
   // When a new frame arrives, emit it as a Tauri event for guest display
   // and update local state
@@ -108,7 +131,7 @@ export function usePtpStream(): PtpStreamState {
       return;
     }
 
-    setError(null);
+    setError(null); // Clear any previous errors
     streamingRef.current = true;
     setIsStreaming(true);
     frameCountRef.current = 0;
@@ -152,6 +175,7 @@ export function usePtpStream(): PtpStreamState {
     streamingRef.current = false;
     setIsStreaming(false);
     setStreamUrl(null);
+    setError(null); // Clear error state to prevent reconnect interference
 
     // Cleanup current frame URL
     if (prevUrlRef.current) {

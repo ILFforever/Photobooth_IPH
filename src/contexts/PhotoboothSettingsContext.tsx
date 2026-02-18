@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, ReactNode,
 import { invoke } from '@tauri-apps/api/core';
 import { useToast } from './ToastContext';
 import * as sessionDrive from '../utils/sessionDrive';
+import { useAuth } from './AuthContext';
 
 // Google Drive uploaded image metadata
 export interface DriveUploadedImage {
@@ -15,6 +16,7 @@ export interface GoogleDriveMetadata {
   folderId?: string | null;
   folderName?: string | null;
   folderLink?: string | null;
+  accountId?: string | null;  // Email of the account that created the folder
   uploadedImages: DriveUploadedImage[];
 }
 
@@ -62,33 +64,43 @@ interface PhotoboothSettingsContextType {
   setWorkingFolder: (folder: string | null) => void;
   photoNamingScheme: string;
   setPhotoNamingScheme: (scheme: string) => void;
+  qrUploadAllImages: boolean;
+  setQrUploadAllImages: (value: boolean) => void;
+  // Delay settings loaded from .ptb
+  delaySettingsLoaded: boolean;
   // Session management
   currentSession: PhotoboothSession | null;
   sessions: PhotoboothSessionInfo[];
   refreshSessions: () => Promise<void>;
   createNewSession: (name: string) => Promise<PhotoboothSessionInfo>;
+  deleteSession: (sessionId: string) => Promise<void>;
   loadSession: (sessionId: string) => Promise<void>;
   setCurrentSession: (sessionId: string) => Promise<void>;
   updateSessionShotCount: (sessionId: string, shotCount: number) => void;
   updateCurrentSessionFromDownload: (ptbSession: PhotoboothSession, newPhotoFilename?: string) => void;
   isLoadingSessions: boolean;
   // Google Drive metadata management
-  updateSessionDriveFolder: (sessionId: string, folderId: string | null, folderName: string | null, folderLink: string | null) => Promise<void>;
+  updateSessionDriveFolder: (sessionId: string, folderId: string | null, folderName: string | null, folderLink: string | null, accountId?: string | null) => Promise<void>;
   addDriveUploadToSession: (sessionId: string, filename: string, driveFileId: string) => Promise<void>;
   checkImageUploadedToDrive: (sessionId: string, filename: string) => Promise<boolean>;
   clearDriveUploadsForSession: (sessionId: string) => Promise<void>;
+  createDriveFolderForSession: (sessionId: string, sessionName: string) => Promise<void>;
+  deleteDriveFolderForSession: (sessionId: string, folderId: string | null, sessionName: string) => Promise<void>;
 }
 
 const PhotoboothSettingsContext = createContext<PhotoboothSettingsContextType | undefined>(undefined);
 
 export function PhotoboothSettingsProvider({ children }: { children: ReactNode }) {
   const { showToast } = useToast();
+  const { account, rootFolder } = useAuth();
   const [autoCount, setAutoCount] = useState(3);
   const [timerDelay, setTimerDelay] = useState(5);
   const [delayBetweenPhotos, setDelayBetweenPhotos] = useState(2);
   const [photoReviewTime, setPhotoReviewTime] = useState(3);
   const [workingFolder, setWorkingFolder] = useState<string | null>(null);
   const [photoNamingScheme, setPhotoNamingScheme] = useState('IPH_{number}');
+  const [qrUploadAllImages, setQrUploadAllImages] = useState(false);
+  const [delaySettingsLoaded, setDelaySettingsLoaded] = useState(false);
 
   // Session management state
   const [currentSession, setCurrentSession] = useState<PhotoboothSession | null>(null);
@@ -97,6 +109,98 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
 
   // Track last folder to detect when folder changes
   const lastFolderRef = useRef<string | null>(null);
+
+  // Save delay settings to .ptb file when they change
+  useEffect(() => {
+    if (workingFolder && delaySettingsLoaded) {
+      const saveDelaySettings = async () => {
+        try {
+          await invoke('save_delay_settings', {
+            folderPath: workingFolder,
+            delaySettings: {
+              autoCount,
+              timerDelay,
+              delayBetweenPhotos,
+              photoReviewTime,
+            },
+          });
+        } catch (error) {
+          console.error('Failed to save delay settings:', error);
+        }
+      };
+      saveDelaySettings();
+    }
+  }, [autoCount, timerDelay, delayBetweenPhotos, photoReviewTime, workingFolder, delaySettingsLoaded]);
+
+  // Helper function to create Drive folder for a session with validation and alerts
+  const createDriveFolderForSession = useCallback(async (
+    sessionId: string,
+    sessionName: string
+  ): Promise<void> => {
+    console.log('[createDriveFolderForSession] Called with:', { sessionId, sessionName, account, workingFolder, rootFolder });
+
+    // Check if user is logged in
+    if (!account) {
+      console.log('[createDriveFolderForSession] No account, showing warning');
+      showToast(
+        'Google Drive Not Connected',
+        'warning',
+        5000,
+        'Please login to Google Drive to auto-create session folders'
+      );
+      return;
+    }
+
+    // Check if working folder is set
+    if (!workingFolder) {
+      console.log('[createDriveFolderForSession] No working folder, showing warning');
+      showToast(
+        'Working Folder Not Set',
+        'warning',
+        5000,
+        'Please set a working folder in Photobooth Settings'
+      );
+      return;
+    }
+
+    // Check if Drive root folder is set
+    if (!rootFolder) {
+      console.log('[createDriveFolderForSession] No root folder, showing warning');
+      showToast(
+        'Drive Folder Not Configured',
+        'warning',
+        5000,
+        'Please select a Google Drive folder in Photobooth Settings > QR Settings'
+      );
+      return;
+    }
+
+    console.log('[createDriveFolderForSession] All validations passed, creating Drive folder...');
+    try {
+      await sessionDrive.initializeSessionDriveFolder(
+        workingFolder,
+        sessionId,
+        rootFolder.id,
+        account?.email
+      );
+      showToast(
+        'Drive Folder Created',
+        'success',
+        4000,
+        `Folder created for session: ${sessionName}`
+      );
+      // Refresh sessions to update UI with new Drive metadata
+      await refreshSessions();
+    } catch (error) {
+      console.error('Failed to create Drive folder:', error);
+      showToast(
+        'Failed to Create Drive Folder',
+        'error',
+        5000,
+        error instanceof Error ? error.message : 'Unknown error occurred'
+      );
+    }
+  }, [account, workingFolder, rootFolder, showToast]);
 
   // Refresh the list of sessions
   const refreshSessions = useCallback(async () => {
@@ -108,6 +212,40 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
         folderPath: workingFolder,
       });
       setSessions(sessionList);
+
+      // Load workspace to get delay settings
+      const workspace = await invoke<any>('load_ptb_workspace', {
+        folderPath: workingFolder,
+      });
+
+      // Load delay settings if they exist in the workspace
+      if (workspace.delaySettings) {
+        const { autoCount: ac, timerDelay: td, delayBetweenPhotos: dbp, photoReviewTime: prt } = workspace.delaySettings;
+        const newSettings = {
+          autoCount: ac ?? 3,
+          timerDelay: td ?? 5,
+          delayBetweenPhotos: dbp ?? 2,
+          photoReviewTime: prt ?? 3,
+        };
+        setAutoCount(newSettings.autoCount);
+        setTimerDelay(newSettings.timerDelay);
+        setDelayBetweenPhotos(newSettings.delayBetweenPhotos);
+        setPhotoReviewTime(newSettings.photoReviewTime);
+        setDelaySettingsLoaded(true);
+
+        // Show toast when settings are loaded from .ptb file
+        if (lastFolderRef.current !== workingFolder) {
+          showToast(
+            'Settings Applied',
+            'info',
+            4000,
+            `Loaded: ${newSettings.autoCount} photos, ${newSettings.timerDelay}s start, ${newSettings.delayBetweenPhotos}s between, ${newSettings.photoReviewTime}s review`
+          );
+        }
+      } else {
+        // No delay settings in workspace, set defaults
+        setDelaySettingsLoaded(false);
+      }
 
       // If no sessions exist, create one automatically
       if (sessionList.length === 0) {
@@ -135,6 +273,9 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
         showToast('New workspace created', 'success', 3000, 'Session 1 ready');
         lastFolderRef.current = workingFolder;
         setIsLoadingSessions(false);
+
+        // Create Drive folder for the new session
+        await createDriveFolderForSession(newSession.id, newSession.name);
         return;
       }
 
@@ -142,8 +283,8 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
       if (ptbCreated) {
         showToast('New workspace created', 'success', 3000, 'Ready to start capturing photos');
       } else {
-        // Only show "loaded" toast if folder actually changed
-        if (lastFolderRef.current !== workingFolder) {
+        // Only show "loaded" toast if folder actually changed and we haven't shown settings toast
+        if (lastFolderRef.current !== workingFolder && !workspace.delaySettings) {
           const sessionCount = sessionList.length;
           showToast(`${sessionCount} session${sessionCount !== 1 ? 's' : ''} loaded`, 'info', 3000);
         }
@@ -176,7 +317,7 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
     } finally {
       setIsLoadingSessions(false);
     }
-  }, [workingFolder, showToast]);
+  }, [workingFolder, showToast, setAutoCount, setTimerDelay, setDelayBetweenPhotos, setPhotoReviewTime, createDriveFolderForSession]);
 
   // Create a new session
   const createNewSession = useCallback(async (name: string) => {
@@ -190,8 +331,32 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
     });
 
     await refreshSessions();
+
+    // Create Drive folder for the new session
+    await createDriveFolderForSession(sessionInfo.id, sessionInfo.name);
+
     return sessionInfo;
-  }, [workingFolder, refreshSessions]);
+  }, [workingFolder, refreshSessions, createDriveFolderForSession]);
+
+  // Delete a session
+  const deleteSession = useCallback(async (sessionId: string) => {
+    if (!workingFolder) {
+      throw new Error('Working folder must be set first');
+    }
+
+    await invoke('delete_photobooth_session', {
+      folderPath: workingFolder,
+      sessionId,
+    });
+
+    // Refresh sessions to update UI
+    await refreshSessions();
+
+    // If the deleted session was the current session, clear it
+    if (currentSession?.id === sessionId) {
+      setCurrentSession(null);
+    }
+  }, [workingFolder, refreshSessions, currentSession]);
 
   // Load a session's data
   const loadSession = useCallback(async (sessionId: string) => {
@@ -289,7 +454,8 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
     sessionId: string,
     folderId: string | null,
     folderName: string | null,
-    folderLink: string | null
+    folderLink: string | null,
+    accountId?: string | null
   ) => {
     if (!workingFolder) {
       throw new Error('Working folder must be set first');
@@ -300,7 +466,8 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
       sessionId,
       folderId,
       folderName,
-      folderLink
+      folderLink,
+      accountId
     );
 
     // Update the session in the local state
@@ -313,6 +480,7 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
               folderId,
               folderName,
               folderLink,
+              accountId,
             }
           }
         : s
@@ -389,6 +557,52 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
     ));
   }, [workingFolder]);
 
+  // Delete Drive folder for a session
+  const deleteDriveFolderForSession = useCallback(async (
+    sessionId: string,
+    folderId: string | null,
+    sessionName: string
+  ): Promise<void> => {
+    if (!account) {
+      showToast(
+        'Google Drive Not Connected',
+        'warning',
+        5000,
+        'Please login to Google Drive to delete session folders'
+      );
+      return;
+    }
+
+    try {
+      // If folderId exists, try to delete the actual folder from Google Drive
+      if (folderId) {
+        const { deleteDriveFolder } = await import('../utils/driveFolder');
+        await deleteDriveFolder(folderId);
+      }
+
+      // Clear the Drive metadata from the session
+      await updateSessionDriveFolder(sessionId, null, null, null);
+
+      // Clear uploaded images tracking
+      await clearDriveUploadsForSession(sessionId);
+
+      showToast(
+        'Drive Folder Removed',
+        'success',
+        4000,
+        `Folder removed for session: ${sessionName}`
+      );
+    } catch (error) {
+      console.error('Failed to delete Drive folder:', error);
+      showToast(
+        'Failed to Remove Drive Folder',
+        'error',
+        5000,
+        error instanceof Error ? error.message : 'Unknown error occurred'
+      );
+    }
+  }, [account, showToast, updateSessionDriveFolder, clearDriveUploadsForSession]);
+
   // Refresh sessions when working folder changes
   useEffect(() => {
     if (workingFolder) {
@@ -411,10 +625,14 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
         setWorkingFolder,
         photoNamingScheme,
         setPhotoNamingScheme,
+        qrUploadAllImages,
+        setQrUploadAllImages,
+        delaySettingsLoaded,
         currentSession,
         sessions,
         refreshSessions,
         createNewSession,
+        deleteSession,
         loadSession,
         setCurrentSession: setCurrentSessionId,
         updateSessionShotCount,
@@ -424,6 +642,8 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
         addDriveUploadToSession,
         checkImageUploadedToDrive,
         clearDriveUploadsForSession,
+        createDriveFolderForSession,
+        deleteDriveFolderForSession,
       }}
     >
       {children}

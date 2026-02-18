@@ -213,6 +213,21 @@
   transform: scale(1.02);
 }
 
+/* Frame number on grid photos */
+.grid-photo-number {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: white;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 2px 6px;
+  border-radius: 4px;
+  backdrop-filter: blur(4px);
+  z-index: 10;
+}
+
 /* Single Photo Display (fullscreen) */
 .single-photo-display {
   width: 100%;

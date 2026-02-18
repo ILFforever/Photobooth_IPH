@@ -5,4 +5,6 @@ export { WorkingFolderSection } from './WorkingFolderSection';
 export { NamingSchemeSection } from './NamingSchemeSection';
 export { PhotoboothSettingsSection } from './PhotoboothSettingsSection';
 export { QrSettingsSection } from './QrSettingsSection';
+export { QrInfoModal } from './QrInfoModal';
 export { PrintTabContent } from './PrintTabContent';
+export { QrTabContent } from './QrTabContent';

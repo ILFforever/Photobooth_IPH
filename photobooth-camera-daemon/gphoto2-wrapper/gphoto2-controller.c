@@ -32,6 +32,7 @@
 #include <signal.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <sys/ioctl.h>
 #include <errno.h>
 #include <gphoto2/gphoto2.h>
 #include <sys/statvfs.h>
@@ -60,6 +61,52 @@ static void log_timestamped(const char *format, ...) {
 }
 
 #define log_ts(...) log_timestamped(__VA_ARGS__)
+
+/* Reset USB device to recover from bad PTP state */
+static int reset_usb_device(const char *port_name) {
+    /* port_name format: "usb:001,005" where 001=bus, 005=device */
+    if (!port_name || strncmp(port_name, "usb:", 4) != 0) {
+        log_ts("controller: Cannot reset USB - invalid port name: %s\n", port_name ? port_name : "NULL");
+        return -1;
+    }
+
+    /* Extract bus and device numbers */
+    int bus_num, dev_num;
+    if (sscanf(port_name + 4, "%d,%d", &bus_num, &dev_num) != 2) {
+        log_ts("controller: Cannot parse USB port: %s\n", port_name);
+        return -1;
+    }
+
+    /* Construct device path: /dev/bus/usb/BBB/DDD */
+    char dev_path[64];
+    snprintf(dev_path, sizeof(dev_path), "/dev/bus/usb/%03d/%03d", bus_num, dev_num);
+
+    log_ts("controller: Attempting USB reset on %s (port %s)...\n", dev_path, port_name);
+
+    /* Open USB device */
+    int fd = open(dev_path, O_WRONLY);
+    if (fd < 0) {
+        log_ts("controller: Failed to open %s: %s\n", dev_path, strerror(errno));
+        return -1;
+    }
+
+    /* USBDEVFS_RESET ioctl value */
+    #define USBDEVFS_RESET _IO('U', 20)
+
+    /* Issue USB reset ioctl */
+    int ret = ioctl(fd, USBDEVFS_RESET, 0);
+    close(fd);
+
+    if (ret < 0) {
+        log_ts("controller: USB reset ioctl failed: %s\n", strerror(errno));
+        return -1;
+    }
+
+    log_ts("controller: USB reset successful, waiting 2 seconds for device to re-enumerate...\n");
+    sleep(2);  /* Give device time to re-enumerate on USB bus */
+
+    return 0;
+}
 
 #define CMD_PIPE "/tmp/camera_cmd"
 #define STATUS_PIPE "/tmp/camera_status"
@@ -97,12 +144,14 @@ static CameraBrand g_last_logged_brand = BRAND_UNKNOWN;  // Track last logged br
 // Streaming state
 static volatile sig_atomic_t g_streaming_active = 0;  // Flag for continuous streaming
 static volatile sig_atomic_t g_streaming_paused = 0;  // Flag for pause during operations
+static time_t g_last_status_time = 0;  // Track when status was last sent during streaming
 
 // Persistent detection cache - only auto-detect once per camera connection
 static GPPortInfoList *g_cached_port_info_list = NULL;
 static CameraAbilitiesList *g_cached_abilities_list = NULL;
 static int g_cached_camera_index = -1;
 static int g_detection_valid = 0;
+static char g_last_camera_port[128] = "";  // Store last known USB port for reset
 
 typedef enum {
     MODE_IDLE,
@@ -388,6 +437,12 @@ static Camera* open_camera_with_timeout(int camera_index, int *ret_out, int time
 
     gp_list_get_name(list, camera_index, &model_name);
     gp_list_get_value(list, camera_index, &port_name);
+
+    /* Save port name for potential USB reset */
+    if (port_name) {
+        strncpy(g_last_camera_port, port_name, sizeof(g_last_camera_port) - 1);
+        g_last_camera_port[sizeof(g_last_camera_port) - 1] = '\0';
+    }
 
     /* Get abilities for the model */
     int model_index = gp_abilities_list_lookup_model(g_cached_abilities_list, model_name);
@@ -733,7 +788,7 @@ static char *get_single_config_value(Camera *camera, GPContext *context, const c
     int ret;
     char *result = NULL;
 
-    /* Try fast path: gp_camera_get_single_config */
+    /* Try fast path: gp_camera_get_single_config (works for Canon with libgphoto2 >= 2.5.31) */
     // log_ts("controller: [FAST PATH] Trying gp_camera_get_single_config for '%s'...\n", setting_name);
     ret = gp_camera_get_single_config(camera, setting_name, &widget, context);
 
@@ -1967,6 +2022,8 @@ int main(int argc, char *argv[]) {
 
     install_signal_handlers();
 
+    log_ts("controller: ===== gphoto2-controller v2.2 (Canon fast path) =====\n");
+
     /* Create status pipe */
     mkfifo(STATUS_PIPE, 0666);
     g_status_fd = open(STATUS_PIPE, O_WRONLY);  // Blocking mode - wait for reader
@@ -2060,15 +2117,30 @@ int main(int argc, char *argv[]) {
                 clock_gettime(CLOCK_MONOTONIC, &ts_start);
                 log_ts("controller: [TIMING] CAPTURE command received\n");
 
-                // Pause streaming if active
+                // Save streaming state for graceful resume
+                int was_streaming = g_streaming_active;
+                int was_liveview = live_view_active && !g_streaming_active;
+
+                // If streaming is active, close stream pipe to force HTTP client reconnect
+                // This prevents stale connections during capture
                 if (g_streaming_active) {
-                    log_ts("controller: Pausing PTP stream for capture...\n");
-                    g_streaming_paused = 1;
+                    log_ts("controller: Closing stream pipe for capture (forcing client reconnect)...\n");
+                    g_streaming_paused = 0;  // Clear pause flag
+                    g_streaming_active = 0;  // Mark as inactive
+
+                    // Close stream pipe - this will send EOF to HTTP clients
+                    if (g_stream_fd >= 0) {
+                        close(g_stream_fd);
+                        g_stream_fd = -1;
+                    }
+                    // Brief sleep to let clients detect EOF and disconnect
+                    usleep(100000);  // 100ms
                 }
 
-                // If live view is active, exit it first
-                if (live_view_active && camera && !g_streaming_active) {
-                    log_ts("controller: Exiting live view for capture...\n");
+                // Close camera to exit liveview/streaming mode for capture
+                // (libgphoto2 requires exiting liveview before capture)
+                if (camera) {
+                    log_ts("controller: Exiting live view mode for capture...\n");
                     gp_camera_exit(camera, context);
                     gp_camera_free(camera);
                     camera = NULL;
@@ -2076,14 +2148,13 @@ int main(int argc, char *argv[]) {
                 }
 
                 mode = MODE_CAPTURE;
-                /* NOTE: Not sending mode-only message - polling loop sends full status */
 
-                /* Open camera for capture with retry logic */
+                /* Open camera fresh for capture */
                 int capture_attempts = 0;
+                int was_disconnected = (consecutive_open_failures > 0);
                 while (capture_attempts < MAX_OPEN_RETRIES && g_running) {
                     camera = open_camera(camera_index, &ret);
                     if (camera) {
-                        consecutive_open_failures = 0;  /* Reset counter on success */
                         break;
                     }
                     capture_attempts++;
@@ -2092,6 +2163,15 @@ int main(int argc, char *argv[]) {
                     if (capture_attempts < MAX_OPEN_RETRIES) {
                         usleep(OPEN_RETRY_DELAY_MS * 1000);
                     }
+                }
+
+                if (camera && was_disconnected) {
+                    log_ts("controller: Camera reconnected during CAPTURE command - resetting state\n");
+                    consecutive_open_failures = 0;
+                    mode = MODE_CAPTURE;  /* Ensure mode is correct */
+                    send_camera_connected_event(camera, context);
+                } else if (camera) {
+                    consecutive_open_failures = 0;
                 }
                 clock_gettime(CLOCK_MONOTONIC, &ts_open);
                 log_ts("controller: [TIMING] open_camera: %ldms\n",
@@ -2103,13 +2183,16 @@ int main(int argc, char *argv[]) {
                     log_ts("controller: [TIMING] do_capture: %ldms\n",
                             (ts_capture.tv_sec - ts_open.tv_sec) * 1000 + (ts_capture.tv_nsec - ts_open.tv_nsec) / 1000000);
 
-                    gp_camera_exit(camera, context);
-                    clock_gettime(CLOCK_MONOTONIC, &ts_exit);
-                    log_ts("controller: [TIMING] gp_camera_exit: %ldms\n",
-                            (ts_exit.tv_sec - ts_capture.tv_sec) * 1000 + (ts_exit.tv_nsec - ts_capture.tv_nsec) / 1000000);
+                    // Don't close camera yet if we need to resume streaming
+                    if (!was_streaming) {
+                        gp_camera_exit(camera, context);
+                        clock_gettime(CLOCK_MONOTONIC, &ts_exit);
+                        log_ts("controller: [TIMING] gp_camera_exit: %ldms\n",
+                                (ts_exit.tv_sec - ts_capture.tv_sec) * 1000 + (ts_exit.tv_nsec - ts_capture.tv_nsec) / 1000000);
 
-                    gp_camera_free(camera);
-                    camera = NULL;
+                        gp_camera_free(camera);
+                        camera = NULL;
+                    }
 
                     /* Send capture error to frontend if capture failed */
                     if (capture_ret < GP_OK && g_status_fd >= 0) {
@@ -2137,11 +2220,46 @@ int main(int argc, char *argv[]) {
                     }
                 }
 
-                // Resume streaming if it was paused
-                if (g_streaming_active && g_streaming_paused) {
-                    log_ts("controller: Resuming PTP stream after capture\n");
+                // Gracefully resume streaming if it was active
+                if (was_streaming && camera) {
+                    log_ts("controller: Resuming PTP stream after capture...\n");
+
+                    // Stream pipe will be reopened lazily when first frame is written
+                    // Ensure g_stream_fd is -1 so it knows to open
+                    if (g_stream_fd >= 0) {
+                        close(g_stream_fd);
+                        g_stream_fd = -1;
+                    }
+
+                    // Re-enter liveview streaming mode
+                    live_view_active = 1;
+                    g_streaming_active = 1;
                     g_streaming_paused = 0;
                     mode = MODE_LIVEVIEW;
+                    g_last_status_time = time(NULL);  // Initialize status timer
+
+                    // Give HTTP clients time to detect EOF and reconnect
+                    usleep(200000);  // 200ms
+
+                    // Send status update so frontend knows streaming is active again
+                    if (g_status_fd >= 0) {
+                        const char *status_msg = "{\"mode\":\"liveview_streaming\"}\n";
+                        ssize_t written = write(g_status_fd, status_msg, strlen(status_msg));
+                        if (written < 0) {
+                            log_ts("controller: Failed to write liveview_streaming status: %s\n", strerror(errno));
+                        }
+                    }
+                    log_ts("controller: PTP stream resumed (pipe will open on first frame)\n");
+                } else if (was_streaming && !camera) {
+                    // Camera failed to open - stop streaming
+                    log_ts("controller: Cannot resume streaming - camera failed to open\n");
+                    g_streaming_active = 0;
+                    g_streaming_paused = 0;
+                    if (g_stream_fd >= 0) {
+                        close(g_stream_fd);
+                        g_stream_fd = -1;
+                    }
+                    mode = MODE_IDLE;
                 } else {
                     mode = MODE_IDLE;
                 }
@@ -2178,10 +2296,10 @@ int main(int argc, char *argv[]) {
 
                 // Open camera for live view
                 int lv_attempts = 0;
+                int was_disconnected = (consecutive_open_failures > 0);
                 while (lv_attempts < MAX_OPEN_RETRIES && g_running) {
                     camera = open_camera(camera_index, &ret);
                     if (camera) {
-                        consecutive_open_failures = 0;
                         break;
                     }
                     lv_attempts++;
@@ -2193,6 +2311,11 @@ int main(int argc, char *argv[]) {
                 }
 
                 if (camera) {
+                    if (was_disconnected) {
+                        log_ts("controller: Camera reconnected during LIVEVIEW_START - resetting state\n");
+                        send_camera_connected_event(camera, context);
+                    }
+                    consecutive_open_failures = 0;
                     mode = MODE_LIVEVIEW;
                     live_view_active = 1;
                     if (g_status_fd >= 0) {
@@ -2247,10 +2370,10 @@ int main(int argc, char *argv[]) {
                 /* Open camera if not already open */
                 if (!camera) {
                     int lv_attempts = 0;
+                    int was_disconnected = (consecutive_open_failures > 0);
                     while (lv_attempts < MAX_OPEN_RETRIES && g_running) {
                         camera = open_camera(camera_index, &ret);
                         if (camera) {
-                            consecutive_open_failures = 0;
                             break;
                         }
                         lv_attempts++;
@@ -2260,13 +2383,20 @@ int main(int argc, char *argv[]) {
                             usleep(OPEN_RETRY_DELAY_MS * 1000);
                         }
                     }
+
+                    if (camera && was_disconnected) {
+                        log_ts("controller: Camera reconnected during LIVEVIEW_STREAM_START - resetting state\n");
+                        send_camera_connected_event(camera, context);
+                    }
                 }
 
                 if (camera) {
+                    consecutive_open_failures = 0;
                     mode = MODE_LIVEVIEW;
                     live_view_active = 1;
                     g_streaming_active = 1;
                     g_streaming_paused = 0;
+                    g_last_status_time = time(NULL);  // Initialize status timer
 
                     /* Note: Stream pipe will be opened lazily when first frame is written
                      * This avoids timing issues with the reader connection */
@@ -2484,22 +2614,25 @@ int main(int argc, char *argv[]) {
          * (from physical shutter), then release it immediately.
          * Camera is only locked for the duration of the check.
          *
-         * When in live view mode, skip polling entirely - camera stays open.
+         * When in live view mode OR streaming, skip polling entirely:
+         * - Live view: camera stays open for preview
+         * - Streaming: camera is locked and held open for continuous frames
+         * - User can't change settings during streaming anyway, so polling is useless
          *
          * For polling, use minimal retries (2) with short delay - fail fast to detect disconnect.
          * Each attempt has a strict timeout to prevent hanging on unresponsive cameras.
          */
-        if (mode == MODE_IDLE && !live_view_active) {
+        if (mode == MODE_IDLE && !live_view_active && !g_streaming_active) {
             struct timespec cycle_start, camera_open_end, camera_close_start, camera_close_end;
             clock_gettime(CLOCK_MONOTONIC, &cycle_start);
 
             #define POLL_RETRIES 2
             int poll_attempts = 0;
+            int was_disconnected = (consecutive_open_failures > 0);  /* Track disconnect state BEFORE reset */
             while (poll_attempts < POLL_RETRIES && g_running) {
                 /* Use timeout version for polling - fail fast on unresponsive cameras */
                 camera = open_camera_with_timeout(camera_index, &ret, CAMERA_OPEN_TIMEOUT_SEC);
                 if (camera) {
-                    consecutive_open_failures = 0;  /* Reset counter on success */
                     break;
                 }
                 poll_attempts++;
@@ -2512,21 +2645,38 @@ int main(int argc, char *argv[]) {
             }
 
             if (camera) {
-                // Send camera_connected event if this is a reconnection after disconnect
-                if (consecutive_open_failures > 0) {
-                    log_ts("controller: Camera reconnected after %d failures\n", consecutive_open_failures);
+                consecutive_open_failures = 0;  /* Reset counter on success */
+
+                /* Complete state machine reset when reconnecting after disconnect */
+                if (was_disconnected) {
+                    log_ts("controller: ============================================\n");
+                    log_ts("controller: Camera RECONNECTED - resetting state machine\n");
+                    log_ts("controller: ============================================\n");
+
+                    /* Reset all mode and streaming state */
+                    mode = MODE_IDLE;
+                    live_view_active = 0;
+                    g_streaming_active = 0;
+                    g_streaming_paused = 0;
+
+                    /* Reset file tracking */
+                    last_file_number = 0;
+
+                    /* Reset UI/debug state */
+                    g_widgets_listed = 0;
+
+                    /* Clear grace period */
+                    g_last_camera_switch = 0;
+
+                    /* Send camera_connected event with fresh camera info */
                     send_camera_connected_event(camera, context);
                 }
-                consecutive_open_failures = 0;  /* Reset counter on success */
 
                 clock_gettime(CLOCK_MONOTONIC, &camera_open_end);
                 long camera_open_ms = (camera_open_end.tv_sec - cycle_start.tv_sec) * 1000 +
                                      (camera_open_end.tv_nsec - cycle_start.tv_nsec) / 1000000;
 
-                /* Successfully connected - clear grace period */
-                g_last_camera_switch = 0;
-
-                // List all available widgets once (for debugging widget names)
+                /* List all available widgets once (for debugging widget names) */
                 if (!g_widgets_listed) {
                     list_all_widgets(camera, context);
                     g_widgets_listed = 1;
@@ -2570,15 +2720,22 @@ int main(int argc, char *argv[]) {
                     shootingmode = get_single_config_value(camera, context, "exposuremode");
                 }
 
-                // Verbose status logging disabled
-                // log_ts("controller: Mode: %s | Battery: %s | ISO: %s | Aperture: %s | Shutter: %s | EV: %s | WB: %s\n",
-                //         shootingmode ? shootingmode : "N/A",
-                //         battery ? battery : "N/A",
-                //         iso ? iso : "N/A",
-                //         aperture ? aperture : "N/A",
-                //         shutter ? shutter : "N/A",
-                //         ev ? ev : "N/A",
-                //         wb ? wb : "N/A");
+                /* Canon: map raw PTP values to human-readable strings (safety net) */
+                const char *iso_display = iso;
+                if (g_current_brand == BRAND_CANON && iso) {
+                    iso_display = map_canon_iso_value(iso);
+                }
+
+                log_ts("controller: [STATUS] brand=%d | mode=%s | bat=%s | iso=%s (display=%s) | apt=%s | ss=%s | ev=%s | wb=%s\n",
+                        g_current_brand,
+                        shootingmode ? shootingmode : "N/A",
+                        battery ? battery : "N/A",
+                        iso ? iso : "N/A",
+                        iso_display ? iso_display : "N/A",
+                        aperture ? aperture : "N/A",
+                        shutter ? shutter : "N/A",
+                        ev ? ev : "N/A",
+                        wb ? wb : "N/A");
 
                 if (g_status_fd >= 0) {
                     /* Determine correct mode string - check streaming state first */
@@ -2599,7 +2756,7 @@ int main(int argc, char *argv[]) {
                             current_mode_str,
                             shootingmode ? shootingmode : "",
                             battery ? battery : "",
-                            iso ? iso : "",
+                            iso_display ? iso_display : "",
                             aperture ? aperture : "",
                             shutter ? shutter : "",
                             ev ? ev : "",
@@ -2642,6 +2799,27 @@ int main(int argc, char *argv[]) {
                 log_ts("controller: Camera disconnected (consecutive failures: %d)\n",
                         consecutive_open_failures);
 
+                /* Invalidate detection cache on disconnect to force fresh detection on reconnect
+                 * This is critical because USB may reassign the camera to a different port */
+                if (consecutive_open_failures == 1) {
+                    log_ts("controller: Camera disconnect detected, invalidating detection cache and port\n");
+                    g_detection_valid = 0;
+                    g_last_camera_port[0] = '\0';  /* Clear old port to avoid resetting wrong device */
+                    g_cached_camera_index = -1;
+                }
+
+                /* Try USB reset early to recover from bad PTP state (only if we have a valid port) */
+                if (consecutive_open_failures == 3 && g_last_camera_port[0] != '\0') {
+                    log_ts("controller: 3 consecutive failures detected, attempting USB reset...\n");
+                    if (reset_usb_device(g_last_camera_port) == 0) {
+                        log_ts("controller: USB reset successful, will retry camera connection\n");
+                        /* Reset counter to give it a fresh chance after USB reset */
+                        consecutive_open_failures = 0;
+                    } else {
+                        log_ts("controller: USB reset failed, will continue with backoff strategy\n");
+                    }
+                }
+
                 /* Only send disconnected status if we're outside the grace period after a camera switch */
                 time_t now = time(NULL);
                 if (now - g_last_camera_switch >= CAMERA_SWITCH_GRACE_SEC) {
@@ -2668,6 +2846,69 @@ int main(int argc, char *argv[]) {
                        g_streaming_active, (void*)camera, g_streaming_paused);
             }
 
+            // Check if we need to send periodic status update (battery, etc) every 60 seconds
+            time_t now = time(NULL);
+            if (now - g_last_status_time >= 60) {
+                log_ts("controller: Sending periodic status update during streaming\n");
+
+                // Fetch status using brand-specific widget names
+                const BrandWidgets *widgets = get_widgets_for_brand(g_current_brand);
+
+                char *battery = get_single_config_value(camera, context, widgets->battery);
+                char *iso = get_single_config_value(camera, context, widgets->iso);
+                char *aperture = get_single_config_value(camera, context, widgets->aperture);
+                char *shutter = get_single_config_value(camera, context, widgets->shutter);
+                char *ev = get_single_config_value(camera, context, widgets->ev);
+                char *wb = get_single_config_value(camera, context, widgets->wb);
+                char *shootingmode = get_single_config_value(camera, context, widgets->mode);
+
+                // Fallback for shooting mode
+                if (!shootingmode && g_current_brand != BRAND_FUJI) {
+                    shootingmode = get_single_config_value(camera, context, "expprogram");
+                }
+                if (!shootingmode) {
+                    shootingmode = get_single_config_value(camera, context, "exposureprogram");
+                }
+                if (!shootingmode) {
+                    shootingmode = get_single_config_value(camera, context, "exposuremode");
+                }
+
+                /* Canon: map raw PTP values to human-readable strings (safety net) */
+                const char *iso_display = iso;
+                if (g_current_brand == BRAND_CANON && iso) {
+                    iso_display = map_canon_iso_value(iso);
+                }
+
+                // Send status to frontend
+                if (g_status_fd >= 0) {
+                    char status_msg[1536];
+                    snprintf(status_msg, sizeof(status_msg),
+                            "{\"mode\":\"liveview_streaming\",\"shootingmode\":\"%s\",\"battery\":\"%s\",\"iso\":\"%s\",\"aperture\":\"%s\",\"shutter\":\"%s\",\"ev\":\"%s\",\"wb\":\"%s\"}\n",
+                            shootingmode ? shootingmode : "",
+                            battery ? battery : "",
+                            iso_display ? iso_display : "",
+                            aperture ? aperture : "",
+                            shutter ? shutter : "",
+                            ev ? ev : "",
+                            wb ? wb : "");
+                    ssize_t written = write(g_status_fd, status_msg, strlen(status_msg));
+                    if (written < 0) {
+                        log_ts("controller: Failed to write status: %s\n", strerror(errno));
+                    }
+                }
+
+                // Free allocated strings
+                if (battery) free(battery);
+                if (iso) free(iso);
+                if (aperture) free(aperture);
+                if (shutter) free(shutter);
+                if (ev) free(ev);
+                if (wb) free(wb);
+                if (shootingmode) free(shootingmode);
+
+                g_last_status_time = now;
+            }
+
             struct timespec frame_start, frame_end;
             clock_gettime(CLOCK_MONOTONIC, &frame_start);
 
@@ -2691,10 +2932,49 @@ int main(int argc, char *argv[]) {
                 poll(&pfd, 1, 0);
             }
         } else {
-            /* Not streaming - wait up to 1.5s between polls, wake immediately if command arrives.
-             * Uses poll() on the command pipe so CONFIG/SETCONFIG are responsive. */
-            struct pollfd pfd = { .fd = cmd_fd, .events = POLLIN };
-            poll(&pfd, 1, 1500);
+            /* Skip polling when streaming or liveview is active - camera is already locked */
+            if (g_streaming_active || live_view_active) {
+                // Camera is held open for streaming/liveview - no polling needed
+                // Physical shutter button won't work during streaming (camera is locked)
+                if (g_streaming_active) {
+                    // Use shorter delay during streaming to keep command pipe responsive
+                    struct pollfd pfd = { .fd = cmd_fd, .events = POLLIN };
+                    poll(&pfd, 1, 100);  // 100ms - check commands frequently
+                } else {
+                    // Liveview mode - also skip polling
+                    struct pollfd pfd = { .fd = cmd_fd, .events = POLLIN };
+                    poll(&pfd, 1, 500);  // 500ms
+                }
+            } else {
+                /* Not streaming - calculate backoff based on consecutive failures.
+                 * Uses poll() on the command pipe so CONFIG/SETCONFIG are responsive. */
+                int poll_timeout_ms;
+                if (consecutive_open_failures == 0) {
+                    // Normal operation - 1.5 seconds
+                    poll_timeout_ms = 1500;
+                } else if (consecutive_open_failures <= 5) {
+                    // Early failures - 3 seconds
+                    poll_timeout_ms = 3000;
+                } else if (consecutive_open_failures <= 10) {
+                    // Persistent failures - 10 seconds
+                    poll_timeout_ms = 10000;
+                } else if (consecutive_open_failures <= 20) {
+                    // Severe failures - 20 seconds
+                    poll_timeout_ms = 20000;
+                } else {
+                    // Critical failures - 30 seconds
+                    poll_timeout_ms = 30000;
+                }
+
+                // Log backoff changes (every 10 failures to avoid spam)
+                if (consecutive_open_failures > 0 && consecutive_open_failures % 10 == 1) {
+                    log_ts("controller: Using %d ms backoff due to %d consecutive failures\n",
+                           poll_timeout_ms, consecutive_open_failures);
+                }
+
+                struct pollfd pfd = { .fd = cmd_fd, .events = POLLIN };
+                poll(&pfd, 1, poll_timeout_ms);
+            }
         }
     }
 

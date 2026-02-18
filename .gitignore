@@ -40,8 +40,15 @@ src-tauri/WixTools
 # MSI Installer logs
 MSI*.LOG
 
-# Build directories
-linux-build/
+# Build directories (but keep the ISO for production)
+linux-build/*
+!linux-build/photobooth.iso
+!linux-build/.gitkeep
+
+# VM exports (deprecated - we use lightweight ISO instead)
+vm/*.ova
+vm/*.vdi
+vm/*.vmdk
 
 # Claude settings
 .claude/settings.local.json

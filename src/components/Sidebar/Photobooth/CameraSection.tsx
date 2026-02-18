@@ -883,7 +883,7 @@ export function CameraSection({
             'Open',
             'Closed',
             true,
-            (value) => setCameraSetting('f-number', value),
+            (value) => setCameraSetting(cameraBrand.quirks.apertureSetting || 'f-number', value),
             !isSettingAdjustable(shootingMode, 'aperture', cameraBrand),
             undefined,
             aperturePreview,

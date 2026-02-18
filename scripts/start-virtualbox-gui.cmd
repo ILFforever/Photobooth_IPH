@@ -1,25 +1,22 @@
 @echo off
 REM Start Photobooth Linux VM in VirtualBox with GUI
 
-set VM_NAME="PhotoboothLinux"
-set VBOX_MANAGER="C:\Program Files\Oracle\VirtualBox\VBoxManage.exe"
+set VM_NAME=PhotoboothLinux
+set VBOX_MANAGER=C:\Program Files\Oracle\VirtualBox\VBoxManage.exe
 
 echo Starting Photobooth Linux VM...
 echo.
 
-REM Check if VM exists
-%VBOX_MANAGER% list vms | findstr /C:"%VM_NAME%" >nul
+REM Ensure VM paths are correct for current location (also checks VM exists and running state)
+call "%~dp0ensure-vm-paths.cmd"
 if errorlevel 1 (
-    echo ERROR: VM "%VM_NAME%" not found!
-    echo Available VMs:
-    %VBOX_MANAGER% list vms
     pause
     exit /b 1
 )
+echo.
 
-REM Check if VM is already running
-%VBOX_MANAGER% showvminfo %VM_NAME% | findstr /C:"State:" | findstr /C:"running" >nul
-if not errorlevel 1 (
+REM Check if VM is already running (VM_IS_RUNNING set by ensure-vm-paths.cmd)
+if "%VM_IS_RUNNING%"=="1" (
     echo VM "%VM_NAME%" is already running!
     echo.
     echo VM is accessible at:
@@ -30,11 +27,11 @@ if not errorlevel 1 (
 )
 
 REM Optimize AHCI port count (30 default is slow - only need 2)
-%VBOX_MANAGER% storagectl %VM_NAME% --name "SATA" --portcount 2 2>nul
+"%VBOX_MANAGER%" storagectl "%VM_NAME%" --name "SATA" --portcount 2 2>nul
 
 REM Start VM with GUI
 echo Starting VM with GUI...
-%VBOX_MANAGER% startvm %VM_NAME% --type gui
+"%VBOX_MANAGER%" startvm "%VM_NAME%" --type gui
 
 echo.
 echo VM started. You can connect to the API at:

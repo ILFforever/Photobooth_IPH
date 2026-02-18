@@ -114,7 +114,7 @@ The cross-compiler will be at:
 The easiest way to rebuild everything is with the `rebuild-all.sh` script:
 
 ```bash
-wsl.exe -d Ubuntu-24.04 -e bash '/mnt/c/Users/Asus/Desktop/New folder/Photobooth_IPH/scripts/rebuild-all.sh'
+wsl.exe -d Ubuntu-24.04 -e bash '/mnt/d/Photobooth_IPH/scripts/rebuild-all.sh'
 ```
 
 This runs all three steps:
@@ -129,7 +129,7 @@ After the rebuild, restart the VM and the new code will be loaded.
 ### 1. Rebuild C wrappers only
 
 ```bash
-wsl.exe -d Ubuntu-24.04 -e bash '/mnt/c/Users/Asus/Desktop/New folder/Photobooth_IPH/scripts/rebuild-wrapper.sh'
+wsl.exe -d Ubuntu-24.04 -e bash '/mnt/d/Photobooth_IPH/scripts/rebuild-wrapper.sh'
 ```
 
 This compiles both `gphoto2-wrapper.c` and `gphoto2-controller.c` with the Buildroot cross-compiler, strips the binaries, and copies them to `linux-build/`.
@@ -139,7 +139,7 @@ This compiles both `gphoto2-wrapper.c` and `gphoto2-controller.c` with the Build
 ```bash
 wsl.exe -d Ubuntu-24.04 -e bash -c "
   export PATH=\"\$HOME/.cargo/bin:\$HOME/buildroot/output/host/bin:\$PATH\"
-  cd '/mnt/c/Users/Asus/Desktop/New folder/Photobooth_IPH/photobooth-camera-daemon'
+  cd '/mnt/d/Photobooth_IPH/photobooth-camera-daemon'
   cargo build --release --target x86_64-unknown-linux-musl
 "
 ```
@@ -147,7 +147,7 @@ wsl.exe -d Ubuntu-24.04 -e bash -c "
 ### 3. Package rootfs and rebuild ISO only
 
 ```bash
-wsl.exe -d Ubuntu-24.04 -e bash '/mnt/c/Users/Asus/Desktop/New folder/Photobooth_IPH/scripts/package-rootfs.sh'
+wsl.exe -d Ubuntu-24.04 -e bash '/mnt/d/Photobooth_IPH/scripts/package-rootfs.sh'
 ```
 
 This copies the built binaries into the Buildroot overlay at `~/buildroot/board/photobooth/overlay/opt/photobooth/`, runs `make` to regenerate the rootfs, then creates the bootable ISO with `grub-mkrescue`.
@@ -322,10 +322,10 @@ If you run WSL commands from VS Code's integrated terminal, it typically uses **
 
 ```bash
 # BROKEN - Git Bash rewrites the /mnt/c/ path
-wsl -d Ubuntu-24.04 bash "/mnt/c/Users/Asus/Desktop/New folder/Photobooth_IPH/scripts/rebuild-all.sh"
+wsl -d Ubuntu-24.04 bash "/mnt/d/Photobooth_IPH/scripts/rebuild-all.sh"
 
 # WORKS - wsl.exe -e bypasses Git Bash path mangling
-wsl.exe -d Ubuntu-24.04 -e bash -c "bash '/mnt/c/Users/Asus/Desktop/New folder/Photobooth_IPH/scripts/rebuild-all.sh'"
+wsl.exe -d Ubuntu-24.04 -e bash -c "bash '/mnt/d/Photobooth_IPH/scripts/rebuild-all.sh'"
 ```
 
 The key is `wsl.exe -e`, which passes arguments directly to the Linux side. The inner single quotes handle the space in "New folder".

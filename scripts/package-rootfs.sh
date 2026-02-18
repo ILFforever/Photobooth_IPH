@@ -6,7 +6,7 @@ set -e
 
 export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 BUILDROOT="$HOME/buildroot"
-PROJECT_ROOT="/mnt/c/Users/Asus/Desktop/New folder/Photobooth_IPH"
+PROJECT_ROOT="/mnt/d/Photobooth_IPH"
 LINUX_BUILD="$PROJECT_ROOT/linux-build"
 
 echo "=== Packaging Rootfs and Rebuilding ISO ==="

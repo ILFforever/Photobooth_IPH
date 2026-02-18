@@ -1,12 +1,12 @@
 #!/bin/bash
 # Full rebuild: gphoto2-wrapper, camera-daemon (Rust), rootfs, and ISO
-# Run this from Windows via: wsl -d Ubuntu-24.04 bash "/mnt/c/.../scripts/rebuild-all.sh"
+# Run this from Windows via: wsl -d Ubuntu-24.04 bash "/mnt/d/Photobooth_IPH/scripts/rebuild-all.sh"
 
 set -e
 
 export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 BUILDROOT="$HOME/buildroot"
-PROJECT_ROOT="/mnt/c/Users/Asus/Desktop/New folder/Photobooth_IPH"
+PROJECT_ROOT="/mnt/d/Photobooth_IPH"
 
 echo "=== Full Photobooth Linux Rebuild ==="
 echo

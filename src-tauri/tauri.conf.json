@@ -15,8 +15,9 @@
       {
         "label": "main",
         "title": "Photobooth_IPH",
-        "width": 1400,
-        "height": 850,
+        "width": 1920,
+        "height": 1080,
+        "fullscreen": true,
         "dragDropEnabled": false
       }
     ],
@@ -39,7 +40,9 @@
       "icons/icon.ico"
     ],
     "resources": [
-      "client_secret.json"
+      "client_secret.json",
+      "../linux-build/photobooth.iso",
+      "../scripts/*.cmd"
     ]
   }
 }

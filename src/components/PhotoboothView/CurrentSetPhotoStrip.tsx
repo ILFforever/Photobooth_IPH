@@ -40,35 +40,40 @@ export default function CurrentSetPhotoStrip({
         <span className="current-set-count">{selectedPhotos.size} / {requiredPhotos} photos</span>
       </div>
       <div className="current-set-body">
-        <div className={`current-set-photos ${currentSetPhotos.length >= 7 ? 'grid-layout' : ''}`}>
+        <div className="current-set-photos">
           {currentSetPhotos.length === 0 ? (
             <div className="current-set-empty">
               <ImageIcon size={32} />
               <span>No photos yet - capture photos to see them here</span>
             </div>
           ) : (
-            currentSetPhotos.map((photo, idx) => (
-              <div
-                key={photo.id}
-                className={`current-set-photo ${selectedPhotos.has(photo.id) ? 'selected' : ''}`}
-                onClick={() => onPhotoSelect(photo.id)}
-              >
-                <div className="current-set-photo-inner">
-                  <img
-                    src={photo.thumbnailUrl}
-                    alt={`Photo ${idx + 1}`}
-                    loading="lazy"
-                    decoding="async"
-                  />
-                </div>
-                <span className="current-set-photo-number">{idx + 1}</span>
-                {selectedPhotos.has(photo.id) && (
-                  <div className="photo-selected-check">
-                    <Check size={14} />
+            // Display photos in reverse order (newest first) to match guest display
+            [...currentSetPhotos].reverse().map((photo, idx) => {
+              // Calculate frame number (newest photo gets highest number)
+              const frameNumber = currentSetPhotos.length - idx;
+              return (
+                <div
+                  key={photo.id}
+                  className={`current-set-photo ${selectedPhotos.has(photo.id) ? 'selected' : ''}`}
+                  onClick={() => onPhotoSelect(photo.id)}
+                >
+                  <div className="current-set-photo-inner">
+                    <img
+                      src={photo.thumbnailUrl}
+                      alt={`Photo ${frameNumber}`}
+                      loading="lazy"
+                      decoding="async"
+                    />
                   </div>
-                )}
-              </div>
-            ))
+                  <span className="current-set-photo-number">{frameNumber}</span>
+                  {selectedPhotos.has(photo.id) && (
+                    <div className="photo-selected-check">
+                      <Check size={14} />
+                    </div>
+                  )}
+                </div>
+              );
+            })
           )}
         </div>
         <div className="current-set-side-buttons">

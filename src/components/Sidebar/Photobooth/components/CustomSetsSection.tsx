@@ -33,10 +33,12 @@ export function CustomSetsSection({
           {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
           <span className="collapsible-title">Select Set</span>
         </div>
-        {selectedCustomSetId && (
+        {selectedCustomSetId ? (
           <span className="collapsible-badge">
             {customSets.find(s => s.id === selectedCustomSetId)?.name}
           </span>
+        ) : (
+          <span className="collapsible-badge badge-empty">Not Set</span>
         )}
       </button>
       {expanded && (

@@ -13,6 +13,9 @@ export function WorkingFolderSection({
   workingFolder,
   onBrowseFolder,
 }: WorkingFolderSectionProps) {
+  // Get folder name from path for display
+  const folderName = workingFolder ? workingFolder.split(/[/\\]/).filter(Boolean).pop() || workingFolder : null;
+
   return (
     <div className="collapsible-section">
       <button
@@ -23,6 +26,13 @@ export function WorkingFolderSection({
           {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
           <span className="collapsible-title">Working Folder</span>
         </div>
+        {folderName ? (
+          <span className="collapsible-badge" title={workingFolder}>
+            {folderName}
+          </span>
+        ) : (
+          <span className="collapsible-badge badge-empty">Not Set</span>
+        )}
       </button>
       {expanded && (
         <div className="collapsible-content">

@@ -1,16 +1,8 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { getRootFolder } from '../utils/driveFolder';
+import type { GoogleAccount, DriveFolder } from '../types/qr';
 
-export interface GoogleAccount {
-  email: string;
-  name: string;
-  picture?: string;
-}
-
-export interface DriveFolder {
-  id: string;
-  name: string;
-  is_shared_drive?: boolean;
-}
+export type { GoogleAccount, DriveFolder };
 
 interface AuthContextType {
   account: GoogleAccount | null;
@@ -33,6 +25,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loggingIn, setLoggingIn] = useState(false);
   const [cachedAccount, setCachedAccount] = useState<GoogleAccount | null>(null);
   const [showCachedAccountConfirm, setShowCachedAccountConfirm] = useState(false);
+
+  // Load persisted root folder on mount
+  useEffect(() => {
+    getRootFolder()
+      .then((folder) => {
+        if (folder) {
+          setRootFolder(folder);
+        }
+      })
+      .catch((error) => {
+        console.error('Failed to load root folder:', error);
+      });
+  }, []);
 
   return (
     <AuthContext.Provider

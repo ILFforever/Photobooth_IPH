@@ -335,6 +335,9 @@ export default function DisplayContent({
               const isRealPhoto = photo !== null && photo.id && (photo.thumbnailUrl || photo.fullUrl);
               const imgSrc = isRealPhoto && photo ? (photo.fullUrl || photo.thumbnailUrl) : '';
               const globalIndex = startIndex + idx; // Index in the full canvasPhotos array
+              // Calculate actual frame number (photos are reversed in canvas mode)
+              // globalIndex 0 should show frame number equal to total photos (newest first)
+              const frameNumber = currentSetPhotos.length - globalIndex;
               return (
                 <div
                   key={photo?.id || `placeholder-${idx}`}
@@ -346,11 +349,14 @@ export default function DisplayContent({
                   }}
                 >
                   {isRealPhoto ? (
-                    <img
-                      src={imgSrc}
-                      alt={`Photo ${globalIndex + 1}`}
-                      className="grid-photo-img"
-                    />
+                    <>
+                      <img
+                        src={imgSrc}
+                        alt={`Photo ${frameNumber}`}
+                        className="grid-photo-img"
+                      />
+                      <span className="grid-photo-number">{frameNumber}</span>
+                    </>
                   ) : (
                     <ImageIcon size={24} />
                   )}

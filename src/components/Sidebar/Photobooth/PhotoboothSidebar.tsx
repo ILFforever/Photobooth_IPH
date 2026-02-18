@@ -19,9 +19,7 @@ import { useDriveFolderPicker } from "../../../hooks/useDriveFolderPicker";
 import { useVmLogs } from "../../../hooks/useVmLogs";
 import { useCameraSettings } from "../../../hooks/useCameraSettings";
 import { useCustomSets } from "../../../hooks/useCustomSets";
-import { getRootFolder } from "../../../utils/driveFolder";
 import type { ConnectionState } from "../../../types/connection";
-import type { DriveFolder } from "../../../types/qr";
 import {
   EditTabContent,
   VmLogsModal,
@@ -30,7 +28,9 @@ import {
   NamingSchemeSection,
   PhotoboothSettingsSection,
   QrSettingsSection,
+  QrInfoModal,
   PrintTabContent,
+  QrTabContent,
 } from "./components";
 import "./PhotoboothSidebar.css";
 
@@ -53,10 +53,11 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
   } = useCamera();
   const { isVmOnline } = useVM();
   const { showToast } = useToast();
-  const { account } = useAuth();
+  const { account, rootFolder: sessionDriveRootFolder, setRootFolder: setSessionDriveRootFolder } = useAuth();
   const {
     finalizeViewMode: viewMode,
     finalizeEditingZoneId: editingZoneId,
+    setFinalizeEditingZoneId,
     placedImages,
     updatePlacedImage,
   } = usePhotobooth();
@@ -74,6 +75,7 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
     photoReviewTime, setPhotoReviewTime,
     workingFolder, setWorkingFolder,
     photoNamingScheme, setPhotoNamingScheme,
+    qrUploadAllImages, setQrUploadAllImages,
   } = usePhotoboothSettings();
 
   const { printCollage, isPrinting } = usePrintSettings();
@@ -94,16 +96,16 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
   const [hasSelectedCamera, setHasSelectedCamera] = useState(false);
   const [imageQualityExpanded, setImageQualityExpanded] = useState(false);
   const [focusSettingsExpanded, setFocusSettingsExpanded] = useState(false);
+  const [showQrInfoModal, setShowQrInfoModal] = useState(false);
 
   // Google Drive folder state
-  const [sessionDriveRootFolder, setSessionDriveRootFolder] = useState<DriveFolder | null>(null);
   const [isLoadingDriveFolder, setIsLoadingDriveFolder] = useState(false);
   const driveFolderPicker = useDriveFolderPicker(setSessionDriveRootFolder);
 
   // Switch tabs when viewMode changes
   useEffect(() => {
     if (viewMode === 'finalize') {
-      setActiveTab('print');
+      setActiveTab('qr');
     } else {
       setActiveTab('camera');
     }
@@ -116,6 +118,13 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
     }
   }, [viewMode, editingZoneId]);
 
+  // Clear editing zone when switching away from Edit tab
+  useEffect(() => {
+    if (viewMode === 'finalize' && activeTab !== 'edit' && editingZoneId) {
+      setFinalizeEditingZoneId(null);
+    }
+  }, [viewMode, activeTab, editingZoneId, setFinalizeEditingZoneId]);
+
   // Show toast on reconnection success
   const previousConnectionStateRef = useRef<ConnectionState>('NC');
   useEffect(() => {
@@ -126,19 +135,6 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
       previousConnectionStateRef.current = connectionState;
     }
   }, [connectionState, showToast]);
-
-  // Load Google Drive root folder on mount
-  useEffect(() => {
-    getRootFolder()
-      .then((folder) => {
-        if (folder) {
-          setSessionDriveRootFolder(folder);
-        }
-      })
-      .catch((error) => {
-        console.error('Failed to load root folder:', error);
-      });
-  }, []);
 
   // Handlers
   const toggleSection = (section: CollapsibleSection) => {
@@ -186,6 +182,10 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
     }
   };
 
+  const handleShowQrInfo = () => {
+    setShowQrInfoModal(true);
+  };
+
   return (
     <>
       <div className="photobooth-sidebar">
@@ -223,18 +223,18 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
               ) : (
                 <>
                   <button
-                    className={`photobooth-tab ${activeTab === 'print' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('print')}
-                  >
-                    <Printer size={14} />
-                    Print
-                  </button>
-                  <button
                     className={`photobooth-tab ${activeTab === 'qr' ? 'active' : ''}`}
                     onClick={() => setActiveTab('qr')}
                   >
                     <QrCode size={14} />
                     QR
+                  </button>
+                  <button
+                    className={`photobooth-tab ${activeTab === 'print' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('print')}
+                  >
+                    <Printer size={14} />
+                    Print
                   </button>
                   <button
                     className={`photobooth-tab ${activeTab === 'edit' ? 'active' : ''}`}
@@ -301,6 +301,13 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
 
               {/* Photobooth Settings Tab */}
               <div className="tab-panel" style={{ display: activeTab === 'photobooth' ? 'flex' : 'none' }}>
+                <WorkingFolderSection
+                  expanded={expandedSections.folder}
+                  onToggle={() => toggleSection('folder')}
+                  workingFolder={workingFolder}
+                  onBrowseFolder={handleBrowseFolder}
+                />
+
                 <CustomSetsSection
                   expanded={expandedSections.frame}
                   onToggle={() => toggleSection('frame')}
@@ -310,20 +317,6 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
                   expandedSetIds={customSetsHook.expandedSetIds}
                   onToggleSetExpanded={customSetsHook.toggleSetExpanded}
                   onLoadSet={customSetsHook.handleLoadSet}
-                />
-
-                <WorkingFolderSection
-                  expanded={expandedSections.folder}
-                  onToggle={() => toggleSection('folder')}
-                  workingFolder={workingFolder}
-                  onBrowseFolder={handleBrowseFolder}
-                />
-
-                <NamingSchemeSection
-                  expanded={expandedSections.naming}
-                  onToggle={() => toggleSection('naming')}
-                  photoNamingScheme={photoNamingScheme}
-                  onPhotoNamingSchemeChange={setPhotoNamingScheme}
                 />
 
                 <PhotoboothSettingsSection
@@ -339,12 +332,22 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
                   onPhotoReviewTimeChange={setPhotoReviewTime}
                 />
 
+                <NamingSchemeSection
+                  expanded={expandedSections.naming}
+                  onToggle={() => toggleSection('naming')}
+                  photoNamingScheme={photoNamingScheme}
+                  onPhotoNamingSchemeChange={setPhotoNamingScheme}
+                />
+
                 <QrSettingsSection
                   expanded={expandedSections.qr}
                   onToggle={() => toggleSection('qr')}
                   sessionDriveRootFolder={sessionDriveRootFolder}
                   isLoadingDriveFolder={isLoadingDriveFolder}
                   onOpenDriveFolderPicker={handleOpenDriveFolderPicker}
+                  qrUploadAllImages={qrUploadAllImages}
+                  setQrUploadAllImages={setQrUploadAllImages}
+                  onShowInfo={handleShowQrInfo}
                 />
               </div>
 
@@ -358,11 +361,7 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
                 )}
 
                 {activeTab === 'qr' && (
-                  <div className="finalize-tab-content">
-                    <div className="collapsible-content">
-                      <p style={{ color: '#888', fontSize: '14px' }}>QR code generation coming soon...</p>
-                    </div>
-                  </div>
+                  <QrTabContent />
                 )}
 
                 {activeTab === 'edit' && (
@@ -443,6 +442,11 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
         onSelectCurrentDir={driveFolderPicker.handleSelectCurrentDir}
         onCreateFolder={driveFolderPicker.handleCreateFolder}
         onDeleteFolder={driveFolderPicker.handleDeleteFolder}
+      />
+
+      <QrInfoModal
+        show={showQrInfoModal}
+        onClose={() => setShowQrInfoModal(false)}
       />
     </>
   );

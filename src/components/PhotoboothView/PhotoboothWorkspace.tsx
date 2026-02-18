@@ -10,6 +10,8 @@ import { useLiveView } from "../../contexts/LiveViewContext";
 import { useCollage } from "../../contexts/CollageContext";
 import { usePhotobooth } from "../../contexts/PhotoboothContext";
 import { useToast } from "../../contexts/ToastContext";
+import { useUploadQueue } from "../../contexts/UploadQueueContext";
+import { useAuth } from "../../contexts/AuthContext";
 import { PhotoboothControls } from "./PhotoboothControls";
 import DisplayContent from "./DisplayContent";
 import CurrentSetPhotoStrip from "./CurrentSetPhotoStrip";
@@ -18,6 +20,7 @@ import FinalizeView from "./FinalizeView";
 import { type PhotoDownloadedEvent } from "../../services/cameraWebSocket";
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useSecondScreen } from "../../hooks/useSecondScreen";
 import { imageCache } from "../../services/ImageCacheService";
 import "./PhotoboothWorkspace.css";
@@ -62,6 +65,16 @@ interface PtbSession {
     cameraPath: string;
     capturedAt: string;
   }>;
+  googleDriveMetadata?: {
+    folderId?: string | null;
+    folderName?: string | null;
+    folderLink?: string | null;
+    uploadedImages: Array<{
+      filename: string;
+      driveFileId: string;
+      uploadedAt: string;
+    }>;
+  };
 }
 
 export default function PhotoboothWorkspace() {
@@ -76,15 +89,17 @@ export default function PhotoboothWorkspace() {
     sessions,
     currentSession,
     loadSession,
-    refreshSessions,
     updateCurrentSessionFromDownload,
-    createNewSession
+    createNewSession,
+    qrUploadAllImages
   } = usePhotoboothSettings();
   const { captureError, clearCaptureError, isCameraConnected, hasEverConnected, isConnecting, addPhotoDownloadedListener, removePhotoDownloadedListener } = useCamera();
   const { stream: liveViewStream, hdmi, ptp } = useLiveView();
   const { showToast } = useToast();
   const { selectedCustomSetName } = useCollage();
-  const { photoboothFrame, finalizeViewMode, setFinalizeViewMode, setFinalizeEditingZoneId } = usePhotobooth();
+  const { photoboothFrame, finalizeViewMode, setFinalizeViewMode, setFinalizeEditingZoneId, placedImages } = usePhotobooth();
+  const { enqueuePhotos } = useUploadQueue();
+  const { account, rootFolder } = useAuth();
 
   // Local view mode synced with context
   const viewMode = finalizeViewMode;
@@ -110,6 +125,14 @@ export default function PhotoboothWorkspace() {
   const [selectedPhotos, setSelectedPhotos] = useState<Set<string>>(new Set());
   // Calculate required photos from photobooth frame zones - 0 when no frame/set selected
   const requiredPhotos = photoboothFrame?.zones.length ?? 0;
+
+  // Clear selected photos when session changes
+  useEffect(() => {
+    console.log('[PhotoboothWorkspace] Session changed, clearing selected photos');
+    setSelectedPhotos(new Set());
+    setSelectedPhotoIndex(null);
+    setCenterBrowseIndex(null);
+  }, [currentSession?.id]);
 
   const [ptbSession, setPtbSession] = useState<PtbSession | null>(null);
 
@@ -199,33 +222,23 @@ export default function PhotoboothWorkspace() {
       }
 
       if (currentSession.photos && currentSession.photos.length > 0) {
-        // Get the session info for thumbnails
+        // Get the session folder name
         const sessionInfo = sessions.find(s => s.id === currentSession.id);
         const folderName = sessionInfo?.folderName || currentSession.id;
-        const thumbnails = sessionInfo?.thumbnails || [];
 
-        // Convert session photos to current set photos using thumbnails when available
+        // Convert session photos to current set photos
+        // Note: Using full-res images directly instead of cached thumbnails to avoid cache collision issues
+        // TODO: Implement proper thumbnail system with unique cache keys and sessions array refresh
         const loadedPhotos: CurrentSetPhoto[] = currentSession.photos.map((photo, idx) => {
-          // Use thumbnail if available, otherwise fall back to full-res image
-          let thumbnailUrl = '';
           let fullUrl: string | undefined;
-          if (idx < thumbnails.length && thumbnails[idx]) {
-            // Use cached thumbnail from backend
-            thumbnailUrl = convertFileSrc(thumbnails[idx].replace('asset://', ''));
-          }
-          // Always set fullUrl to the full-res image
           if (workingFolder) {
             const filePath = `${workingFolder}/${folderName}/${photo.filename}`;
             fullUrl = convertFileSrc(filePath);
-            // If no thumbnail available, use full-res as thumbnail
-            if (!thumbnailUrl) {
-              thumbnailUrl = fullUrl;
-            }
           }
 
           return {
             id: photo.filename || `photo-${idx}`,
-            thumbnailUrl,
+            thumbnailUrl: fullUrl || '',
             fullUrl,
             timestamp: new Date(photo.capturedAt).toLocaleTimeString(),
           };
@@ -233,9 +246,9 @@ export default function PhotoboothWorkspace() {
 
         setCurrentSetPhotos(loadedPhotos);
 
-        // Preload all thumbnail images in background for better performance
-        const thumbnailUrls = loadedPhotos.map(p => p.thumbnailUrl).filter(Boolean);
-        imageCache.preloadImages(thumbnailUrls, 8).catch(err => {
+        // Preload all images in background for better performance
+        const imageUrls = loadedPhotos.map(p => p.thumbnailUrl).filter(Boolean);
+        imageCache.preloadImages(imageUrls, 8).catch(err => {
           console.warn('[PhotoboothWorkspace] Some images failed to preload:', err);
         });
       } else {
@@ -395,15 +408,55 @@ export default function PhotoboothWorkspace() {
         lastUsedAt: updatedSession.lastUsedAt,
         shotCount: updatedSession.shotCount,
         photos: updatedSession.photos,
+        googleDriveMetadata: updatedSession.googleDriveMetadata || { uploadedImages: [] },
       }, customFilename);
       console.log('[PhotoboothWorkspace::handlePhotoDownloaded] Session state updated directly');
+
+      // PRIORITY 3: Auto-upload to Google Drive (non-blocking)
+      // Only if user is logged in, Drive folder is configured, AND "Upload all images" is enabled
+      if (account && updatedSession.googleDriveMetadata?.folderId && qrUploadAllImages) {
+        const driveFolderId = updatedSession.googleDriveMetadata.folderId;
+        console.log('[PhotoboothWorkspace::handlePhotoDownloaded] Auto-uploading to Drive folder:', driveFolderId);
+
+        // Check if photo was already uploaded
+        try {
+          const alreadyUploaded = await invoke<boolean>('is_image_uploaded_to_drive', {
+            folderPath: workingFolder,
+            sessionId: sessionId!,
+            filename: customFilename,
+          });
+
+          if (!alreadyUploaded) {
+            // Queue single photo for upload immediately (don't await - let it process in background)
+            enqueuePhotos(sessionId!, [{
+              filename: customFilename,
+              localPath: photoPath
+            }], driveFolderId).catch(err => {
+              console.error('[PhotoboothWorkspace::handlePhotoDownloaded] Upload queue error:', err);
+            });
+            console.log('[PhotoboothWorkspace::handlePhotoDownloaded] Photo queued for immediate upload:', customFilename);
+          } else {
+            console.log('[PhotoboothWorkspace::handlePhotoDownloaded] Photo already uploaded, skipping:', customFilename);
+          }
+        } catch (error) {
+          console.error('[PhotoboothWorkspace::handlePhotoDownloaded] Upload check error:', error);
+        }
+      } else {
+        if (!account) {
+          console.log('[PhotoboothWorkspace::handlePhotoDownloaded] Skipping auto-upload - Not logged in to Google Drive');
+        } else if (!updatedSession.googleDriveMetadata?.folderId) {
+          console.log('[PhotoboothWorkspace::handlePhotoDownloaded] Skipping auto-upload - Drive folder not configured for this session');
+        } else if (!qrUploadAllImages) {
+          console.log('[PhotoboothWorkspace::handlePhotoDownloaded] Skipping auto-upload - "Selected Collage Photos Only" mode (will upload on finalize)');
+        }
+      }
 
       console.log('[PhotoboothWorkspace::handlePhotoDownloaded] END - photo displayed immediately');
     } catch (error) {
       console.error('[PhotoboothWorkspace::handlePhotoDownloaded] ERROR:', error);
     }
     console.log('[PhotoboothWorkspace::handlePhotoDownloaded] END');
-  }, [workingFolder, currentSession, sessions, updateCurrentSessionFromDownload, loadSession, sequence.notifyCaptureComplete, photoReviewTime, updateGuestDisplay, currentSetPhotos, selectedPhotoIndex, displayMode]);
+  }, [workingFolder, currentSession, sessions, updateCurrentSessionFromDownload, loadSession, sequence.notifyCaptureComplete, photoReviewTime, updateGuestDisplay, currentSetPhotos, selectedPhotoIndex, displayMode, account, qrUploadAllImages, enqueuePhotos]);
 
   // Subscribe to photo_downloaded events
   useEffect(() => {
@@ -546,16 +599,10 @@ export default function PhotoboothWorkspace() {
       const sessionName = `Session ${nextNumber}`;
       console.log('[PhotoboothWorkspace] Creating next session:', sessionName);
 
-      // Create the new session using the backend command
-      const newSession = await invoke<{ id: string; name: string; folderName: string }>('create_photobooth_session', {
-        folderPath: workingFolder,
-        sessionName,
-      });
+      // Use createNewSession from context which includes Drive folder creation
+      const newSession = await createNewSession(sessionName);
 
       console.log('[PhotoboothWorkspace] Created and switching to session:', newSession.id);
-
-      // Update the sessions list in context by triggering a refresh
-      await refreshSessions();
 
       // Load the new session
       await loadSession(newSession.id);
@@ -568,8 +615,80 @@ export default function PhotoboothWorkspace() {
   };
 
   // Handler for finalizing current session — switch to finalize view
-  const handleFinalizeSession = () => {
+  const handleFinalizeSession = async () => {
     setFinalizeViewMode('finalize');
+
+    // Upload photos to Google Drive if configured
+    if (account && currentSession?.googleDriveMetadata?.folderId && workingFolder) {
+      const driveFolderId = currentSession.googleDriveMetadata.folderId;
+
+      try {
+        let photoFilenames: string[] = [];
+
+        if (qrUploadAllImages) {
+          // Upload all photos from current session
+          console.log('[PhotoboothWorkspace::handleFinalizeSession] Uploading all session photos to Drive');
+          photoFilenames = currentSetPhotos.map(photo => photo.id);
+        } else {
+          // Upload only selected photos
+          console.log('[PhotoboothWorkspace::handleFinalizeSession] Uploading selected photos to Drive');
+
+          // Check if we have placed images (on finalize screen) or selected photos (on capture screen)
+          if (placedImages.size > 0) {
+            // Use placed images from collage
+            photoFilenames = Array.from(placedImages.values())
+              .map(img => {
+                // Extract filename from source file path (handles both asset:// and file paths)
+                const parts = img.sourceFile.split('/');
+                return parts[parts.length - 1];
+              })
+              .filter(Boolean);
+          } else if (selectedPhotos.size > 0) {
+            // Use selected photos from photo strip
+            const selectedPhotosList = currentSetPhotos.filter(p => selectedPhotos.has(p.id));
+            photoFilenames = selectedPhotosList.map(photo => photo.id);
+          }
+        }
+
+        if (photoFilenames.length === 0) {
+          console.log('[PhotoboothWorkspace::handleFinalizeSession] No photos to upload');
+          return;
+        }
+
+        console.log('[PhotoboothWorkspace::handleFinalizeSession] Found photos to upload:', photoFilenames);
+
+        // Build full photo objects with local paths
+        const photosToUpload = [];
+        const sessionFolderName = sessions.find(s => s.id === currentSession.id)?.folderName || currentSession.id;
+
+        for (const filename of photoFilenames) {
+          // Check if already uploaded
+          const alreadyUploaded = await invoke<boolean>('is_image_uploaded_to_drive', {
+            folderPath: workingFolder,
+            sessionId: currentSession.id,
+            filename,
+          });
+
+          if (!alreadyUploaded) {
+            const localPath = `${workingFolder}/${sessionFolderName}/${filename}`;
+            photosToUpload.push({ filename, localPath });
+          } else {
+            console.log('[PhotoboothWorkspace::handleFinalizeSession] Already uploaded:', filename);
+          }
+        }
+
+        if (photosToUpload.length > 0) {
+          console.log(`[PhotoboothWorkspace::handleFinalizeSession] Queueing ${photosToUpload.length} photos for upload`);
+          await enqueuePhotos(currentSession.id, photosToUpload, driveFolderId);
+        } else {
+          console.log('[PhotoboothWorkspace::handleFinalizeSession] All photos already uploaded');
+        }
+      } catch (error) {
+        console.error('[PhotoboothWorkspace::handleFinalizeSession] Upload error:', error);
+      }
+    } else {
+      console.log('[PhotoboothWorkspace::handleFinalizeSession] Skipping upload - Drive not configured');
+    }
   };
 
   const handleBackToCapture = () => {
@@ -653,7 +772,16 @@ export default function PhotoboothWorkspace() {
 
   // Handle keyboard navigation for fullscreen mode
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
+    const handleKeyDown = async (e: KeyboardEvent) => {
+      // F11 to toggle window fullscreen
+      if (e.key === 'F11') {
+        e.preventDefault();
+        const currentWindow = getCurrentWindow();
+        const isFullscreen = await currentWindow.isFullscreen();
+        await currentWindow.setFullscreen(!isFullscreen);
+        return;
+      }
+
       // ESC to exit fullscreen
       if (e.key === 'Escape' && selectedPhotoIndex !== null && displayMode === 'canvas') {
         setSelectedPhotoIndex(null);
@@ -947,6 +1075,7 @@ export default function PhotoboothWorkspace() {
                 onBack={handleBackToCapture}
                 updateGuestDisplay={updateGuestDisplay}
                 isSecondScreenOpen={isSecondScreenOpen}
+                openSecondScreen={openSecondScreen}
               />
             </motion.div>
           )}

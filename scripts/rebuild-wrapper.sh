@@ -5,7 +5,7 @@ set -e
 
 export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 BUILDROOT="$HOME/buildroot"
-PROJECT_ROOT="/mnt/c/Users/Asus/Desktop/New folder/Photobooth_IPH"
+PROJECT_ROOT="/mnt/d/Photobooth_IPH"
 
 echo "Rebuilding gphoto2-wrapper and gphoto2-controller..."
 echo "  Buildroot: $BUILDROOT"

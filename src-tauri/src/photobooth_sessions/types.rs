@@ -30,6 +30,7 @@ pub struct GoogleDriveMetadata {
     pub folder_id: Option<String>,
     pub folder_name: Option<String>,
     pub folder_link: Option<String>,
+    pub account_id: Option<String>,  // Email of the account that created the folder
     pub uploaded_images: Vec<DriveUploadedImage>,
 }
 
@@ -58,6 +59,16 @@ pub struct PtbSessionData {
     pub google_drive_metadata: GoogleDriveMetadata,
 }
 
+/// Delay settings for photobooth operations
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct DelaySettings {
+    pub auto_count: u32,
+    pub timer_delay: u32,
+    pub delay_between_photos: u32,
+    pub photo_review_time: u32,
+}
+
 /// Root .ptb file structure - stored at working folder root
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -67,4 +78,6 @@ pub struct PtbWorkspace {
     pub last_used_at: String,
     pub current_session_id: Option<String>,
     pub sessions: Vec<PtbSessionData>,
+    #[serde(default)]
+    pub delay_settings: DelaySettings,
 }
