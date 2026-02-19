@@ -1,18 +1,46 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Clock, Upload, CheckCircle, XCircle, RefreshCw, X, ChevronDown, ChevronRight, Loader } from 'lucide-react';
 import type { UploadQueueItem, UploadStatus } from '../../types/uploadQueue';
+
+interface UploadedImage {
+  filename: string;
+  driveFileId: string;
+  uploadedAt: string;
+}
 
 interface UploadQueueStatusProps {
   items: UploadQueueItem[];
   onRetry: (itemId: string) => void;
   onCancel: (itemId: string) => void;
+  // Optional: uploaded images from session metadata (stored in .ptb file)
+  uploadedImages?: UploadedImage[];
 }
 
-export function UploadQueueStatus({ items, onRetry, onCancel }: UploadQueueStatusProps) {
+export function UploadQueueStatus({ items, onRetry, onCancel, uploadedImages = [] }: UploadQueueStatusProps) {
   // Group items by status
   const failedItems = items.filter(item => item.status === 'failed');
   const activeItems = items.filter(item => item.status === 'uploading' || item.status === 'retrying' || item.status === 'pending');
   const completedItems = items.filter(item => item.status === 'completed');
+
+  // Also include uploaded images from session metadata
+  const metadataCompletedItems = useMemo(() => {
+    if (!uploadedImages || uploadedImages.length === 0) return [];
+    // Filter out images that are already in the completed queue (avoid duplicates)
+    const completedFilenames = new Set(completedItems.map(i => i.filename));
+    return uploadedImages
+      .filter(img => !completedFilenames.has(img.filename))
+      .map(img => ({
+        id: `metadata-${img.driveFileId}`,
+        filename: img.filename,
+        status: 'completed' as UploadStatus,
+        completedAt: img.uploadedAt,
+        driveFileId: img.driveFileId,
+        fromMetadata: true,
+      }));
+  }, [uploadedImages, completedItems]);
+
+  // Combine queue completed items with metadata uploaded items
+  const allCompletedItems = [...completedItems, ...metadataCompletedItems];
 
   // Only show spinner when there are actually uploading items (not just pending)
   const hasUploadingItems = items.some(item => item.status === 'uploading' || item.status === 'retrying');
@@ -35,7 +63,8 @@ export function UploadQueueStatus({ items, onRetry, onCancel }: UploadQueueStatu
     }));
   }, [activeItems.length, failedItems.length]);
 
-  if (items.length === 0) {
+  // Show "empty" state only when there are no queue items AND no metadata uploaded images
+  if (items.length === 0 && uploadedImages.length === 0) {
     return (
       <div className="upload-queue-empty">
         <Upload size={24} />
@@ -95,14 +124,14 @@ export function UploadQueueStatus({ items, onRetry, onCancel }: UploadQueueStatu
         {/* Completed Items */}
         <UploadSection
           title="Completed"
-          count={completedItems.length}
+          count={allCompletedItems.length}
           icon={<CheckCircle size={12} />}
           collapsed={collapsedSections.completed}
           onToggle={() => toggleSection('completed')}
           status="completed"
         >
-          {completedItems.length > 0 ? (
-            completedItems.map(item => (
+          {allCompletedItems.length > 0 ? (
+            allCompletedItems.map(item => (
               <MinimalUploadItem key={item.id} item={item} onRetry={onRetry} onCancel={onCancel} />
             ))
           ) : (
@@ -148,7 +177,7 @@ function UploadSection({ title, count, icon, collapsed, onToggle, status, childr
 }
 
 interface MinimalUploadItemProps {
-  item: UploadQueueItem;
+  item: UploadQueueItem | any;
   onRetry: (itemId: string) => void;
   onCancel: (itemId: string) => void;
 }
@@ -156,6 +185,10 @@ interface MinimalUploadItemProps {
 function MinimalUploadItem({ item, onRetry, onCancel }: MinimalUploadItemProps) {
   const getTooltip = () => {
     if (item.status === 'completed' && item.completedAt) {
+      // For metadata items, show "from previous session" indicator
+      if (item.fromMetadata) {
+        return `Uploaded from previous session\nCompleted: ${formatTime(item.completedAt)}`;
+      }
       const duration = item.startedAt
         ? ` (${Math.round((new Date(item.completedAt).getTime() - new Date(item.startedAt).getTime()) / 1000)}s)`
         : '';
@@ -196,7 +229,7 @@ function MinimalUploadItem({ item, onRetry, onCancel }: MinimalUploadItemProps) 
       {item.status === 'completed' && (
         <span className="upload-item-status-text completed">Done</span>
       )}
-      {item.status === 'pending' && (
+      {item.status === 'pending' && !item.fromMetadata && (
         <button
           className="upload-item-cancel-btn"
           onClick={() => onCancel(item.id)}

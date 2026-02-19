@@ -3,7 +3,7 @@ import { mdiFlashTriangleOutline } from '@mdi/js';
 import Icon from '@mdi/react';
 import { useCallback, useRef, useState } from "react";
 
-type DisplayMode = 'single' | 'center' | 'canvas';
+type DisplayMode = 'single' | 'center' | 'canvas' | 'finalize';
 
 interface CurrentSetPhoto {
   id: string;
@@ -27,6 +27,9 @@ interface DisplayContentProps {
   showCapturePreview?: boolean;
   capturedPhotoUrl?: string | null;
   onCapturePreviewLoad?: () => void; // Called when the preview image has finished loading
+  // Finalize mode data
+  finalizeImageUrl?: string | null;
+  finalizeQrData?: string | null;
   // Center mode photo browsing
   centerBrowseIndex?: number | null;
   onCenterPhotoClick?: (index: number) => void;
@@ -48,6 +51,8 @@ export default function DisplayContent({
   showCapturePreview = false,
   capturedPhotoUrl = null,
   onCapturePreviewLoad,
+  finalizeImageUrl = null,
+  finalizeQrData = null,
   centerBrowseIndex = null,
   onCenterPhotoClick,
   onCenterBack,
@@ -166,9 +171,9 @@ export default function DisplayContent({
                   className="nav-arrow-btn nav-prev"
                   onClick={(e) => {
                     e.stopPropagation();
-                    onCenterNavClick?.('prev');
+                    onCenterNavClick?.('next');
                   }}
-                  disabled={centerBrowseIndex === 0}
+                  disabled={centerBrowseIndex >= currentSetPhotos.length - 1}
                 >
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M15 18l-6-6 6-6" />
@@ -181,9 +186,9 @@ export default function DisplayContent({
                   className="nav-arrow-btn nav-next"
                   onClick={(e) => {
                     e.stopPropagation();
-                    onCenterNavClick?.('next');
+                    onCenterNavClick?.('prev');
                   }}
-                  disabled={centerBrowseIndex >= currentSetPhotos.length - 1}
+                  disabled={centerBrowseIndex === 0}
                 >
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M9 18l6-6-6-6" />
@@ -385,6 +390,54 @@ export default function DisplayContent({
               </button>
             </div>
           )}
+        </div>
+      );
+    }
+
+    case 'finalize': {
+      if (!finalizeImageUrl) {
+        return (
+          <div className="single-display">
+            <div className="single-photo-content">
+              <ImageIcon size={48} />
+              <span className="single-photo-label">No collage to display</span>
+            </div>
+          </div>
+        );
+      }
+
+      if (finalizeQrData) {
+        return (
+          <div className="finalize-display">
+            <div className="finalize-collage-section">
+              <img
+                src={finalizeImageUrl}
+                alt="Collage"
+                className="finalize-collage-img"
+              />
+            </div>
+            <div className="finalize-divider" />
+            <div className="finalize-qr-section">
+              <div className="finalize-qr-frame">
+                <img
+                  src={`data:image/png;base64,${finalizeQrData}`}
+                  alt="QR Code"
+                  className="finalize-qr-img"
+                />
+              </div>
+              <span className="finalize-qr-label">Scan to view photos</span>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="finalize-display finalize-collage-only">
+          <img
+            src={finalizeImageUrl}
+            alt="Collage"
+            className="finalize-collage-img"
+          />
         </div>
       );
     }

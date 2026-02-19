@@ -7,38 +7,28 @@ set VBOX_MANAGER="C:\Program Files\Oracle\VirtualBox\VBoxManage.exe"
 echo Stopping Photobooth Linux VM...
 echo.
 
-REM Check if VM exists
-%VBOX_MANAGER% list vms | findstr /C:"%VM_NAME%" >nul
+REM Check if VM exists and get its state in one call
+%VBOX_MANAGER% showvminfo %VM_NAME% --machinereadable > "%TEMP%\vbox_stop_%RANDOM%.txt" 2>nul
 if errorlevel 1 (
-    echo ERROR: VM "%VM_NAME%" not found!
+    echo VM "%VM_NAME%" not found or not accessible.
     pause
     exit /b 1
 )
 
-REM Check if VM is running
-%VBOX_MANAGER% showvminfo %VM_NAME% | findstr /C:"State:" | findstr /C:"running" >nul
+findstr /C:"VMState=\"running\"" "%TEMP%\vbox_stop_*.txt" >nul
 if errorlevel 1 (
-    echo VM "%VM_NAME%" is not running!
+    echo VM is not running.
+    del "%TEMP%\vbox_stop_*.txt" 2>nul
     pause
     exit /b 0
 )
+del "%TEMP%\vbox_stop_*.txt" 2>nul
 
-REM Stop VM ( ACPI power button )
-echo Stopping VM...
-%VBOX_MANAGER% controlvm %VM_NAME% acpipowerbutton
-
-echo Waiting for VM to shut down...
-timeout /t 3 >nul
-
-REM Force stop if still running after 10 seconds
-:waitloop
-timeout /t 1 >nul
-%VBOX_MANAGER% showvminfo %VM_NAME% | findstr /C:"State:" | findstr /C:"running" >nul
+REM Force poweroff (faster than ACPI for development)
+%VBOX_MANAGER% controlvm %VM_NAME% poweroff >nul
 if not errorlevel 1 (
-    echo VM still running, waiting...
-    goto waitloop
+    echo VM stopped.
+) else (
+    echo Failed to stop VM.
 )
-
-echo.
-echo VM stopped.
 echo.

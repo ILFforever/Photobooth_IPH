@@ -1,4 +1,5 @@
 import { ChevronRight, Image as ImageIcon, Check, FileCheck } from "lucide-react";
+import { useEffect, useRef } from "react";
 
 interface CurrentSetPhoto {
   id: string;
@@ -30,6 +31,25 @@ export default function CurrentSetPhotoStrip({
   onNextSession,
   onFinalize,
 }: CurrentSetPhotoStripProps) {
+  const photosContainerRef = useRef<HTMLDivElement>(null);
+
+  // Handle scroll wheel for horizontal scrolling
+  useEffect(() => {
+    const container = photosContainerRef.current;
+    if (!container) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      // Convert vertical scroll to horizontal scroll
+      if (e.deltaY !== 0) {
+        e.preventDefault();
+        container.scrollLeft += e.deltaY;
+      }
+    };
+
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    return () => container.removeEventListener('wheel', handleWheel);
+  }, [currentSetPhotos.length]);
+
   return (
     <div className="current-set-strip">
       <div className="current-set-strip-header">
@@ -40,7 +60,7 @@ export default function CurrentSetPhotoStrip({
         <span className="current-set-count">{selectedPhotos.size} / {requiredPhotos} photos</span>
       </div>
       <div className="current-set-body">
-        <div className="current-set-photos">
+        <div className="current-set-photos" ref={photosContainerRef}>
           {currentSetPhotos.length === 0 ? (
             <div className="current-set-empty">
               <ImageIcon size={32} />

@@ -21,6 +21,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <signal.h>
+#include <dirent.h>
 #include <gphoto2/gphoto2.h>
 #include <gphoto2/gphoto2-port-version.h>
 #include <gphoto2/gphoto2-version.h>
@@ -405,48 +406,77 @@ static void print_cameras(void) {
             camera = NULL;
         }
 
-        /* Detect USB version from port string */
-        /* Port format: "usb:BUS,DEVICE" e.g., "usb:003,002" */
-        int bus_num = 0, device_num = 0;
-        if (sscanf(port, "usb:%d,%d", &bus_num, &device_num) == 2) {
-            /* Try to read USB speed from sysfs */
-            char sysfs_path[256];
-            FILE *speed_file;
+        /* Detect USB version by scanning /sys/bus/usb/devices/.
+         * Match by bus/device number if available, otherwise by product name. */
+        {
+            int bus_num = 0, device_num = 0;
+            int have_bus_dev = (sscanf(port, "usb:%d,%d", &bus_num, &device_num) == 2);
+            float best_speed = 0;
 
-            /* Try multiple possible sysfs path formats */
-            const char *path_formats[] = {
-                "/sys/bus/usb/devices/%d-%d/speed",
-                "/sys/bus/usb/devices/%d-%d:1.0/speed",
-                "/sys/bus/usb/devices/usb%d/speed",
-                NULL
-            };
+            DIR *usb_dir = opendir("/sys/bus/usb/devices");
+            if (usb_dir) {
+                struct dirent *usb_entry;
+                while ((usb_entry = readdir(usb_dir)) != NULL) {
+                    if (usb_entry->d_name[0] == '.') continue;
+                    if (strncmp(usb_entry->d_name, "usb", 3) == 0) continue;
 
-            for (int fmt_idx = 0; path_formats[fmt_idx] != NULL; fmt_idx++) {
-                snprintf(sysfs_path, sizeof(sysfs_path), path_formats[fmt_idx], bus_num, device_num);
-                speed_file = fopen(sysfs_path, "r");
+                    char speed_path[300];
+                    snprintf(speed_path, sizeof(speed_path), "/sys/bus/usb/devices/%s/speed", usb_entry->d_name);
+                    FILE *sf = fopen(speed_path, "r");
+                    if (!sf) continue;
 
-                if (speed_file) {
-                    float speed_mbps = 0;
-                    if (fscanf(speed_file, "%f", &speed_mbps) == 1) {
-                        /* Determine USB version from speed */
-                        static char usb_buf[32];
-                        if (speed_mbps >= 5000) {
-                            snprintf(usb_buf, sizeof(usb_buf), "USB 3.x (%.0f Gbps)", speed_mbps / 1000);
-                            usb_version_str = usb_buf;
-                        } else if (speed_mbps == 480) {
-                            snprintf(usb_buf, sizeof(usb_buf), "USB 2.0 (480 Mbps)");
-                            usb_version_str = usb_buf;
-                        } else if (speed_mbps == 12) {
-                            usb_version_str = "USB 1.1 (12 Mbps)";
-                        } else if (speed_mbps <= 1.5) {
-                            usb_version_str = "USB 1.0 (1.5 Mbps)";
+                    float speed = 0;
+                    int got = (fscanf(sf, "%f", &speed) == 1);
+                    fclose(sf);
+                    if (!got) continue;
+
+                    if (have_bus_dev) {
+                        char bp[300], dp[300];
+                        int bus = -1, dev = -1;
+                        snprintf(bp, sizeof(bp), "/sys/bus/usb/devices/%s/busnum", usb_entry->d_name);
+                        snprintf(dp, sizeof(dp), "/sys/bus/usb/devices/%s/devnum", usb_entry->d_name);
+                        FILE *bf = fopen(bp, "r");
+                        FILE *df = fopen(dp, "r");
+                        if (bf && df) { fscanf(bf, "%d", &bus); fscanf(df, "%d", &dev); }
+                        if (bf) fclose(bf);
+                        if (df) fclose(df);
+
+                        if (bus == bus_num && dev == device_num) {
+                            best_speed = speed;
+                            break;
                         }
-                        fprintf(stderr, "USB detection: path=%s speed=%.1f result=%s\n",
-                                sysfs_path, speed_mbps, usb_version_str);
+                    } else {
+                        char pp[300];
+                        snprintf(pp, sizeof(pp), "/sys/bus/usb/devices/%s/product", usb_entry->d_name);
+                        FILE *pf = fopen(pp, "r");
+                        if (!pf) continue;
+                        char product[128] = "";
+                        if (fgets(product, sizeof(product), pf)) {
+                            char *nl = strchr(product, '\n');
+                            if (nl) *nl = '\0';
+                            if (strstr(product, "Camera") || strstr(product, "FUJIFILM") ||
+                                strstr(product, "Canon") || strstr(product, "NIKON") ||
+                                strstr(product, "Sony") || strstr(product, "X-")) {
+                                if (speed > best_speed) best_speed = speed;
+                            }
+                        }
+                        fclose(pf);
                     }
-                    fclose(speed_file);
-                    if (usb_version_str[0] != '\0') break; /* Found it */
                 }
+                closedir(usb_dir);
+            }
+
+            if (best_speed > 0) {
+                static char usb_buf[32];
+                if (best_speed >= 5000)
+                    snprintf(usb_buf, sizeof(usb_buf), "USB 3.x (%.0f Gbps)", best_speed / 1000);
+                else if (best_speed >= 400)
+                    snprintf(usb_buf, sizeof(usb_buf), "USB 2.0 (%.0f Mbps)", best_speed);
+                else if (best_speed >= 10)
+                    snprintf(usb_buf, sizeof(usb_buf), "USB 1.1 (%.0f Mbps)", best_speed);
+                else
+                    snprintf(usb_buf, sizeof(usb_buf), "USB 1.0 (%.1f Mbps)", best_speed);
+                usb_version_str = usb_buf;
             }
         }
 

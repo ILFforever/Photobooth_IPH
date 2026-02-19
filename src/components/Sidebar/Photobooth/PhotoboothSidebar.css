@@ -8,7 +8,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  margin: 24px 12px 12px 12px;
+  margin: 20px 12px 4px 18px;
 }
 
 .photobooth-sidebar .sidebar-title {
@@ -472,7 +472,7 @@
 .sidebar-divider {
   height: 1px;
   background: var(--border-color);
-  margin: 16px 12px;
+  margin: 16px 12px 2px 12px;
 }
 
 .photobooth-sidebar-content {

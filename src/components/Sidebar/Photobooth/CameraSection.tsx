@@ -202,10 +202,14 @@ export function CameraSection({
     ev?: string[]; // Brand-specific EV compensation (e.g., '5010' for Fuji, 'exposurecompensation' for Canon)
   }>({ iso: [], aperture: [], shutterspeed: [], shutterspeed2: [], whitebalance: [], exposurecompensation: [] });
 
-  // Fetch available cameras on mount
+  // Fetch available cameras on mount and poll every 5s when not connected
   useEffect(() => {
     fetchCameras();
-  }, []);
+    if (!isConnected) {
+      const interval = setInterval(fetchCameras, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [isConnected]);
 
   // Clear preview states when parent values change (e.g., from WebSocket)
   useEffect(() => {

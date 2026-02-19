@@ -28,7 +28,7 @@ import "./PhotoboothWorkspace.css";
 const DAEMON_URL = 'http://localhost:58321';
 
 // Display mode presets - arranged like Lightroom modules
-type DisplayMode = 'single' | 'center' | 'canvas';
+type DisplayMode = 'single' | 'center' | 'canvas' | 'finalize';
 
 interface DisplayPreset {
   id: DisplayMode;
@@ -116,6 +116,27 @@ export default function PhotoboothWorkspace() {
   const [centerBrowseIndex, setCenterBrowseIndex] = useState<number | null>(null);
   const [currentSetPhotos, setCurrentSetPhotos] = useState<CurrentSetPhoto[]>([]);
 
+  // Track finalize view animation state to show loading during transition
+  const [isFinalizeAnimating, setIsFinalizeAnimating] = useState(false);
+  const [showFinalizeContent, setShowFinalizeContent] = useState(false);
+
+  // Show loading when entering finalize mode, show content after animation
+  useEffect(() => {
+    if (viewMode === 'finalize') {
+      setIsFinalizeAnimating(true);
+      setShowFinalizeContent(false);
+      // Show content after slide animation completes (800ms)
+      const timer = setTimeout(() => {
+        setShowFinalizeContent(true);
+        setIsFinalizeAnimating(false);
+      }, 800);
+      return () => clearTimeout(timer);
+    } else {
+      setShowFinalizeContent(false);
+      setIsFinalizeAnimating(false);
+    }
+  }, [viewMode]);
+
   // Capture preview state for guest display
   const [showCapturePreview, setShowCapturePreview] = useState(false);
   const [capturedPhotoUrl, setCapturedPhotoUrl] = useState<string | null>(null);
@@ -175,7 +196,7 @@ export default function PhotoboothWorkspace() {
   }, [workingFolder]);
 
   // Second screen hook
-  const { isSecondScreenOpen, openSecondScreen, closeSecondScreen, updateGuestDisplay, updateDisplayMode, selectPhoto, selectCenterPhoto } = useSecondScreen();
+  const { isSecondScreenOpen, openSecondScreen, closeSecondScreen, updateGuestDisplay, updateDisplayMode, selectPhoto, selectCenterPhoto, updateCountdown } = useSecondScreen();
 
   // Photobooth sequence hook - manages all timing state
   const sequence = usePhotoboothSequence({
@@ -835,6 +856,15 @@ export default function PhotoboothWorkspace() {
     });
   }, [currentSetPhotos, selectedPhotoIndex, displayMode, updateGuestDisplay]);
 
+  // Sync countdown state to guest display
+  useEffect(() => {
+    const isCountdownActive = sequence.sequenceState === 'countdown';
+    updateCountdown({
+      active: isCountdownActive,
+      value: isCountdownActive ? sequence.currentCountdown : 0,
+    });
+  }, [sequence.sequenceState, sequence.currentCountdown, updateCountdown]);
+
   // Listen for events from guest display
   useEffect(() => {
     let unlisteners: UnlistenFn[] = [];
@@ -1064,19 +1094,26 @@ export default function PhotoboothWorkspace() {
               initial={{ x: '100%' }}
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
-              transition={{ type: 'tween', duration: 0.35, ease: 'easeInOut' }}
+              transition={{ type: 'tween', duration: 0.8, ease: 'easeInOut' }}
               style={{ position: 'absolute', inset: 0 }}
             >
-              <FinalizeView
-                frame={photoboothFrame!}
-                selectedPhotos={getSelectedPhotosOrdered()}
-                workingFolder={workingFolder!}
-                sessionFolderName={sessionFolderName}
-                onBack={handleBackToCapture}
-                updateGuestDisplay={updateGuestDisplay}
-                isSecondScreenOpen={isSecondScreenOpen}
-                openSecondScreen={openSecondScreen}
-              />
+              {isFinalizeAnimating ? (
+                <div className="finalize-view-loading">
+                  <div className="finalize-loading-spinner"></div>
+                  <span>Loading...</span>
+                </div>
+              ) : (
+                <FinalizeView
+                  frame={photoboothFrame!}
+                  selectedPhotos={getSelectedPhotosOrdered()}
+                  workingFolder={workingFolder!}
+                  sessionFolderName={sessionFolderName}
+                  onBack={handleBackToCapture}
+                  updateGuestDisplay={updateGuestDisplay}
+                  isSecondScreenOpen={isSecondScreenOpen}
+                  openSecondScreen={openSecondScreen}
+                />
+              )}
             </motion.div>
           )}
         </AnimatePresence>

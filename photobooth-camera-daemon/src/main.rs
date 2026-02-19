@@ -180,6 +180,126 @@ async fn ensure_storage_space(min_free_mb: u64) {
     }
 }
 
+/// Get USB device info from VBoxManage (runs on Windows host)
+fn get_vbox_usb_info() -> serde_json::Value {
+    use std::process::Command;
+
+    let vbox_paths = [
+        r"C:\Program Files\Oracle\VirtualBox\VBoxManage.exe",
+        r"C:\Program Files (x86)\Oracle\VirtualBox\VBoxManage.exe",
+    ];
+
+    let find_vbox = || -> Option<&'static str> {
+        for path in &vbox_paths {
+            if std::path::Path::new(path).exists() {
+                return Some(path);
+            }
+        }
+        None
+    };
+
+    let vbox_path = match find_vbox() {
+        Some(p) => p,
+        None => return serde_json::json!({
+            "source": "VBoxManage",
+            "error": "VBoxManage not found",
+            "success": false
+        }),
+    };
+
+    let mut result = serde_json::json!({
+        "source": "VBoxManage",
+        "success": true
+    });
+
+    // Get VM info to check USB controller type
+    if let Ok(output) = Command::new(vbox_path)
+        .args(&["showvminfo", "PhotoboothLinux", "--machinereadable"])
+        .output()
+    {
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            // Parse USB controller type
+            let mut usb_controller = "unknown";
+            for line in stdout.lines() {
+                if line.starts_with("USBControllerName") {
+                    if line.contains("xHCI") {
+                        usb_controller = "USB 3.0 (xHCI)";
+                    } else if line.contains("EHCI") {
+                        usb_controller = "USB 2.0 (EHCI)";
+                    } else if line.contains("OHCI") {
+                        usb_controller = "USB 1.1 (OHCI)";
+                    }
+                }
+            }
+            result["vm_usb_controller"] = serde_json::json!(usb_controller);
+        }
+    }
+
+    // Get host USB devices with actual speeds
+    if let Ok(output) = Command::new(vbox_path)
+        .args(&["list", "usbhost"])
+        .output()
+    {
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let mut devices = Vec::new();
+            let mut current_device: Option<serde_json::Map<String, serde_json::Value>> = None;
+
+            for line in stdout.lines() {
+                let line = line.trim();
+                if line.starts_with("UUID:") {
+                    // Save previous device
+                    if let Some(dev) = current_device.take() {
+                        devices.push(serde_json::Value::Object(dev));
+                    }
+                    current_device = Some(serde_json::Map::new());
+                }
+                if let Some(ref mut dev) = current_device {
+                    if let Some((key, val)) = line.split_once(':') {
+                        let key = key.trim().to_lowercase().replace(' ', "_");
+                        let val = val.trim().to_string();
+                        dev.insert(key, serde_json::Value::String(val));
+                    }
+                }
+            }
+            if let Some(dev) = current_device.take() {
+                devices.push(serde_json::Value::Object(dev));
+            }
+
+            // Find camera devices and extract speed info
+            let camera_keywords = ["fujifilm", "canon", "nikon", "sony", "camera", "x-h2", "x-t", "x-s"];
+            let mut camera_usb_speed = String::new();
+            for dev in &devices {
+                let product = dev.get("product").and_then(|v| v.as_str()).unwrap_or("");
+                let manufacturer = dev.get("manufacturer").and_then(|v| v.as_str()).unwrap_or("");
+                let speed = dev.get("speed").and_then(|v| v.as_str()).unwrap_or("");
+                let combined = format!("{} {}", manufacturer, product).to_lowercase();
+
+                if camera_keywords.iter().any(|kw| combined.contains(kw)) {
+                    camera_usb_speed = speed.to_string();
+                    result["camera_product"] = serde_json::json!(product);
+                    result["camera_manufacturer"] = serde_json::json!(manufacturer);
+                    result["camera_host_speed"] = serde_json::json!(speed);
+                }
+            }
+
+            // Determine actual USB version from host speed string
+            let camera_usb_speed_lower = camera_usb_speed.to_lowercase();
+            if camera_usb_speed_lower.contains("super") || camera_usb_speed_lower.contains("5000") {
+                result["camera_usb_version"] = serde_json::json!("USB 3.0");
+            } else if camera_usb_speed_lower.contains("high") || camera_usb_speed_lower.contains("480") {
+                result["camera_usb_version"] = serde_json::json!("USB 2.0");
+            }
+
+            result["host_usb_devices_count"] = serde_json::json!(devices.len());
+            result["host_usb_devices"] = serde_json::json!(devices);
+        }
+    }
+
+    result
+}
+
 /// Parse query parameter from URI
 fn parse_query_param(uri: &str, param_name: &str) -> Option<u32> {
     let query_start = uri.find('?')?;
@@ -939,6 +1059,12 @@ async fn handle_request(
                 .unwrap();
 
             return Ok(Some(response));
+        }
+
+        (&Method::GET, "/api/usb-info") => {
+            // Query VBoxManage for USB device info from Windows host
+            let usb_info = get_vbox_usb_info();
+            Some(make_api_response(usb_info))
         }
 
         (&Method::GET, "/api/debug") => {

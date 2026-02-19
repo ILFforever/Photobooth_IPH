@@ -23,10 +23,15 @@ interface FinalizeViewProps {
   updateGuestDisplay: (data: {
     showCapturePreview?: boolean;
     capturedPhotoUrl?: string | null;
+    displayMode?: string;
+    finalizeImageUrl?: string | null;
+    finalizeQrData?: string | null;
     [key: string]: any;
   }) => void;
   isSecondScreenOpen: boolean;
   openSecondScreen: () => void;
+  /** Base64 PNG QR code data (optional, from upload result) */
+  qrData?: string | null;
 }
 
 export default function FinalizeView({
@@ -38,6 +43,7 @@ export default function FinalizeView({
   updateGuestDisplay,
   isSecondScreenOpen,
   openSecondScreen,
+  qrData = null,
 }: FinalizeViewProps) {
   const {
     photoboothBackground: background,
@@ -465,8 +471,9 @@ export default function FinalizeView({
   const handleToggleDisplay = useCallback(async () => {
     if (isDisplayingOnGuest) {
       updateGuestDisplay({
-        showCapturePreview: false,
-        capturedPhotoUrl: null,
+        displayMode: 'center',
+        finalizeImageUrl: null,
+        finalizeQrData: null,
       });
       setIsDisplayingOnGuest(false);
       return;
@@ -483,8 +490,9 @@ export default function FinalizeView({
     try {
       const dataUrl = await compositeFrame();
       updateGuestDisplay({
-        showCapturePreview: true,
-        capturedPhotoUrl: dataUrl,
+        displayMode: 'finalize',
+        finalizeImageUrl: dataUrl,
+        finalizeQrData: qrData || null,
       });
       setIsDisplayingOnGuest(true);
     } catch (err) {
@@ -492,7 +500,7 @@ export default function FinalizeView({
     } finally {
       setIsCompositing(false);
     }
-  }, [isDisplayingOnGuest, isSecondScreenOpen, compositeFrame, updateGuestDisplay, openSecondScreen]);
+  }, [isDisplayingOnGuest, isSecondScreenOpen, compositeFrame, updateGuestDisplay, openSecondScreen, qrData]);
 
   // Sorted overlay layers for rendering
   const belowFrameOverlays = useMemo(() =>

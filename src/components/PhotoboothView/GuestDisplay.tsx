@@ -10,7 +10,7 @@ const CAPTURE_PREVIEW_LOADED_EVENT = 'guest-display:preview-loaded';
 
 export type { UnlistenFn };
 
-type DisplayMode = 'single' | 'center' | 'canvas';
+type DisplayMode = 'single' | 'center' | 'canvas' | 'finalize';
 
 interface CurrentSetPhoto {
   id: string;
@@ -25,6 +25,8 @@ interface PhotoState {
   displayMode: DisplayMode;
   showCapturePreview: boolean;
   capturedPhotoUrl: string | null;
+  finalizeImageUrl: string | null;
+  finalizeQrData: string | null;
 }
 
 function base64ToBlob(b64: string, mime: string): Blob {
@@ -44,10 +46,15 @@ export default function GuestDisplay() {
     displayMode: 'center', // Will be overridden by main window's current mode
     showCapturePreview: false,
     capturedPhotoUrl: null,
+    finalizeImageUrl: null,
+    finalizeQrData: null,
   });
 
   // Center mode photo browsing
   const [centerBrowseIndex, setCenterBrowseIndex] = useState<number | null>(null);
+
+  // Countdown overlay state
+  const [countdown, setCountdown] = useState<{ active: boolean; value: number }>({ active: false, value: 0 });
 
   // Live stream frame handling - supports both HDMI and PTP streams
   const [liveStreamUrl, setLiveStreamUrl] = useState<string | null>(null);
@@ -78,7 +85,7 @@ export default function GuestDisplay() {
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const modeParam = urlParams.get('mode');
-    if (modeParam && ['single', 'center', 'canvas'].includes(modeParam)) {
+    if (modeParam && ['single', 'center', 'canvas', 'finalize'].includes(modeParam)) {
       setPhotoState(prev => ({ ...prev, displayMode: modeParam as DisplayMode }));
     }
   }, []);
@@ -204,7 +211,7 @@ export default function GuestDisplay() {
     };
   }, []);
 
-  const { currentSetPhotos, selectedPhotoIndex, displayMode, showCapturePreview, capturedPhotoUrl } = photoState;
+  const { currentSetPhotos, selectedPhotoIndex, displayMode, showCapturePreview, capturedPhotoUrl, finalizeImageUrl, finalizeQrData } = photoState;
 
   // Handle keyboard navigation for fullscreen mode
   useEffect(() => {
@@ -293,6 +300,8 @@ export default function GuestDisplay() {
             showCapturePreview={showCapturePreview}
             capturedPhotoUrl={capturedPhotoUrl}
             onCapturePreviewLoad={handleCapturePreviewLoad}
+            finalizeImageUrl={finalizeImageUrl}
+            finalizeQrData={finalizeQrData}
             centerBrowseIndex={centerBrowseIndex}
             onCenterPhotoClick={(index) => setCenterBrowseIndex(index)}
             onCenterBack={() => setCenterBrowseIndex(null)}
@@ -301,12 +310,4 @@ export default function GuestDisplay() {
                 if (prev === null) return null;
                 const total = currentSetPhotos.length;
                 if (direction === 'prev') return Math.max(0, prev - 1);
-                return Math.min(total - 1, prev + 1);
-              });
-            }}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
+     

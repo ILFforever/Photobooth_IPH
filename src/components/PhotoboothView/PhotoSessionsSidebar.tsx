@@ -404,6 +404,7 @@ export default function PhotoSessionsSidebar({
                                   items={queueItems.filter(item => item.sessionId === set.id)}
                                   onRetry={retryUpload}
                                   onCancel={cancelUpload}
+                                  uploadedImages={set.googleDriveMetadata?.uploadedImages || []}
                                 />
                               </div>
                             )}

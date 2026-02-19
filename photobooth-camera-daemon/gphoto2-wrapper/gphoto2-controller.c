@@ -108,6 +108,110 @@ static int reset_usb_device(const char *port_name) {
     return 0;
 }
 
+/* Detect USB version from port string
+ * Port format: "usb:BUS,DEVICE" e.g., "usb:003,002"
+ */
+static const char *speed_to_usb_version(float speed_mbps, char *buf, size_t buf_size) {
+    if (speed_mbps >= 5000) {
+        snprintf(buf, buf_size, "USB 3.x (%.0f Gbps)", speed_mbps / 1000);
+    } else if (speed_mbps >= 400) {
+        snprintf(buf, buf_size, "USB 2.0 (%.0f Mbps)", speed_mbps);
+    } else if (speed_mbps >= 10) {
+        snprintf(buf, buf_size, "USB 1.1 (%.0f Mbps)", speed_mbps);
+    } else {
+        snprintf(buf, buf_size, "USB 1.0 (%.1f Mbps)", speed_mbps);
+    }
+    return buf;
+}
+
+static const char *detect_usb_version(const char *port) {
+    static char usb_buf[32];
+    usb_buf[0] = '\0';
+
+    /* Scan /sys/bus/usb/devices/ for camera devices by product name.
+     * gphoto2 often reports port as just "usb:" without bus/device numbers,
+     * so we match by product name which reliably identifies cameras. */
+    int bus_num = 0, device_num = 0;
+    int have_bus_dev = (port && sscanf(port, "usb:%d,%d", &bus_num, &device_num) == 2);
+
+    DIR *dir = opendir("/sys/bus/usb/devices");
+    if (!dir) return usb_buf;
+
+    struct dirent *entry;
+    float best_speed = 0;
+
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_name[0] == '.') continue;
+        if (strncmp(entry->d_name, "usb", 3) == 0) continue; /* Skip root hubs */
+
+        char speed_path[300];
+        snprintf(speed_path, sizeof(speed_path), "/sys/bus/usb/devices/%s/speed", entry->d_name);
+
+        FILE *f = fopen(speed_path, "r");
+        if (!f) continue;
+
+        float speed = 0;
+        int got_speed = (fscanf(f, "%f", &speed) == 1);
+        fclose(f);
+        if (!got_speed) continue;
+
+        /* Try matching by bus/device number if available */
+        if (have_bus_dev) {
+            char busnum_path[300], devnum_path[300];
+            int bus = -1, dev = -1;
+
+            snprintf(busnum_path, sizeof(busnum_path), "/sys/bus/usb/devices/%s/busnum", entry->d_name);
+            snprintf(devnum_path, sizeof(devnum_path), "/sys/bus/usb/devices/%s/devnum", entry->d_name);
+
+            FILE *bf = fopen(busnum_path, "r");
+            FILE *df = fopen(devnum_path, "r");
+            if (bf && df) {
+                fscanf(bf, "%d", &bus);
+                fscanf(df, "%d", &dev);
+            }
+            if (bf) fclose(bf);
+            if (df) fclose(df);
+
+            if (bus == bus_num && dev == device_num) {
+                speed_to_usb_version(speed, usb_buf, sizeof(usb_buf));
+                fprintf(stderr, "controller: USB detected device='%s' speed=%.0f → %s\n",
+                        entry->d_name, speed, usb_buf);
+                break;
+            }
+            continue;
+        }
+
+        /* No bus/device numbers - match by product name */
+        char product_path[300];
+        snprintf(product_path, sizeof(product_path), "/sys/bus/usb/devices/%s/product", entry->d_name);
+
+        FILE *pf = fopen(product_path, "r");
+        if (!pf) continue;
+
+        char product[128] = "";
+        if (fgets(product, sizeof(product), pf)) {
+            char *nl = strchr(product, '\n');
+            if (nl) *nl = '\0';
+
+            if (strstr(product, "Camera") || strstr(product, "FUJIFILM") ||
+                strstr(product, "Canon") || strstr(product, "NIKON") ||
+                strstr(product, "Sony") || strstr(product, "X-")) {
+                if (speed > best_speed) {
+                    best_speed = speed;
+                    speed_to_usb_version(speed, usb_buf, sizeof(usb_buf));
+                }
+            }
+        }
+        fclose(pf);
+    }
+    closedir(dir);
+
+    if (usb_buf[0] != '\0') {
+        fprintf(stderr, "controller: USB detection result: %s\n", usb_buf);
+    }
+    return usb_buf;
+}
+
 #define CMD_PIPE "/tmp/camera_cmd"
 #define STATUS_PIPE "/tmp/camera_status"
 #define STREAM_PIPE "/tmp/camera_stream"
@@ -604,26 +708,47 @@ static void send_camera_connected_event(Camera *camera, GPContext *context) {
         }
     }
 
-    // Get port info
-    GPPortInfo port_info;
-    ret = gp_camera_get_port_info(camera, &port_info);
-    if (ret >= GP_OK) {
-        char *port_path = NULL;
-        gp_port_info_get_path(port_info, &port_path);
-        if (port_path) {
-            snprintf(port, sizeof(port), "%s", port_path);
+    // Get port info - try multiple methods
+    // First, use g_last_camera_port which was saved during camera detection with the full "usb:XXX,YYY" format
+    if (g_last_camera_port[0] != '\0') {
+        snprintf(port, sizeof(port), "%s", g_last_camera_port);
+    } else {
+        // Fallback: try gp_camera_get_port_info
+        GPPortInfo port_info;
+        ret = gp_camera_get_port_info(camera, &port_info);
+        if (ret >= GP_OK) {
+            char *port_path = NULL;
+            gp_port_info_get_path(port_info, &port_path);
+            if (port_path) {
+                snprintf(port, sizeof(port), "%s", port_path);
+            }
+        }
+        // Final fallback: if port is incomplete ("usb:" without numbers), get it from the port list
+        if (strcmp(port, "usb:") == 0 || strcmp(port, "") == 0) {
+            // Try to get port from cached port info list using camera index
+            if (g_cached_port_info_list && g_cached_camera_index >= 0) {
+                GPPortInfo cached_port_info;
+                ret = gp_port_info_list_get_info(g_cached_port_info_list, g_cached_camera_index, &cached_port_info);
+                if (ret >= GP_OK) {
+                    char *cached_port_name = NULL;
+                    gp_port_info_get_path(cached_port_info, &cached_port_name);
+                    if (cached_port_name && strstr(cached_port_name, "usb:") != NULL) {
+                        snprintf(port, sizeof(port), "%s", cached_port_name);
+                        fprintf(stderr, "USB DEBUG: Using cached port name: %s\n", port);
+                    }
+                }
+            }
         }
     }
-
-    // Send camera_connected event
     if (strlen(manufacturer) > 0 && strlen(model) > 0) {
+        const char *usb_version = detect_usb_version(port);
         char event[512];
         snprintf(event, sizeof(event),
-                "{\"camera_connected\":[{\"id\":\"0\",\"manufacturer\":\"%s\",\"model\":\"%s\",\"port\":\"%s\",\"usb_version\":\"USB 3.x (5 Gbps)\"}]}\n",
-                manufacturer, model, port);
+                "{\"camera_connected\":[{\"id\":\"0\",\"manufacturer\":\"%s\",\"model\":\"%s\",\"port\":\"%s\",\"usb_version\":\"%s\"}]}\n",
+                manufacturer, model, port, usb_version);
         ssize_t written = write(g_status_fd, event, strlen(event));
         if (written > 0) {
-            log_ts("controller: Sent camera_connected event: %s %s at %s\n", manufacturer, model, port);
+            log_ts("controller: Sent camera_connected event: %s %s at %s (USB: %s)\n", manufacturer, model, port, usb_version);
         }
     }
 }
@@ -2046,21 +2171,22 @@ int main(int argc, char *argv[]) {
     }
 
     /*
-     * Verify camera exists at startup — retry up to 60s for USB enumeration.
+     * Wait for camera at startup — retry indefinitely until found.
      * Then RELEASE it immediately so the camera is free.
      */
     context = create_context();
     log_ts("controller: Waiting for camera...\n");
-    for (int attempt = 1; attempt <= 60 && g_running; attempt++) {
+    for (int attempt = 1; g_running; attempt++) {
         camera = open_camera(camera_index, &ret);
         if (camera) break;
         if (attempt % 10 == 0) {
-            log_ts("controller: Still waiting for camera (%d/60)...\n", attempt);
+            log_ts("controller: Still waiting for camera (%d attempts)...\n", attempt);
         }
         sleep(1);
     }
     if (!camera) {
-        log_ts("controller: Failed to open camera after 60 attempts\n");
+        /* Only reaches here if g_running was set to 0 (signal received) */
+        log_ts("controller: Shutdown requested while waiting for camera\n");
         if (cmd_fd >= 0) close(cmd_fd);
         if (g_status_fd >= 0) close(g_status_fd);
         gp_context_unref(context);
@@ -2841,6 +2967,7 @@ int main(int argc, char *argv[]) {
         /* Continuous PTP streaming loop - stream frames when active and not paused */
         if (g_streaming_active && camera && !g_streaming_paused) {
             static int debug_count = 0;
+            static int consecutive_stream_failures = 0;
             if (debug_count++ % 30 == 0) {
                 log_ts("DEBUG: Streaming loop running (active=%d, camera=%p, paused=%d)\n",
                        g_streaming_active, (void*)camera, g_streaming_paused);
@@ -2848,7 +2975,7 @@ int main(int argc, char *argv[]) {
 
             // Check if we need to send periodic status update (battery, etc) every 60 seconds
             time_t now = time(NULL);
-            if (now - g_last_status_time >= 60) {
+            if (now - g_last_status_time >= 5) {
                 log_ts("controller: Sending periodic status update during streaming\n");
 
                 // Fetch status using brand-specific widget names
@@ -2912,7 +3039,55 @@ int main(int argc, char *argv[]) {
             struct timespec frame_start, frame_end;
             clock_gettime(CLOCK_MONOTONIC, &frame_start);
 
-            stream_preview_frame(camera, context);
+            int stream_ret = stream_preview_frame(camera, context);
+            if (stream_ret < GP_OK) {
+                consecutive_stream_failures++;
+                log_ts("controller: Stream frame failed (%d consecutive): %s\n",
+                       consecutive_stream_failures, gp_result_as_string(stream_ret));
+
+                if (consecutive_stream_failures >= 5) {
+                    log_ts("controller: Too many consecutive stream failures (%d), camera likely disconnected\n",
+                           consecutive_stream_failures);
+
+                    /* Stop streaming */
+                    g_streaming_active = 0;
+                    g_streaming_paused = 0;
+                    if (g_stream_fd >= 0) {
+                        close(g_stream_fd);
+                        g_stream_fd = -1;
+                    }
+
+                    /* Release camera so polling loop can re-detect */
+                    gp_camera_exit(camera, context);
+                    gp_camera_unref(camera);
+                    camera = NULL;
+                    live_view_active = 0;
+
+                    /* Invalidate detection cache so polling re-scans */
+                    g_detection_valid = 0;
+                    g_last_camera_port[0] = '\0';
+                    consecutive_open_failures = 1;  /* Seed failure counter so polling knows we lost connection */
+
+                    /* Send disconnect event to frontend */
+                    if (g_status_fd >= 0) {
+                        const char *msg = "{\"type\":\"camera_disconnected\",\"reason\":\"stream_failure\"}\n";
+                        ssize_t written = write(g_status_fd, msg, strlen(msg));
+                        if (written < 0) {
+                            log_ts("controller: Failed to write disconnect status: %s\n", strerror(errno));
+                        }
+                    }
+
+                    consecutive_stream_failures = 0;
+                    log_ts("controller: Streaming stopped, returning to polling mode\n");
+                    continue;  /* Skip to next main loop iteration (will enter polling path) */
+                }
+
+                /* Brief delay before retry to avoid tight error loop */
+                usleep(200000);  /* 200ms */
+                continue;
+            } else {
+                consecutive_stream_failures = 0;  /* Reset on successful frame */
+            }
 
             /* Frame rate limiting - maintain target FPS */
             clock_gettime(CLOCK_MONOTONIC, &frame_end);

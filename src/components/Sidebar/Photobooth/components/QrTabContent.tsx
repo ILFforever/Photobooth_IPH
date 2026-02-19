@@ -35,6 +35,26 @@ export function QrTabContent() {
   const activeItems = sessionItems.filter(i => i.status === 'uploading' || i.status === 'retrying' || i.status === 'pending');
   const completedItems = sessionItems.filter(i => i.status === 'completed');
 
+  // Also include uploaded images from session metadata (stored in .ptb file from previous sessions)
+  const metadataUploadedItems = useMemo(() => {
+    if (!currentSession?.googleDriveMetadata?.uploadedImages) return [];
+    // Filter out images that are already in the completed queue (avoid duplicates)
+    const completedFilenames = new Set(completedItems.map(i => i.filename));
+    return currentSession.googleDriveMetadata.uploadedImages
+      .filter((img: any) => !completedFilenames.has(img.filename))
+      .map((img: any) => ({
+        id: `metadata-${img.driveFileId}`,
+        filename: img.filename,
+        status: 'completed',
+        completedAt: img.uploadedAt,
+        driveFileId: img.driveFileId,
+        fromMetadata: true,
+      }));
+  }, [currentSession?.googleDriveMetadata?.uploadedImages, completedItems]);
+
+  // Combine queue completed items with metadata uploaded items
+  const allCompletedItems = [...completedItems, ...metadataUploadedItems];
+
   // Only show spinner when there are actually uploading items (not just pending)
   const hasUploadingItems = sessionItems.some(item => item.status === 'uploading' || item.status === 'retrying');
 
@@ -192,12 +212,12 @@ export function QrTabContent() {
           <Upload size={14} />
           <span className="qr-section-title">Upload Status</span>
           <div className="qr-upload-summary">
-            <span className="qr-upload-count">{completedItems.length}</span>
+            <span className="qr-upload-count">{allCompletedItems.length}</span>
             <span>uploaded</span>
           </div>
         </div>
 
-        {sessionItems.length === 0 ? (
+        {sessionItems.length === 0 && metadataUploadedItems.length === 0 ? (
           <div className="qr-upload-empty">
             <Upload size={16} />
             <span>No uploads yet</span>
@@ -243,14 +263,14 @@ export function QrTabContent() {
             {/* Completed Items */}
             <UploadSection
               title="Completed"
-              count={completedItems.length}
+              count={allCompletedItems.length}
               icon={<Check size={12} />}
               collapsed={collapsedSections.completed}
               onToggle={() => toggleSection('completed')}
               status="completed"
             >
-              {completedItems.length > 0 ? (
-                completedItems.map(item => (
+              {allCompletedItems.length > 0 ? (
+                allCompletedItems.map(item => (
                   <MinimalUploadItem key={item.id} item={item} />
                 ))
               ) : (
@@ -304,6 +324,10 @@ interface MinimalUploadItemProps {
 function MinimalUploadItem({ item }: MinimalUploadItemProps) {
   const getTooltip = () => {
     if (item.status === 'completed' && item.completedAt) {
+      // For metadata items, show "from previous session" indicator
+      if (item.fromMetadata) {
+        return `Uploaded from previous session\nCompleted: ${new Date(item.completedAt).toLocaleTimeString()}`;
+      }
       const duration = item.startedAt
         ? ` (${Math.round((new Date(item.completedAt).getTime() - new Date(item.startedAt).getTime()) / 1000)}s)`
         : '';

@@ -11,7 +11,7 @@ export function useSecondScreen() {
   const openSecondScreen = useCallback(async (initialData?: {
     currentSetPhotos: Array<{ id: string; thumbnailUrl: string; fullUrl?: string; timestamp: string }>;
     selectedPhotoIndex: number | null;
-    displayMode: 'single' | 'center' | 'canvas';
+    displayMode: 'single' | 'center' | 'canvas' | 'finalize';
     centerBrowseIndex: number | null;
   }) => {
     try {
@@ -103,18 +103,20 @@ export function useSecondScreen() {
   const updateGuestDisplay = useCallback((data: {
     currentSetPhotos?: Array<{ id: string; thumbnailUrl: string; fullUrl?: string; timestamp: string }>;
     selectedPhotoIndex?: number | null;
-    displayMode?: 'single' | 'center' | 'canvas';
+    displayMode?: 'single' | 'center' | 'canvas' | 'finalize';
     liveViewStream?: boolean;
     hdmiStreamActive?: boolean;
     showCapturePreview?: boolean;
     capturedPhotoUrl?: string | null;
+    finalizeImageUrl?: string | null;
+    finalizeQrData?: string | null;
   }) => {
     if (isSecondScreenOpen) {
       emitTo(GUEST_DISPLAY_LABEL, 'guest-display:update', data);
     }
   }, [isSecondScreenOpen]);
 
-  const updateDisplayMode = useCallback((mode: 'single' | 'center' | 'canvas') => {
+  const updateDisplayMode = useCallback((mode: 'single' | 'center' | 'canvas' | 'finalize') => {
     if (isSecondScreenOpen) {
       emitTo(GUEST_DISPLAY_LABEL, 'guest-display:mode', mode);
     }
@@ -138,6 +140,12 @@ export function useSecondScreen() {
     }
   }, [isSecondScreenOpen]);
 
+  const updateCountdown = useCallback((data: { active: boolean; value: number }) => {
+    if (isSecondScreenOpen) {
+      emitTo(GUEST_DISPLAY_LABEL, 'guest-display:countdown', data);
+    }
+  }, [isSecondScreenOpen]);
+
   return {
     isSecondScreenOpen,
     openSecondScreen,
@@ -147,5 +155,6 @@ export function useSecondScreen() {
     selectPhoto,
     addPhoto,
     selectCenterPhoto,
+    updateCountdown,
   };
 }

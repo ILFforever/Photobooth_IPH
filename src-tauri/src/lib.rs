@@ -166,6 +166,16 @@ pub fn run() {
             start_hdmi_capture,
             stop_hdmi_capture,
         ])
+        .on_window_event(|window, event| {
+            // When the main window is closed, also close the guest display window
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                if window.label() == "main" {
+                    if let Some(guest) = window.app_handle().get_webview_window("guest-display") {
+                        let _ = guest.destroy();
+                    }
+                }
+            }
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
