@@ -20,7 +20,6 @@ export function QrTabContent() {
   const [qrBase64, setQrBase64] = useState<string | null>(null);
   const [isUploadingCollage, setIsUploadingCollage] = useState(false);
   const [showRegeneratePrompt, setShowRegeneratePrompt] = useState(false);
-  const [pendingUploadAction, setPendingUploadAction] = useState<(() => void) | null>(null);
 
   const driveMetadata = currentSession?.googleDriveMetadata;
   const folderLink = driveMetadata?.folderLink || '';
@@ -147,10 +146,7 @@ export function QrTabContent() {
 
     // Check if we need to prompt for regeneration
     if (currentCollageFilename && collageIsDirty) {
-      // Store the pending upload action and show prompt
-      setPendingUploadAction(() => async () => {
-        await performUpload(currentSession, workingFolder, sessions, driveMetadata);
-      });
+      // Show prompt for regeneration
       setShowRegeneratePrompt(true);
       return;
     }
@@ -160,16 +156,17 @@ export function QrTabContent() {
   }, [currentSession, workingFolder, sessions, driveMetadata, currentCollageFilename, collageIsDirty, isGeneratingCollage]);
 
   // Actual upload execution (extracted for reuse)
-  const performUpload = useCallback(async (currentSession: any, workingFolder: string, sessions: any[], driveMetadata: any) => {
+  const performUpload = useCallback(async (currentSession: any, workingFolder: string, sessions: any[], driveMetadata: any, forceOldVersion = false) => {
     setIsUploadingCollage(true);
     try {
       const sessionFolder = sessions.find(s => s.id === currentSession.id)?.folderName || currentSession.id;
       let filename: string;
 
-      if (currentCollageFilename && !collageIsDirty) {
+      // Use cached version if not dirty OR if user explicitly chose to use old version
+      if (currentCollageFilename && (!collageIsDirty || forceOldVersion)) {
         // Collage already saved to disk — skip re-export
         filename = currentCollageFilename;
-        showToast('Using cached collage', 'success', 2000, currentCollageFilename);
+        showToast('Using existing collage', 'success', 2000, currentCollageFilename);
       } else {
         // Set generating state to block other operations
         setIsGeneratingCollage(true);
@@ -214,16 +211,17 @@ export function QrTabContent() {
 
   const confirmRegenerate = useCallback(() => {
     setShowRegeneratePrompt(false);
-    if (pendingUploadAction) {
-      pendingUploadAction();
-      setPendingUploadAction(null);
+    if (currentSession && workingFolder && driveMetadata) {
+      performUpload(currentSession, workingFolder, sessions, driveMetadata, false);
     }
-  }, [pendingUploadAction]);
+  }, [currentSession, workingFolder, sessions, driveMetadata, performUpload]);
 
   const cancelRegenerate = useCallback(() => {
     setShowRegeneratePrompt(false);
-    setPendingUploadAction(null);
-  }, []);
+    if (currentSession && workingFolder && driveMetadata) {
+      performUpload(currentSession, workingFolder, sessions, driveMetadata, true);
+    }
+  }, [currentSession, workingFolder, sessions, driveMetadata, performUpload]);
 
   // Auto-refresh upload queue for current session
   useEffect(() => {

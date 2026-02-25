@@ -26,7 +26,6 @@ export function PrintSettingsProvider({ children }: { children: ReactNode }) {
   // Print operation state
   const [isPrinting, setIsPrinting] = useState(false);
   const [showRegeneratePrompt, setShowRegeneratePrompt] = useState(false);
-  const [pendingPrintAction, setPendingPrintAction] = useState<(() => void) | null>(null);
 
   // Print the current collage using Windows Photo Printing Wizard
   const printCollage = useCallback(async () => {
@@ -47,10 +46,7 @@ export function PrintSettingsProvider({ children }: { children: ReactNode }) {
 
       // Check if we need to prompt for regeneration
       if (finalizeViewMode === 'finalize' && currentCollageFilename && collageIsDirty) {
-        // Store the pending print action and show prompt
-        setPendingPrintAction(() => async () => {
-          await performPrint();
-        });
+        // Show prompt for regeneration
         setShowRegeneratePrompt(true);
         setIsPrinting(false);
         return;
@@ -67,7 +63,7 @@ export function PrintSettingsProvider({ children }: { children: ReactNode }) {
   }, [showToast, workingFolder, currentSession, sessions, finalizeViewMode, currentCollageFilename, collageIsDirty, isGeneratingCollage]);
 
   // Actual print execution (extracted for reuse)
-  const performPrint = useCallback(async () => {
+  const performPrint = useCallback(async (forceOldVersion = false) => {
     if (!currentSession || !workingFolder) {
       showToast('No active session', 'error', 3000, 'Please create or select a session first');
       return;
@@ -76,10 +72,11 @@ export function PrintSettingsProvider({ children }: { children: ReactNode }) {
     const folder = sessions.find((s: any) => s.id === currentSession.id)?.folderName || currentSession.id;
     let filename: string;
 
-    if (finalizeViewMode === 'finalize' && currentCollageFilename && !collageIsDirty) {
+    // Use cached version if not dirty OR if user explicitly chose to use old version
+    if (currentCollageFilename && (!collageIsDirty || forceOldVersion)) {
       // Collage already saved to disk — skip re-export
       filename = currentCollageFilename;
-      showToast('Using cached collage', 'success', 2000, currentCollageFilename);
+      showToast('Using existing collage', 'success', 2000, currentCollageFilename);
     } else {
       // Set generating state to block other operations
       setIsGeneratingCollage(true);
@@ -131,18 +128,15 @@ export function PrintSettingsProvider({ children }: { children: ReactNode }) {
 
   const confirmRegenerate = useCallback(() => {
     setShowRegeneratePrompt(false);
-    if (pendingPrintAction) {
-      setIsPrinting(true);
-      pendingPrintAction();
-      setPendingPrintAction(null);
-    }
-  }, [pendingPrintAction]);
+    setIsPrinting(true);
+    performPrint(false);
+  }, [performPrint]);
 
   const cancelRegenerate = useCallback(() => {
     setShowRegeneratePrompt(false);
-    setPendingPrintAction(null);
-    setIsPrinting(false);
-  }, []);
+    setIsPrinting(true);
+    performPrint(true);
+  }, [performPrint]);
 
   const value: PrintSettingsContextType = {
     printCollage,

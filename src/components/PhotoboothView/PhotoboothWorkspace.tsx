@@ -1021,7 +1021,7 @@ export default function PhotoboothWorkspace() {
                 {displayPresets.map((preset) => (
                   <button
                     key={preset.id}
-                    ref={el => (tabRefs.current[preset.id] = el)}
+                    ref={(el) => { tabRefs.current[preset.id] = el; }}
                     className={`mode-tab-compact ${displayMode === preset.id ? 'active' : ''}`}
                     onClick={() => {
                       setDisplayMode(preset.id);
