@@ -156,6 +156,7 @@ pub fn run() {
             save_photo_to_working_folder,
             file_exists_in_session,
             save_file_to_session_folder,
+            save_file_to_path,
             download_photo_from_daemon,
             get_photo_exif,
             update_session_qr_setting,

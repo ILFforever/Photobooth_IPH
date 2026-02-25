@@ -134,7 +134,7 @@
   max-height: 100%;
   aspect-ratio: 3 / 2;
   object-fit: contain;
-  transform: scaleX(var(--video-stretch, 1)) scaleY(var(--video-stretch-v, 1));
+  transform: scaleX(var(--video-stretch, 1)) scaleY(var(--video-stretch-v, 1)) rotate(var(--video-rotate, 0deg));
   transform-origin: center;
 }
 
@@ -146,7 +146,7 @@
   max-height: 100%;
   object-fit: contain;
   animation: fadeIn 0.2s ease;
-  transform: scaleX(var(--video-stretch, 1)) scaleY(var(--video-stretch-v, 1));
+  transform: scaleX(var(--video-stretch, 1)) scaleY(var(--video-stretch-v, 1)) rotate(var(--video-rotate, 0deg));
   transform-origin: center;
 }
 

@@ -815,27 +815,18 @@ export default function PhotoboothWorkspace() {
   const currentPreset = displayPresets.find(p => p.id === displayMode);
   const modeIndex = displayPresets.findIndex(p => p.id === displayMode);
 
-  // Handle keyboard navigation for fullscreen mode
+  // Handle keyboard navigation for photo selection in canvas mode
   useEffect(() => {
-    const handleKeyDown = async (e: KeyboardEvent) => {
-      // F11 to toggle window fullscreen
-      if (e.key === 'F11') {
-        e.preventDefault();
-        const currentWindow = getCurrentWindow();
-        const isFullscreen = await currentWindow.isFullscreen();
-        await currentWindow.setFullscreen(!isFullscreen);
-        return;
-      }
-
-      // ESC to exit fullscreen
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // ESC to deselect photo
       if (e.key === 'Escape' && selectedPhotoIndex !== null && displayMode === 'canvas') {
         setSelectedPhotoIndex(null);
         return;
       }
 
-      // Arrow key navigation in fullscreen mode
+      // Arrow key navigation in canvas mode
       if (selectedPhotoIndex !== null && displayMode === 'canvas') {
-        const photoCount = currentSetPhotos.length || 6; // Use actual photo count or fallback to 6
+        const photoCount = currentSetPhotos.length || 6;
         if (e.key === 'ArrowLeft') {
           e.preventDefault();
           setSelectedPhotoIndex(prev => (prev !== null ? Math.max(0, prev - 1) : null));
@@ -871,14 +862,14 @@ export default function PhotoboothWorkspace() {
     selectCenterPhoto(centerBrowseIndex);
   }, [centerBrowseIndex, selectCenterPhoto]);
 
-  // Sync full state to guest display when photos change
+  // Sync photos to guest display when they change
+  // Note: displayMode is synced separately via updateDisplayMode above
   useEffect(() => {
     updateGuestDisplay({
       currentSetPhotos,
       selectedPhotoIndex,
-      displayMode,
     });
-  }, [currentSetPhotos, selectedPhotoIndex, displayMode, updateGuestDisplay]);
+  }, [currentSetPhotos, selectedPhotoIndex, updateGuestDisplay]);
 
   // Sync countdown state to guest display
   useEffect(() => {
@@ -918,12 +909,13 @@ export default function PhotoboothWorkspace() {
         }),
         listen('guest-display:ready', () => {
           // Guest display listeners are ready — send full current state
+          // Note: displayMode is NOT sent here — the guest display already has it from the URL param,
+          // and sending it here can cause a race condition that resets the mode
           console.log('[PhotoboothWorkspace] Guest display ready, sending full state');
           emitTo('guest-display', 'guest-display:mode', displayModeRef.current);
           emitTo('guest-display', 'guest-display:update', {
             currentSetPhotos: currentSetPhotosRef.current,
             selectedPhotoIndex: selectedPhotoIndexRef.current,
-            displayMode: displayModeRef.current,
           });
           emitTo('guest-display', 'guest-display:center-browse', centerBrowseIndexRef.current);
         }),

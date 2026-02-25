@@ -3121,31 +3121,9 @@ int main(int argc, char *argv[]) {
                     poll(&pfd, 1, 500);  // 500ms
                 }
             } else {
-                /* Not streaming - calculate backoff based on consecutive failures.
+                /* Not streaming - always poll at fixed interval (no backoff).
                  * Uses poll() on the command pipe so CONFIG/SETCONFIG are responsive. */
-                int poll_timeout_ms;
-                if (consecutive_open_failures == 0) {
-                    // Normal operation - 1.5 seconds
-                    poll_timeout_ms = 1500;
-                } else if (consecutive_open_failures <= 5) {
-                    // Early failures - 3 seconds
-                    poll_timeout_ms = 3000;
-                } else if (consecutive_open_failures <= 10) {
-                    // Persistent failures - 10 seconds
-                    poll_timeout_ms = 10000;
-                } else if (consecutive_open_failures <= 20) {
-                    // Severe failures - 20 seconds
-                    poll_timeout_ms = 20000;
-                } else {
-                    // Critical failures - 30 seconds
-                    poll_timeout_ms = 30000;
-                }
-
-                // Log backoff changes (every 10 failures to avoid spam)
-                if (consecutive_open_failures > 0 && consecutive_open_failures % 10 == 1) {
-                    log_ts("controller: Using %d ms backoff due to %d consecutive failures\n",
-                           poll_timeout_ms, consecutive_open_failures);
-                }
+                int poll_timeout_ms = 1500;
 
                 struct pollfd pfd = { .fd = cmd_fd, .events = POLLIN };
                 poll(&pfd, 1, poll_timeout_ms);

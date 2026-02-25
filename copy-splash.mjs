@@ -14,9 +14,9 @@ const APP_VERSION = versionMatch ? versionMatch[1] : '1.0.11';
 mkdirSync(join(__dirname, 'dist'), { recursive: true });
 mkdirSync(join(__dirname, 'dist', 'src', 'assets', 'images'), { recursive: true });
 
-// Read splash.html and inject version
+// Read splash.html and inject version metadata
 let splashContent = readFileSync(join(__dirname, 'splash.html'), 'utf-8');
-splashContent = splashContent.replace(/Version 1\.\d+\.\d+/g, `Version ${APP_VERSION}`);
+splashContent = splashContent.replace(/Version Loading\.\.\./g, `Version ${APP_VERSION}`);
 splashContent = splashContent.replace(/data-version="[^"]*"/g, `data-version="${APP_VERSION}"`);
 
 // Write modified splash.html to dist

@@ -88,6 +88,26 @@ export default function GuestDisplay() {
     }
   }, []);
 
+  // Listen for video settings (stretch/rotation) from main window
+  useEffect(() => {
+    let unlisten: UnlistenFn | null = null;
+
+    const setup = async () => {
+      unlisten = await listen<{ stretch: number; stretchV: number; rotation: number }>(
+        'guest-display:video-settings',
+        (event) => {
+          const { stretch, stretchV, rotation } = event.payload;
+          document.documentElement.style.setProperty('--video-stretch', stretch.toString());
+          document.documentElement.style.setProperty('--video-stretch-v', stretchV.toString());
+          document.documentElement.style.setProperty('--video-rotate', `${rotation}deg`);
+        }
+      );
+    };
+
+    setup();
+    return () => { if (unlisten) unlisten(); };
+  }, []);
+
   // Listen for HDMI frames
   useEffect(() => {
     let unlisten: UnlistenFn | null = null;

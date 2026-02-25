@@ -717,7 +717,7 @@ function getClipPath(zone: FrameZone): string | undefined {
     case 'star':
       return 'polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)';
     case 'diamond':
-      return 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)';
+      return 'polygon(50% 0%, 78% 50%, 50% 100%, 22% 50%)';
     case 'heart':
       return 'polygon(50% 15%, 65% 0%, 85% 0%, 100% 15%, 100% 35%, 85% 50%, 50% 100%, 15% 50%, 0% 35%, 0% 15%, 15% 0%, 35% 0%)';
     case 'cross':

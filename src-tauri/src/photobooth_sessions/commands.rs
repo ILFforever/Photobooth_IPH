@@ -685,6 +685,23 @@ pub async fn save_file_to_session_folder(
     Ok(())
 }
 
+/// Save file data to an arbitrary path (used by export/save-as dialogs)
+#[tauri::command]
+pub async fn save_file_to_path(
+    file_path: String,
+    file_data: Vec<u8>,
+) -> Result<(), String> {
+    let path = std::path::Path::new(&file_path);
+    if let Some(parent) = path.parent() {
+        if !parent.exists() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create directory: {}", e))?;
+        }
+    }
+    fs::write(path, &file_data).map_err(|e| format!("Failed to write file: {}", e))?;
+    Ok(())
+}
+
 /// Download photo directly from daemon and save to session folder
 /// This is much faster than passing binary data through JS/IPC
 /// Photos are saved to: {working_folder}/{session_id}/{filename}

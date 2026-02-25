@@ -273,31 +273,15 @@ pub async fn shutdown_vm() -> Result<String, String> {
         return Err("VBoxManage.exe not found. Is VirtualBox installed?".to_string());
     }
 
-    // Check if VM exists
-    let list_output = run_command_silent(VBOX_MANAGE, &["list", "vms"])
-        .map_err(|e| format!("Failed to list VMs: {}", e))?;
+    // Skip existence/running checks — just fire poweroff directly.
+    // If the VM isn't running or doesn't exist, VBoxManage will return an error
+    // which is fine — the end result is the same (VM not running).
+    let output = run_command_silent(VBOX_MANAGE, &["controlvm", VM_NAME, "poweroff"]);
 
-    let vms_list = String::from_utf8_lossy(&list_output.stdout);
-    if !vms_list.contains(VM_NAME) {
-        return Err(format!("VM '{}' not found", VM_NAME));
+    match output {
+        Ok(o) if o.status.success() => Ok("VM shutdown successfully".to_string()),
+        _ => Ok("VM is not running or already stopped".to_string()),
     }
-
-    // Check if VM is running
-    let showvminfo_output = run_command_silent(VBOX_MANAGE, &["showvminfo", VM_NAME])
-        .map_err(|e| format!("Failed to get VM info: {}", e))?;
-
-    let vm_info = String::from_utf8_lossy(&showvminfo_output.stdout);
-    let is_running = vm_info.contains("State:") && vm_info.contains("running");
-
-    if !is_running {
-        return Ok("VM is not running".to_string());
-    }
-
-    // Force power off the VM immediately
-    run_command_silent(VBOX_MANAGE, &["controlvm", VM_NAME, "poweroff"])
-        .map_err(|e| format!("Failed to power off VM: {}", e))?;
-
-    Ok("VM shutdown successfully".to_string())
 }
 
 /// Exit the application after shutting down the VM

@@ -614,7 +614,7 @@
   position: absolute;
   top: 0;
   left: 0;
-  transform: scaleX(var(--video-stretch, 1)) scaleY(var(--video-stretch-v, 1));
+  transform: scaleX(var(--video-stretch, 1)) scaleY(var(--video-stretch-v, 1)) rotate(var(--video-rotate, 0deg));
   transform-origin: center;
 }
 
@@ -2435,6 +2435,40 @@
 
 .stretch-slider:hover .stretch-slider-thumb {
   transform: translate(-50%, -50%) scale(1.1);
+}
+
+/* Rotation Buttons */
+.rotation-buttons {
+  display: flex;
+  gap: 4px;
+}
+
+.rotation-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 5px 4px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.rotation-btn:hover {
+  background: var(--bg-primary);
+  border-color: var(--text-muted);
+}
+
+.rotation-btn.active {
+  background: #000000;
+  border-color: #000000;
+  color: white;
 }
 
 /* Info Icon Button */

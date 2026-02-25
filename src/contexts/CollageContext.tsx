@@ -2,6 +2,7 @@ import { createContext, useContext, useState, ReactNode, useEffect, useCallback 
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { PlacedImage } from '../types/collage';
 import { Frame, FrameZone } from '../types/frame';
+import { applyZoneClipPath } from '../utils/canvasShapeClip';
 import { Background } from '../types/background';
 import { OverlayLayer, LayerPosition, DEFAULT_OVERLAY_TRANSFORM } from '../types/overlay';
 
@@ -50,8 +51,8 @@ interface CollageContextType {
   setCanvasZoom: (zoom: number) => void;
   customCanvasSizes: CanvasSize[];
   setCustomCanvasSizes: (sizes: CanvasSize[]) => void;
-  activeSidebarTab: 'file' | 'edit' | 'frames' | 'layers' | 'custom-sets';
-  setActiveSidebarTab: (tab: 'file' | 'edit' | 'frames' | 'layers' | 'custom-sets') => void;
+  activeSidebarTab: 'file' | 'edit' | 'frames' | 'layers' | 'custom-sets' | 'export';
+  setActiveSidebarTab: (tab: 'file' | 'edit' | 'frames' | 'layers' | 'custom-sets' | 'export') => void;
   customFrames: Frame[];
   setCustomFrames: (frames: Frame[]) => void;
   reloadFrames: () => Promise<void>;
@@ -120,7 +121,7 @@ export function CollageProvider({ children }: { children: ReactNode }) {
   const [isBackgroundSelected, setIsBackgroundSelected] = useState<boolean>(false);
   const [canvasZoom, setCanvasZoom] = useState<number>(1);
   const [customCanvasSizes, setCustomCanvasSizes] = useState<CanvasSize[]>([]);
-  const [activeSidebarTab, setActiveSidebarTab] = useState<'file' | 'edit' | 'frames' | 'layers' | 'custom-sets'>('file');
+  const [activeSidebarTab, setActiveSidebarTab] = useState<'file' | 'edit' | 'frames' | 'layers' | 'custom-sets' | 'export'>('file');
   const [customFrames, setCustomFrames] = useState<Frame[]>([]);
   const [autoMatchBackground, setAutoMatchBackground] = useState(false);
   const [backgroundDimensions, setBackgroundDimensions] = useState<{ width: number; height: number } | null>(null);
@@ -392,9 +393,7 @@ export function CollageProvider({ children }: { children: ReactNode }) {
         ctx.save();
         ctx.translate(zone.x + zone.width / 2, zone.y + zone.height / 2);
         if (zone.rotation) ctx.rotate((zone.rotation * Math.PI) / 180);
-        ctx.beginPath();
-        ctx.rect(-zone.width / 2, -zone.height / 2, zone.width, zone.height);
-        ctx.clip();
+        applyZoneClipPath(ctx, zone);
         ctx.translate(t.offsetX, t.offsetY);
         if (t.rotation) ctx.rotate((t.rotation * Math.PI) / 180);
         ctx.scale(

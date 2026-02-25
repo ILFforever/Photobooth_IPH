@@ -84,6 +84,20 @@ function App() {
     return () => { unlisten.then(fn => fn()); };
   }, []);
 
+  // F11 to toggle fullscreen (global, works in all modes)
+  useEffect(() => {
+    const handleKeyDown = async (e: KeyboardEvent) => {
+      if (e.key === 'F11') {
+        e.preventDefault();
+        const appWindow = getCurrentWindow();
+        const fs = await appWindow.isFullscreen();
+        await appWindow.setFullscreen(!fs);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   // Listen for window close event from backend to show cleanup modal
   useEffect(() => {
     const unlisten = listen('cleanup-requested', () => {

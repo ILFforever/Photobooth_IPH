@@ -4,6 +4,7 @@ import { Frame, FrameZone } from '../types/frame';
 import { OverlayLayer } from '../types/overlay';
 import { PlacedImage, ImageTransform } from '../types/collage';
 import { DEFAULT_TRANSFORM } from '../types/collage';
+import { applyZoneClipPath } from '../utils/canvasShapeClip';
 
 export interface PhotoboothCanvasSize {
   width: number;
@@ -339,9 +340,7 @@ export function PhotoboothProvider({ children }: { children: ReactNode }) {
         ctx.save();
         ctx.translate(zone.x + zone.width / 2, zone.y + zone.height / 2);
         if (zone.rotation) ctx.rotate((zone.rotation * Math.PI) / 180);
-        ctx.beginPath();
-        ctx.rect(-zone.width / 2, -zone.height / 2, zone.width, zone.height);
-        ctx.clip();
+        applyZoneClipPath(ctx, zone);
         ctx.translate(t.offsetX, t.offsetY);
         if (t.rotation) ctx.rotate((t.rotation * Math.PI) / 180);
         ctx.scale(

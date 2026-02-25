@@ -277,7 +277,7 @@
   width: 100%;
   height: 100%;
   object-fit: contain;
-  transform: scaleX(var(--video-stretch, 1)) scaleY(var(--video-stretch-v, 1));
+  transform: scaleX(var(--video-stretch, 1)) scaleY(var(--video-stretch-v, 1)) rotate(var(--video-rotate, 0deg));
   transform-origin: center;
 }
 
@@ -366,6 +366,8 @@
   width: 100%;
   height: 100%;
   object-fit: contain;
+  transform: scaleX(var(--video-stretch, 1)) scaleY(var(--video-stretch-v, 1)) rotate(var(--video-rotate, 0deg));
+  transform-origin: center;
 }
 
 .single-display .single-photo-content {
@@ -662,9 +664,11 @@
   justify-content: center;
   gap: 16px;
   color: var(--text-muted);
-  max-width: 80%;
-  max-height: 80%;
   flex: 1;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .single-photo-label {
@@ -2481,7 +2485,7 @@
   height: 100%;
   object-fit: contain;
   animation: fadeIn 0.2s ease;
-  transform: scaleX(var(--video-stretch, 1)) scaleY(var(--video-stretch-v, 1));
+  transform: scaleX(var(--video-stretch, 1)) scaleY(var(--video-stretch-v, 1)) rotate(var(--video-rotate, 0deg));
   transform-origin: center;
 }
 

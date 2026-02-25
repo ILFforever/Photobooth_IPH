@@ -86,7 +86,7 @@ function EditableZone({ zone, zIndex, frameWidth, frameHeight, isSelected, onSel
       case 'star':
         return 'polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)';
       case 'diamond':
-        return 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)';
+        return 'polygon(50% 0%, 78% 50%, 50% 100%, 22% 50%)';
       case 'heart':
         return 'polygon(50% 15%, 65% 0%, 85% 0%, 100% 15%, 100% 35%, 85% 50%, 50% 100%, 15% 50%, 0% 35%, 0% 15%, 15% 0%, 35% 0%)';
       case 'cross':
@@ -684,7 +684,7 @@ function BackgroundLayer() {
           // If clicking on the background area, deselect zones and select background
           setSelectedZone(null); // Deselect any frame zone
           setIsBackgroundSelected(true); // Select background
-          setActiveSidebarTab('file'); // Switch to file folder tab
+          setActiveSidebarTab('edit'); // Switch to edit tab
         }}
       >
         {/* 3x3 Grid Overlay - shown when background is selected */}
@@ -725,7 +725,7 @@ function BackgroundLayer() {
         // If clicking on the background area, deselect zones and select background
         setSelectedZone(null); // Deselect any frame zone
         setIsBackgroundSelected(true); // Select background
-        setActiveSidebarTab('file'); // Switch to file folder tab
+        setActiveSidebarTab('edit'); // Switch to edit tab
       }}
     >
       <div
@@ -962,9 +962,9 @@ function ImageZone({ zone }: ImageZoneProps) {
         console.log('==================');
       }
 
-      // Round scale to nearest 0.1, round up for values like 1.21 -> 1.2, 1.25 -> 1.3, 1.45 -> 1.5
-      const scaleRounded = Math.ceil(scale * 10) / 10;
-      console.log('Final rounded scale:', scaleRounded.toFixed(1));
+      // Snap to 1.0 if difference is negligible (~1%), otherwise round up to nearest 0.1
+      const scaleRounded = (scale > 0.99 && scale < 1.01) ? 1.0 : Math.ceil(scale * 10 - 1e-9) / 10;
+      console.log('Final rounded scale:', scaleRounded.toFixed(2));
 
       const placedImageData = {
         sourceFile: item.path,
@@ -1158,7 +1158,7 @@ function ImageZone({ zone }: ImageZoneProps) {
       case 'star':
         return 'polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)';
       case 'diamond':
-        return 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)';
+        return 'polygon(50% 0%, 78% 50%, 50% 100%, 22% 50%)';
       case 'heart':
         return 'polygon(50% 15%, 65% 0%, 85% 0%, 100% 15%, 100% 35%, 85% 50%, 50% 100%, 15% 50%, 0% 35%, 0% 15%, 15% 0%, 35% 0%)';
       case 'cross':

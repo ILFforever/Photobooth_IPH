@@ -118,7 +118,7 @@
         <img src="/src/assets/images/IPH.png" alt="IPH" class="logo" onerror="this.style.display='none'">
       </div>
       <div class="app-name">IPH Photobooth</div>
-      <div class="app-version">Version 1.0.11</div>
+      <div class="app-version" id="version">Version Loading...</div>
       <div class="progress-container">
         <div class="progress-bar">
           <div class="progress-fill" id="progressFill"></div>
@@ -134,7 +134,18 @@
 
       const statusEl = document.getElementById('status');
       const progressFill = document.getElementById('progressFill');
+      const versionEl = document.getElementById('version');
       const appWindow = getCurrentWebviewWindow();
+
+      // Fetch version from Rust
+      try {
+        const version = await invoke('get_app_version');
+        if (versionEl) {
+          versionEl.textContent = `Version ${version}`;
+        }
+      } catch (e) {
+        console.error('Failed to fetch version:', e);
+      }
 
       // Listen for progress events
       const unlisten = await listen('init-progress', (event) => {

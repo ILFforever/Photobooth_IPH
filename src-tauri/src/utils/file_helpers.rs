@@ -4,22 +4,31 @@ use tauri_plugin_dialog::DialogExt;
 
 #[tauri::command]
 pub async fn select_folder(app: tauri::AppHandle) -> Result<Option<String>, String> {
-    app.dialog()
+    let folder_path = app
+        .dialog()
         .file()
-        .pick_folder(|folder_path| {
-            println!("Selected folder: {:?}", folder_path);
-        });
-    Ok(None)
+        .set_title("Select Folder")
+        .blocking_pick_folder();
+
+    match folder_path {
+        Some(path) => Ok(Some(path.to_string())),
+        None => Ok(None),
+    }
 }
 
 #[tauri::command]
 pub async fn select_file(app: tauri::AppHandle) -> Result<Option<String>, String> {
-    app.dialog()
+    let file_path = app
+        .dialog()
         .file()
-        .pick_file(|file_path| {
-            println!("Selected file: {:?}", file_path);
-        });
-    Ok(None)
+        .set_title("Select Image")
+        .add_filter("Images", &["jpg", "jpeg", "png", "gif", "bmp", "webp", "tiff", "tif", "cr2", "cr3", "nef", "arw", "raf", "dng", "orf", "rw2"])
+        .blocking_pick_file();
+
+    match file_path {
+        Some(path) => Ok(Some(path.to_string())),
+        None => Ok(None),
+    }
 }
 
 #[tauri::command]

@@ -1,7 +1,8 @@
-import { ChevronDown, ChevronRight, HdmiPort, Usb, AlertTriangle, Info, X } from "lucide-react";
+import { ChevronDown, ChevronRight, HdmiPort, Usb, AlertTriangle, Info, X, RotateCw } from "lucide-react";
 import "./PhotoboothSidebar.css";
 import { useState, useRef, useEffect } from "react";
 import { useLiveView } from "../../../contexts/LiveViewContext";
+import { emit, listen } from "@tauri-apps/api/event";
 
 type CollapsibleSection = 'camera' | 'liveview' | 'folder' | 'photobooth' | 'naming';
 type CaptureMethod = 'hdmi' | 'usbc';
@@ -24,6 +25,7 @@ export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSec
   const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
   const [videoStretch, setVideoStretch] = useState(100);
   const [videoStretchV, setVideoStretchV] = useState(100);
+  const [videoRotation, setVideoRotation] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [isDraggingV, setIsDraggingV] = useState(false);
   const dropdownButtonRef = useRef<HTMLButtonElement>(null);
@@ -88,9 +90,8 @@ export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSec
     const newStretch = Math.round(minStretch + (maxStretch - minStretch) * percentage);
 
     setVideoStretch(newStretch);
-
-    // Update CSS custom property for video stretch
     document.documentElement.style.setProperty('--video-stretch', (newStretch / 100).toString());
+    broadcastVideoSettings(newStretch, videoStretchV, videoRotation);
   };
 
   const handleSliderMouseDown = (e: React.MouseEvent) => {
@@ -122,6 +123,7 @@ export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSec
 
     setVideoStretchV(newStretch);
     document.documentElement.style.setProperty('--video-stretch-v', (newStretch / 100).toString());
+    broadcastVideoSettings(videoStretch, newStretch, videoRotation);
   };
 
   const handleSliderMouseDownV = (e: React.MouseEvent) => {
@@ -139,10 +141,42 @@ export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSec
     document.addEventListener('mouseup', handleMouseUp);
   };
 
-  // Initialize CSS variables on mount
+  // Broadcast video settings to guest display window
+  const broadcastVideoSettings = (stretch: number, stretchV: number, rotation: number) => {
+    emit('guest-display:video-settings', {
+      stretch: stretch / 100,
+      stretchV: stretchV / 100,
+      rotation,
+    });
+  };
+
+  const handleRotationChange = (degrees: number) => {
+    setVideoRotation(degrees);
+    document.documentElement.style.setProperty('--video-rotate', `${degrees}deg`);
+    broadcastVideoSettings(videoStretch, videoStretchV, degrees);
+  };
+
+  // Refs for guest-display:ready handler (avoids stale closures)
+  const videoStretchRef = useRef(videoStretch);
+  videoStretchRef.current = videoStretch;
+  const videoStretchVRef = useRef(videoStretchV);
+  videoStretchVRef.current = videoStretchV;
+  const videoRotationRef = useRef(videoRotation);
+  videoRotationRef.current = videoRotation;
+
+  // Initialize CSS variables on mount + re-send when guest display opens
   useEffect(() => {
     document.documentElement.style.setProperty('--video-stretch', (videoStretch / 100).toString());
     document.documentElement.style.setProperty('--video-stretch-v', (videoStretchV / 100).toString());
+    document.documentElement.style.setProperty('--video-rotate', `${videoRotation}deg`);
+    broadcastVideoSettings(videoStretch, videoStretchV, videoRotation);
+
+    let unlisten: (() => void) | null = null;
+    listen('guest-display:ready', () => {
+      broadcastVideoSettings(videoStretchRef.current, videoStretchVRef.current, videoRotationRef.current);
+    }).then(u => { unlisten = u; });
+
+    return () => { if (unlisten) unlisten(); };
   }, []);
 
   useEffect(() => {
@@ -340,6 +374,26 @@ export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSec
                   className="stretch-slider-thumb"
                   style={{ left: `${((videoStretchV - 50) / 100) * 100}%` }}
                 />
+              </div>
+            </div>
+
+            {/* Rotation Control */}
+            <div className="video-stretch-control">
+              <div className="stretch-control-header">
+                <span className="stretch-control-title">Rotation</span>
+                <span className="stretch-control-value">{videoRotation}°</span>
+              </div>
+              <div className="rotation-buttons">
+                {[0, 90, 180, 270].map((deg) => (
+                  <button
+                    key={deg}
+                    className={`rotation-btn ${videoRotation === deg ? 'active' : ''}`}
+                    onClick={() => handleRotationChange(deg)}
+                  >
+                    <RotateCw size={12} style={{ transform: `rotate(${deg}deg)` }} />
+                    <span>{deg}°</span>
+                  </button>
+                ))}
               </div>
             </div>
           </div>
