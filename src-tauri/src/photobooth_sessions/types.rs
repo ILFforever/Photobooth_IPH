@@ -57,6 +57,14 @@ pub struct PtbSessionData {
     pub photos: Vec<PtbPhoto>,
     #[serde(default)]
     pub google_drive_metadata: GoogleDriveMetadata,
+    #[serde(default)]
+    pub qr_upload_all_images: bool,
+    #[serde(default = "default_photo_naming_scheme")]
+    pub photo_naming_scheme: String,
+}
+
+fn default_photo_naming_scheme() -> String {
+    "IPH_{number}".to_string()
 }
 
 /// Delay settings for photobooth operations
@@ -80,4 +88,21 @@ pub struct PtbWorkspace {
     pub sessions: Vec<PtbSessionData>,
     #[serde(default)]
     pub delay_settings: DelaySettings,
+}
+
+/// EXIF metadata for a photo
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct PhotoExifData {
+    pub filename: String,
+    pub file_size: Option<u64>,
+    pub image_width: Option<u32>,
+    pub image_height: Option<u32>,
+    pub make: Option<String>,
+    pub model: Option<String>,
+    pub iso: Option<u32>,
+    pub aperture: Option<String>,
+    pub shutter_speed: Option<String>,
+    pub focal_length: Option<String>,
+    pub date_taken: Option<String>,
 }

@@ -1,6 +1,11 @@
 use base64::{engine::general_purpose, Engine as _};
 use std::io::Cursor;
 
+#[tauri::command]
+pub fn generate_qr_code(url: String) -> Result<String, String> {
+    generate_qr_code_base64(&url)
+}
+
 pub fn generate_qr_code_base64(url: &str) -> Result<String, String> {
     use image::codecs::png::PngEncoder;
     use image::{ImageEncoder, Luma};

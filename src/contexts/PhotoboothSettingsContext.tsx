@@ -30,6 +30,8 @@ export interface PhotoboothSessionInfo {
   lastUsedAt: string;
   thumbnails: string[]; // Thumbnail URLs for the session's photos
   googleDriveMetadata: GoogleDriveMetadata;
+  qrUploadAllImages?: boolean;
+  photoNamingScheme?: string;
 }
 
 // Photo entry in a session
@@ -49,6 +51,8 @@ export interface PhotoboothSession {
   shotCount: number;
   photos: SessionPhoto[];
   googleDriveMetadata: GoogleDriveMetadata;
+  qrUploadAllImages?: boolean;
+  photoNamingScheme?: string;
 }
 
 interface PhotoboothSettingsContextType {
@@ -86,6 +90,11 @@ interface PhotoboothSettingsContextType {
   clearDriveUploadsForSession: (sessionId: string) => Promise<void>;
   createDriveFolderForSession: (sessionId: string, sessionName: string) => Promise<void>;
   deleteDriveFolderForSession: (sessionId: string, folderId: string | null, sessionName: string) => Promise<void>;
+  // Photo management
+  deleteSessionPhoto: (sessionId: string, filename: string) => Promise<void>;
+  // Session settings management
+  updateSessionQrSetting: (sessionId: string, qrUploadAllImages: boolean) => Promise<void>;
+  updateSessionNamingScheme: (sessionId: string, photoNamingScheme: string) => Promise<void>;
 }
 
 const PhotoboothSettingsContext = createContext<PhotoboothSettingsContextType | undefined>(undefined);
@@ -603,6 +612,164 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
     }
   }, [account, showToast, updateSessionDriveFolder, clearDriveUploadsForSession]);
 
+  // Delete a single photo from a session
+  const deleteSessionPhoto = useCallback(async (
+    sessionId: string,
+    filename: string
+  ): Promise<void> => {
+    if (!workingFolder) {
+      throw new Error('Working folder must be set first');
+    }
+
+    try {
+      // Call Rust backend to delete the photo
+      const updatedSession = await invoke<any>('delete_session_photo', {
+        folderPath: workingFolder,
+        sessionId,
+        filename,
+      });
+
+      // Get the session folder name to match thumbnail paths correctly
+      // Thumbnail format is: asset://path/to/cached_thumb_{folderName}--{filename}
+      const sessionInfo = sessions.find(s => s.id === sessionId);
+      const folderName = sessionInfo?.folderName || sessionId;
+
+      // Create the expected thumbnail filename pattern
+      // The cache key format is: {folderName}--{filename}
+      const thumbnailPattern = `--${filename}`;
+
+      // Update the sessions list with the new shot count and thumbnails
+      setSessions(prev => prev.map(s =>
+        s.id === sessionId
+          ? {
+              ...s,
+              shotCount: updatedSession.shotCount,
+              lastUsedAt: updatedSession.lastUsedAt,
+              // Remove the deleted thumbnail (match by filename in the cached thumbnail path)
+              thumbnails: s.thumbnails.filter(t => !t.endsWith(thumbnailPattern))
+            }
+          : s
+      ));
+
+      // If the deleted photo was in the current session, update that too
+      if (currentSession?.id === sessionId) {
+        setCurrentSession(prev => prev ? {
+          ...prev,
+          shotCount: updatedSession.shotCount,
+          lastUsedAt: updatedSession.lastUsedAt,
+          photos: updatedSession.photos,
+          googleDriveMetadata: updatedSession.googleDriveMetadata || { uploadedImages: [] },
+        } : null);
+      }
+
+      showToast(
+        'Photo Deleted',
+        'success',
+        3000,
+        `Deleted "${filename}"`
+      );
+    } catch (error) {
+      console.error('Failed to delete photo:', error);
+      showToast(
+        'Failed to Delete Photo',
+        'error',
+        5000,
+        error instanceof Error ? error.message : 'Unknown error occurred'
+      );
+      throw error;
+    }
+  }, [workingFolder, currentSession, showToast, sessions]);
+
+  // Load QR and naming scheme settings from current session
+  useEffect(() => {
+    if (currentSession) {
+      // Load QR upload setting from session
+      if (currentSession.qrUploadAllImages !== undefined) {
+        setQrUploadAllImages(currentSession.qrUploadAllImages);
+      }
+      // Load photo naming scheme from session
+      if (currentSession.photoNamingScheme !== undefined) {
+        setPhotoNamingScheme(currentSession.photoNamingScheme);
+      }
+    }
+  }, [currentSession]); // Only depend on currentSession, not the setters
+
+  // Update QR setting for a session
+  const updateSessionQrSetting = useCallback(async (
+    sessionId: string,
+    qrUploadAllImagesValue: boolean
+  ) => {
+    if (!workingFolder) {
+      throw new Error('Working folder must be set first');
+    }
+
+    await invoke('update_session_qr_setting', {
+      folderPath: workingFolder,
+      sessionId,
+      qrUploadAllImages: qrUploadAllImagesValue,
+    });
+
+    // Update the session in the local state
+    setSessions(prev => prev.map(s =>
+      s.id === sessionId
+        ? { ...s, qrUploadAllImages: qrUploadAllImagesValue }
+        : s
+    ));
+
+    // Update current session if it matches
+    if (currentSession?.id === sessionId) {
+      setCurrentSession(prev => prev ? { ...prev, qrUploadAllImages: qrUploadAllImagesValue } : null);
+    }
+  }, [workingFolder, currentSession]);
+
+  // Update naming scheme for a session
+  const updateSessionNamingScheme = useCallback(async (
+    sessionId: string,
+    photoNamingSchemeValue: string
+  ) => {
+    if (!workingFolder) {
+      throw new Error('Working folder must be set first');
+    }
+
+    await invoke('update_session_naming_scheme', {
+      folderPath: workingFolder,
+      sessionId,
+      photoNamingScheme: photoNamingSchemeValue,
+    });
+
+    // Update the session in the local state
+    setSessions(prev => prev.map(s =>
+      s.id === sessionId
+        ? { ...s, photoNamingScheme: photoNamingSchemeValue }
+        : s
+    ));
+
+    // Update current session if it matches
+    if (currentSession?.id === sessionId) {
+      setCurrentSession(prev => prev ? { ...prev, photoNamingScheme: photoNamingSchemeValue } : null);
+    }
+  }, [workingFolder, currentSession]);
+
+  // Wrapper for setQrUploadAllImages that saves to current session
+  const handleSetQrUploadAllImages = useCallback((value: boolean) => {
+    setQrUploadAllImages(value);
+    if (currentSession && workingFolder) {
+      updateSessionQrSetting(currentSession.id, value).catch(err => {
+        console.error('Failed to save QR setting to session:', err);
+      });
+    }
+  }, [currentSession, workingFolder, updateSessionQrSetting]);
+
+  // Wrapper for setPhotoNamingScheme that saves to current session
+  const handleSetPhotoNamingScheme = useCallback((scheme: string) => {
+    setPhotoNamingScheme(scheme);
+    if (currentSession && workingFolder) {
+      updateSessionNamingScheme(currentSession.id, scheme).catch(err => {
+        console.error('Failed to save naming scheme to session:', err);
+      });
+    }
+  }, [currentSession, workingFolder, updateSessionNamingScheme]);
+
   // Refresh sessions when working folder changes
   useEffect(() => {
     if (workingFolder) {
@@ -624,9 +791,9 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
         workingFolder,
         setWorkingFolder,
         photoNamingScheme,
-        setPhotoNamingScheme,
+        setPhotoNamingScheme: handleSetPhotoNamingScheme,
         qrUploadAllImages,
-        setQrUploadAllImages,
+        setQrUploadAllImages: handleSetQrUploadAllImages,
         delaySettingsLoaded,
         currentSession,
         sessions,
@@ -644,6 +811,9 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
         clearDriveUploadsForSession,
         createDriveFolderForSession,
         deleteDriveFolderForSession,
+        deleteSessionPhoto,
+        updateSessionQrSetting,
+        updateSessionNamingScheme,
       }}
     >
       {children}

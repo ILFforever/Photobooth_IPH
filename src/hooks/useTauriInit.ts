@@ -1,7 +1,5 @@
 import { useState, useEffect } from "react";
 import { listen } from '@tauri-apps/api/event';
-import { invoke } from "@tauri-apps/api/core";
-import type { HistoryItem } from "../types/qr";
 import type { GoogleAccount } from "../types/qr";
 import type { DriveFolder } from "../types/qr";
 import type { UploadProgress } from "../types/qr";
@@ -74,15 +72,11 @@ export function useTauriInit({
 
 interface UseTauriEventsOptions {
   tauriReady: boolean;
-  setHistory: (items: HistoryItem[]) => void;
-  showHistoryModal: boolean;
   setUploadProgress: (progress: UploadProgress | null) => void;
 }
 
 export function useTauriEvents({
   tauriReady,
-  setHistory,
-  showHistoryModal,
   setUploadProgress,
 }: UseTauriEventsOptions) {
   // Listen for upload progress events
@@ -103,19 +97,4 @@ export function useTauriEvents({
       unlisten.then(fn => fn());
     };
   }, [tauriReady, setUploadProgress]);
-
-  // Load history when modal opens
-  useEffect(() => {
-    if (showHistoryModal) {
-      const loadHistory = async () => {
-        try {
-          const items = await invoke<HistoryItem[]>("get_history");
-          setHistory(items);
-        } catch (e) {
-          console.error("Failed to load history:", e);
-        }
-      };
-      loadHistory();
-    }
-  }, [showHistoryModal, setHistory]);
 }

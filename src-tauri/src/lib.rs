@@ -17,6 +17,8 @@ mod working_folder;
 mod custom_sets;
 mod photobooth_sessions;
 mod upload_queue;
+mod system_requirements;
+mod version;
 
 // Re-export state
 use state::AppState;
@@ -38,11 +40,11 @@ use custom_sets::*;
 use photobooth_sessions::*;
 use upload_queue::*;
 use upload_queue::queue::UploadQueue;
+use system_requirements::*;
+use version::*;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    use tauri::Manager;
-
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
@@ -57,6 +59,8 @@ pub fn run() {
             queue: Arc::new(UploadQueue::new()),
         })
         .setup(|app| {
+            use tauri::Manager;
+
             // Set the app handle on the upload queue (processor will start lazily)
             let queue_state = app.state::<UploadQueueStateWrapper>();
 
@@ -66,6 +70,21 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 queue.set_app_handle(app_handle).await;
             });
+
+            // Create splash window on startup
+            let _ = tauri::WebviewWindowBuilder::new(
+                app,
+                "splash",
+                tauri::WebviewUrl::App("splash.html".into())
+            )
+            .title("Photobooth IPH")
+            .inner_size(400.0, 320.0)
+            .center()
+            .resizable(false)
+            .decorations(false)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .build();
 
             Ok(())
         })
@@ -77,6 +96,7 @@ pub fn run() {
             get_account,
             list_drive_folders,
             create_drive_folder,
+            share_drive_folder,
             delete_drive_folder,
             set_root_folder,
             get_root_folder,
@@ -124,6 +144,7 @@ pub fn run() {
             save_delay_settings,
             create_photobooth_session,
             delete_photobooth_session,
+            delete_session_photo,
             list_photobooth_sessions,
             get_current_session,
             set_current_session,
@@ -136,6 +157,9 @@ pub fn run() {
             file_exists_in_session,
             save_file_to_session_folder,
             download_photo_from_daemon,
+            get_photo_exif,
+            update_session_qr_setting,
+            update_session_naming_scheme,
             // Upload Queue
             enqueue_upload_items,
             get_session_upload_queue,
@@ -152,6 +176,9 @@ pub fn run() {
             get_vm_logs,
             check_vm_online,
             restart_vm,
+            shutdown_vm,
+            exit_app,
+            force_exit_app,
             // USB Camera
             list_usb_cameras,
             attach_usb_camera,
@@ -165,14 +192,35 @@ pub fn run() {
             list_capture_devices,
             start_hdmi_capture,
             stop_hdmi_capture,
+            // System Requirements
+            get_system_requirements,
+            launch_virtualbox_installer,
+            get_app_version,
+            get_app_info,
+            get_app_status,
+            get_vm_version,
+            get_vm_status,
+            get_version_status,
+            check_app_updates,
+            check_vm_updates,
+            check_all_updates,
+            install_vm_update,
+            open_vm_update_website,
+            extract_iso_to_appdata,
+            // App Initialization
+            initialize_app,
+            close_splash_and_show_main,
+            // QR Code
+            utils::qr_code::generate_qr_code,
         ])
         .on_window_event(|window, event| {
-            // When the main window is closed, also close the guest display window
-            if let tauri::WindowEvent::CloseRequested { .. } = event {
+            use tauri::Emitter;
+            // When the main window close is requested, prevent it and let frontend handle cleanup
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "main" {
-                    if let Some(guest) = window.app_handle().get_webview_window("guest-display") {
-                        let _ = guest.destroy();
-                    }
+                    api.prevent_close();
+                    // Notify frontend to show cleanup modal
+                    let _ = window.emit("cleanup-requested", ());
                 }
             }
         })

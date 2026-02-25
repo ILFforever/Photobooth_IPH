@@ -1,6 +1,25 @@
 use crate::vm::types::VmLogsResponse;
 use std::fs;
 use std::path::PathBuf;
+use std::process::Command;
+use tauri::Manager;
+
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
+/// Helper to run a command without showing console window on Windows
+fn run_command_silent(program: &str, args: &[&str]) -> Result<std::process::Output, std::io::Error> {
+    let mut cmd = Command::new(program);
+    cmd.args(args);
+
+    #[cfg(windows)]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    cmd.output()
+}
 
 /// Read the VM console log file
 /// Production: reads from %LOCALAPPDATA%\Photobooth_IPH\logs\vbox-console.log
@@ -132,11 +151,64 @@ pub async fn check_vm_online() -> Result<bool, String> {
     }
 }
 
+/// Wait for the VM session lock to be released (powered off / aborted / saved state)
+/// VirtualBox can hold a session lock even after poweroff for several seconds,
+/// or indefinitely if the VM was killed uncleanly (aborted but locked).
+/// This polls showvminfo until the VM is in a startable state.
+/// If still locked after initial wait, kills VBoxHeadless.exe to force-release the lock.
+/// Returns Ok(true) if unlocked, Ok(false) if timed out even after kill.
+pub async fn wait_for_vm_unlocked(vbox_manage: &str, vm_name: &str, max_wait_secs: u64) -> Result<bool, String> {
+    use tokio::time::{sleep, Duration};
+
+    let mut killed_process = false;
+    let start = std::time::Instant::now();
+
+    loop {
+        if start.elapsed().as_secs() >= max_wait_secs {
+            return Ok(false);
+        }
+
+        let output = run_command_silent(vbox_manage, &["showvminfo", vm_name, "--machinereadable"])
+            .map_err(|e| format!("Failed to get VM info: {}", e))?;
+
+        let info = String::from_utf8_lossy(&output.stdout);
+
+        // Look for SessionState - "Unlocked" means we can start it.
+        // If SessionState is absent entirely, the VM has no session (poweroff) = unlocked.
+        let mut found_session_state = false;
+        let mut is_locked = false;
+        for line in info.lines() {
+            if line.starts_with("SessionState=") {
+                found_session_state = true;
+                let state = line.trim_start_matches("SessionState=").trim_matches('"');
+                if state != "Unlocked" {
+                    is_locked = true;
+                }
+                break;
+            }
+        }
+
+        if !is_locked {
+            return Ok(true);
+        }
+
+        // After 10 seconds of waiting, force-kill VBoxHeadless to release the stale lock
+        if !killed_process && start.elapsed().as_secs() >= 10 {
+            killed_process = true;
+            let _ = run_command_silent("taskkill", &["/F", "/IM", "VBoxHeadless.exe"]);
+            // Give it a moment after the kill
+            sleep(Duration::from_secs(2)).await;
+            continue;
+        }
+
+        sleep(Duration::from_secs(1)).await;
+    }
+}
+
 /// Restart the VirtualBox VM
 /// Force stops the VM immediately and starts it again in headless mode
 #[tauri::command]
 pub async fn restart_vm() -> Result<String, String> {
-    use std::process::Command;
     use tokio::time::{sleep, Duration};
 
     const VM_NAME: &str = "PhotoboothLinux";
@@ -148,9 +220,7 @@ pub async fn restart_vm() -> Result<String, String> {
     }
 
     // Step 1: Check if VM exists
-    let list_output = Command::new(VBOX_MANAGE)
-        .args(&["list", "vms"])
-        .output()
+    let list_output = run_command_silent(VBOX_MANAGE, &["list", "vms"])
         .map_err(|e| format!("Failed to list VMs: {}", e))?;
 
     let vms_list = String::from_utf8_lossy(&list_output.stdout);
@@ -159,42 +229,27 @@ pub async fn restart_vm() -> Result<String, String> {
     }
 
     // Step 2: Check if VM is running
-    let showvminfo_output = Command::new(VBOX_MANAGE)
-        .args(&["showvminfo", VM_NAME])
-        .output()
+    let showvminfo_output = run_command_silent(VBOX_MANAGE, &["showvminfo", VM_NAME])
         .map_err(|e| format!("Failed to get VM info: {}", e))?;
 
     let vm_info = String::from_utf8_lossy(&showvminfo_output.stdout);
     let is_running = vm_info.contains("State:") && vm_info.contains("running");
 
-    if !is_running {
-        // VM is not running, just start it
-        Command::new(VBOX_MANAGE)
-            .args(&["startvm", VM_NAME, "--type", "headless"])
-            .output()
-            .map_err(|e| format!("Failed to start VM: {}", e))?;
-
-        return Ok("VM was not running. Started successfully.".to_string());
+    if is_running {
+        // Force power off the VM
+        let _ = run_command_silent(VBOX_MANAGE, &["controlvm", VM_NAME, "poweroff"]);
     }
 
-    // Step 3: Force power off the VM immediately
-    Command::new(VBOX_MANAGE)
-        .args(&["controlvm", VM_NAME, "poweroff"])
-        .output()
-        .map_err(|e| format!("Failed to power off VM: {}", e))?;
+    // Wait for session lock to be released (up to 30s)
+    if !wait_for_vm_unlocked(VBOX_MANAGE, VM_NAME, 30).await? {
+        return Err("Timed out waiting for VM session to unlock".to_string());
+    }
 
-    // Wait briefly to ensure the VM has fully stopped
-    sleep(Duration::from_secs(2)).await;
+    // Optimize AHCI port count before starting (reduces startup time)
+    let _ = run_command_silent(VBOX_MANAGE, &["storagectl", VM_NAME, "--name", "SATA", "--portcount", "2"]);
 
-    // Step 4: Optimize AHCI port count before starting (reduces startup time)
-    let _ = Command::new(VBOX_MANAGE)
-        .args(&["storagectl", VM_NAME, "--name", "SATA", "--portcount", "2"])
-        .output(); // Ignore errors as this is an optimization
-
-    // Step 5: Start the VM in headless mode
-    let start_output = Command::new(VBOX_MANAGE)
-        .args(&["startvm", VM_NAME, "--type", "headless"])
-        .output()
+    // Start the VM in headless mode
+    let start_output = run_command_silent(VBOX_MANAGE, &["startvm", VM_NAME, "--type", "headless"])
         .map_err(|e| format!("Failed to start VM: {}", e))?;
 
     if !start_output.status.success() {
@@ -203,4 +258,72 @@ pub async fn restart_vm() -> Result<String, String> {
     }
 
     Ok("VM restarted successfully".to_string())
+}
+
+/// Shutdown the VirtualBox VM
+/// Force stops the VM immediately
+#[tauri::command]
+pub async fn shutdown_vm() -> Result<String, String> {
+
+    const VM_NAME: &str = "PhotoboothLinux";
+    const VBOX_MANAGE: &str = r"C:\Program Files\Oracle\VirtualBox\VBoxManage.exe";
+
+    // Check if VBoxManage exists
+    if !std::path::Path::new(VBOX_MANAGE).exists() {
+        return Err("VBoxManage.exe not found. Is VirtualBox installed?".to_string());
+    }
+
+    // Check if VM exists
+    let list_output = run_command_silent(VBOX_MANAGE, &["list", "vms"])
+        .map_err(|e| format!("Failed to list VMs: {}", e))?;
+
+    let vms_list = String::from_utf8_lossy(&list_output.stdout);
+    if !vms_list.contains(VM_NAME) {
+        return Err(format!("VM '{}' not found", VM_NAME));
+    }
+
+    // Check if VM is running
+    let showvminfo_output = run_command_silent(VBOX_MANAGE, &["showvminfo", VM_NAME])
+        .map_err(|e| format!("Failed to get VM info: {}", e))?;
+
+    let vm_info = String::from_utf8_lossy(&showvminfo_output.stdout);
+    let is_running = vm_info.contains("State:") && vm_info.contains("running");
+
+    if !is_running {
+        return Ok("VM is not running".to_string());
+    }
+
+    // Force power off the VM immediately
+    run_command_silent(VBOX_MANAGE, &["controlvm", VM_NAME, "poweroff"])
+        .map_err(|e| format!("Failed to power off VM: {}", e))?;
+
+    Ok("VM shutdown successfully".to_string())
+}
+
+/// Exit the application after shutting down the VM
+/// First shuts down the photobooth VM, then exits the app
+#[tauri::command]
+pub async fn exit_app(app_handle: tauri::AppHandle) -> Result<(), String> {
+    const VM_NAME: &str = "PhotoboothLinux";
+    const VBOX_MANAGE: &str = r"C:\Program Files\Oracle\VirtualBox\VBoxManage.exe";
+
+    // Attempt to shutdown the VM if it's running (ignore errors)
+    if std::path::Path::new(VBOX_MANAGE).exists() {
+        let _ = run_command_silent(VBOX_MANAGE, &["controlvm", VM_NAME, "poweroff"]);
+    }
+
+    // Exit the application
+    app_handle.exit(0);
+    Ok(())
+}
+
+/// Force exit the application immediately without any cleanup
+/// Used after the frontend has already performed cleanup (VM shutdown etc.)
+#[tauri::command]
+pub fn force_exit_app(app_handle: tauri::AppHandle) {
+    // Close guest display window if open
+    if let Some(guest) = app_handle.get_webview_window("guest-display") {
+        let _ = guest.destroy();
+    }
+    app_handle.exit(0);
 }

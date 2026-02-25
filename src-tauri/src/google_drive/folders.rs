@@ -1,5 +1,5 @@
 use crate::state::{AppState, DriveFolder};
-use google_drive3::{api::File, DriveHub};
+use google_drive3::{api::{File, Permission}, DriveHub};
 use tauri::State;
 
 #[tauri::command]
@@ -185,4 +185,46 @@ pub async fn delete_drive_folder(
         .await
         .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// Sets "anyone with link" read permission on a Drive folder and returns the shareable link.
+#[tauri::command]
+pub async fn share_drive_folder(
+    folder_id: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let auth = {
+        let auth_guard = state.auth.lock().unwrap();
+        auth_guard.as_ref().ok_or("Not logged in")?.clone()
+    };
+
+    let https = hyper_rustls::HttpsConnectorBuilder::new()
+        .with_native_roots()
+        .map_err(|e| format!("HTTPS error: {}", e))?
+        .https_or_http()
+        .enable_http1()
+        .build();
+
+    let client = hyper::Client::builder().build(https);
+    let hub = DriveHub::new(client, auth);
+
+    // Create "anyone with link" reader permission
+    let permission = Permission {
+        role: Some("reader".to_string()),
+        type_: Some("anyone".to_string()),
+        ..Default::default()
+    };
+
+    hub.permissions()
+        .create(permission, &folder_id)
+        .supports_all_drives(true)
+        .doit()
+        .await
+        .map_err(|e| format!("Failed to set sharing permission: {}", e))?;
+
+    // Return the shareable link
+    Ok(format!(
+        "https://drive.google.com/drive/folders/{}?usp=sharing",
+        folder_id
+    ))
 }

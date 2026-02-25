@@ -425,7 +425,8 @@ export default function DisplayContent({
                   className="finalize-qr-img"
                 />
               </div>
-              <span className="finalize-qr-label">Scan to view photos</span>
+              <span className="finalize-qr-label">SCAN FOR PHOTOS</span>
+              <span className="finalize-qr-thankyou">Thank you for using IPH Photobooth!</span>
             </div>
           </div>
         );

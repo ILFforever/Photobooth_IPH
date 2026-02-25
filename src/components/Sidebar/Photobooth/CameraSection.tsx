@@ -160,7 +160,8 @@ export function CameraSection({
   onCameraOptionsLoaded,
   pendingSettings,
   onConnectionChange,
-  onConfigValuesLoaded,
+  // onConfigValuesLoaded - reserved for future use
+  onConfigValuesLoaded: _onConfigValuesLoaded,
 }: CameraSectionProps) {
   // Camera connection state
   const [availableCameras, setAvailableCameras] = useState<CameraInfo[]>([]);

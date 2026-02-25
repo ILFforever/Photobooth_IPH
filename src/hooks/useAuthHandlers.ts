@@ -1,4 +1,4 @@
-import type { GoogleAccount } from "../types/qr";
+import type { GoogleAccount, DriveFolder } from "../types/qr";
 import {
   checkCachedAccount,
   googleLogin,
@@ -7,7 +7,7 @@ import {
 
 interface AuthHandlersOptions {
   setAccount: (account: GoogleAccount | null) => void;
-  setRootFolder: (folder: { id: string; name: string } | null) => void;
+  setRootFolder: (folder: DriveFolder | null) => void;
   setLoggingIn: (loggingIn: boolean) => void;
   setCachedAccount: (account: GoogleAccount | null) => void;
   setShowCachedAccountConfirm: (show: boolean) => void;

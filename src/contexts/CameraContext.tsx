@@ -167,10 +167,7 @@ export function CameraProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const manager = CameraWebSocketManager.getInstance();
 
-    // Ensure USB filters are set up for all supported camera brands (runs once on mount)
-    invoke('ensure_usb_filters').catch((e) => {
-      console.warn('[CameraContext] Failed to ensure USB filters:', e);
-    });
+    // USB filters are set up during initialize_app (splash screen) - no need to call again here
 
     const handleStatus = (data: CameraStatus) => {
       setLastStatus(data);

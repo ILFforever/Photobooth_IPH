@@ -32,8 +32,6 @@ interface QRContextType {
   setUploadQueue: (queue: QRUploadItem[]) => void;
   history: HistoryItem[];
   setHistory: (history: HistoryItem[]) => void;
-  showHistoryModal: boolean;
-  setShowHistoryModal: (show: boolean) => void;
   loading: boolean;
   setLoading: (loading: boolean) => void;
   uploadProgress: UploadProgress | null;
@@ -46,7 +44,6 @@ const QRContext = createContext<QRContextType | undefined>(undefined);
 export function QRProvider({ children }: { children: ReactNode }) {
   const [uploadQueue, setUploadQueue] = useState<QRUploadItem[]>([]);
   const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
 
@@ -61,8 +58,6 @@ export function QRProvider({ children }: { children: ReactNode }) {
         setUploadQueue,
         history,
         setHistory,
-        showHistoryModal,
-        setShowHistoryModal,
         loading,
         setLoading,
         uploadProgress,

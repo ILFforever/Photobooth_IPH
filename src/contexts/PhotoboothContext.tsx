@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, ReactNode, useRef } from 'react';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { Frame, FrameZone } from '../types/frame';
 import { OverlayLayer } from '../types/overlay';
@@ -53,8 +53,21 @@ interface PhotoboothContextType {
   setPlacedImages: (images: Map<string, PlacedImage>) => void;
   updatePlacedImage: (zoneId: string, updates: Partial<PlacedImage>) => void;
 
+  // Track if collage has been modified since last export
+  collageIsDirty: boolean;
+  setCollageIsDirty: (dirty: boolean) => void;
+  resetCollageDirtyState: () => void;
+
+  // Shared generating state - prevents concurrent print/upload operations
+  isGeneratingCollage: boolean;
+  setIsGeneratingCollage: (generating: boolean) => void;
+
   // Export function
   exportPhotoboothCanvasAsPNG: () => Promise<{ bytes: Uint8Array; filename: string } | null>;
+
+  // Current collage filename — shared between print and upload; reset on finalize exit
+  currentCollageFilename: string | null;
+  setCurrentCollageFilename: (filename: string | null) => void;
 }
 
 const PhotoboothContext = createContext<PhotoboothContextType | undefined>(undefined);
@@ -73,29 +86,64 @@ export function PhotoboothProvider({ children }: { children: ReactNode }) {
   const [photoboothAutoMatchBackground, setPhotoboothAutoMatchBackground] = useState(false);
   const [photoboothBackgroundDimensions, setPhotoboothBackgroundDimensions] = useState<{ width: number; height: number } | null>(null);
   const [photoboothFrame, setPhotoboothFrame] = useState<Frame | null>(null);
-  const [finalizeViewMode, setFinalizeViewMode] = useState<'capture' | 'finalize'>('capture');
+  const [finalizeViewMode, setFinalizeViewModeRaw] = useState<'capture' | 'finalize'>('capture');
   const [finalizeEditingZoneId, setFinalizeEditingZoneId] = useState<string | null>(null);
   const [selectedCustomSetId, setSelectedCustomSetId] = useState<string | null>(null);
   const [placedImages, setPlacedImages] = useState<Map<string, PlacedImage>>(new Map());
+  const [currentCollageFilename, setCurrentCollageFilename] = useState<string | null>(null);
+  const [collageIsDirty, setCollageIsDirty] = useState<boolean>(false);
+  const [isGeneratingCollage, setIsGeneratingCollage] = useState<boolean>(false);
+
+  // Wrap setFinalizeViewMode to reset collage filename and dirty state when exiting finalize
+  const setFinalizeViewMode = useCallback((mode: 'capture' | 'finalize') => {
+    setFinalizeViewModeRaw(mode);
+    if (mode === 'capture') {
+      setCurrentCollageFilename(null);
+      setCollageIsDirty(false);
+    }
+  }, []);
+
+  // Reset dirty state when explicitly called (after export)
+  const resetCollageDirtyState = useCallback(() => {
+    setCollageIsDirty(false);
+  }, []);
 
   // Helper: Update a placed image
   const updatePlacedImage = useCallback((zoneId: string, updates: Partial<PlacedImage>) => {
+    console.log('[updatePlacedImage] Called with zoneId:', zoneId, 'updates:', updates);
     setPlacedImages(prev => {
       const newMap = new Map(prev);
       const existing = newMap.get(zoneId);
       if (existing) {
         newMap.set(zoneId, { ...existing, ...updates });
+        // Mark as dirty when transform changes (user moved/zoomed the image)
+        if (updates.transform !== undefined) {
+          console.log('[updatePlacedImage] Transform changed, setting dirty=true');
+          setCollageIsDirty(true);
+        }
       }
       return newMap;
     });
   }, []);
 
-  // Helper: Load an image element from a source URL
+  // Image cache to avoid redundant fetches - stores HTMLImageElements by source URL
+  const imageCache = useRef<Map<string, HTMLImageElement>>(new Map());
+
+  // Helper: Load an image element from a source URL (with caching)
   const loadImage = useCallback((src: string): Promise<HTMLImageElement> => {
+    // Check cache first
+    const cached = imageCache.current.get(src);
+    if (cached && cached.complete) {
+      return Promise.resolve(cached);
+    }
+
     return new Promise((resolve, reject) => {
       const img = new Image();
       img.crossOrigin = 'anonymous';
-      img.onload = () => resolve(img);
+      img.onload = () => {
+        imageCache.current.set(src, img);
+        resolve(img);
+      };
       img.onerror = reject;
       img.src = src;
     });
@@ -103,6 +151,19 @@ export function PhotoboothProvider({ children }: { children: ReactNode }) {
 
   // Helper: Load an image with fetch+objectURL fallback for CORS
   const loadImageWithFallback = useCallback(async (src: string): Promise<HTMLImageElement> => {
+    // Check cache first
+    const cached = imageCache.current.get(src);
+    if (cached && cached.complete) {
+      return cached;
+    }
+
+    // Also cache the fetch variant
+    const fetchKey = `fetch:${src}`;
+    const fetchCached = imageCache.current.get(fetchKey);
+    if (fetchCached && fetchCached.complete) {
+      return fetchCached;
+    }
+
     try {
       return await loadImage(src);
     } catch {
@@ -110,41 +171,25 @@ export function PhotoboothProvider({ children }: { children: ReactNode }) {
       const blob = await resp.blob();
       const url = URL.createObjectURL(blob);
       const img = await loadImage(url);
+      // Cache with fetch key so subsequent loads don't create new object URLs
+      imageCache.current.set(fetchKey, img);
       URL.revokeObjectURL(url);
       return img;
     }
   }, [loadImage]);
 
-  // Helper: Draw an overlay layer onto a canvas context
-  const drawOverlayLayer = useCallback(async (ctx: CanvasRenderingContext2D, layer: OverlayLayer) => {
-    try {
-      const overlaySrc = convertFileSrc(layer.sourcePath.replace('asset://', ''));
-      const img = await loadImageWithFallback(overlaySrc);
-      ctx.save();
-      ctx.globalAlpha = layer.transform.opacity ?? 1;
-      const lx = layer.transform.x ?? 0;
-      const ly = layer.transform.y ?? 0;
-      const lScale = layer.transform.scale ?? 1;
-      const lRotation = layer.transform.rotation ?? 0;
-      ctx.translate(lx + (img.naturalWidth * lScale) / 2, ly + (img.naturalHeight * lScale) / 2);
-      ctx.rotate((lRotation * Math.PI) / 180);
-      ctx.scale(
-        lScale * (layer.transform.flipHorizontal ? -1 : 1),
-        lScale * (layer.transform.flipVertical ? -1 : 1)
-      );
-      ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
-      ctx.restore();
-    } catch {
-      // Skip overlay if it fails to load
-    }
-  }, [loadImageWithFallback]);
-
-  // Export photobooth canvas as full-resolution PNG
+  // Export photobooth canvas as full-resolution PNG (optimized with parallel loading and toBlob)
   const exportPhotoboothCanvasAsPNG = useCallback(async (): Promise<{ bytes: Uint8Array; filename: string } | null> => {
     try {
       const frame = photoboothFrame;
       if (!frame) {
         console.error('No photobooth frame available for export');
+        return null;
+      }
+
+      // Wait for placed images to be loaded (avoid race condition with auto-placement)
+      if (placedImages.size === 0) {
+        console.warn('[export] No placed images yet, skipping export');
         return null;
       }
 
@@ -156,16 +201,6 @@ export function PhotoboothProvider({ children }: { children: ReactNode }) {
         ? photoboothBackgroundDimensions.height
         : photoboothCanvasSize?.height ?? frame.height;
 
-      // Create canvas at full resolution
-      const canvas = document.createElement('canvas');
-      canvas.width = canvasWidth;
-      canvas.height = canvasHeight;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        console.error('Failed to get canvas context');
-        return null;
-      }
-
       // Check if background is a solid color
       const isSolidColor = photoboothBackground ? /^#([0-9A-F]{3}){1,2}$/i.test(photoboothBackground) : false;
 
@@ -176,59 +211,129 @@ export function PhotoboothProvider({ children }: { children: ReactNode }) {
           ? photoboothBackground
           : null;
 
-      // 1. Draw background
+      // Prepare all image loading tasks in parallel
+      const loadingTasks: Array<Promise<{ type: string; data: any }>> = [];
+
+      // 1. Background image loading task
+      if (photoboothBackground && !isSolidColor && bgSrc) {
+        loadingTasks.push(
+          loadImageWithFallback(bgSrc)
+            .then(img => ({ type: 'background', data: img }))
+            .catch(() => ({ type: 'background', data: null }))
+        );
+      }
+
+      // 2. Overlay layers loading tasks (tagged by position for correct render order)
+      const belowOverlays = photoboothOverlays
+        .filter(o => o.position === 'below-frames' && o.visible)
+        .sort((a, b) => a.layerOrder - b.layerOrder);
+      const aboveOverlays = photoboothOverlays
+        .filter(o => o.position === 'above-frames' && o.visible)
+        .sort((a, b) => a.layerOrder - b.layerOrder);
+
+      for (const layer of belowOverlays) {
+        loadingTasks.push(
+          loadImageWithFallback(convertFileSrc(layer.sourcePath.replace('asset://', '')))
+            .then(img => ({ type: 'below-overlay', data: { layer, img } }))
+            .catch(() => ({ type: 'below-overlay', data: { layer, img: null } }))
+        );
+      }
+      for (const layer of aboveOverlays) {
+        loadingTasks.push(
+          loadImageWithFallback(convertFileSrc(layer.sourcePath.replace('asset://', '')))
+            .then(img => ({ type: 'above-overlay', data: { layer, img } }))
+            .catch(() => ({ type: 'above-overlay', data: { layer, img: null } }))
+        );
+      }
+
+      // 3. Zone images loading tasks
+      for (const zone of frame.zones) {
+        const placed = placedImages.get(zone.id);
+        if (placed) {
+          loadingTasks.push(
+            loadImageWithFallback(convertFileSrc(placed.sourceFile.replace('asset://', '')))
+              .then(img => ({ type: 'zone', data: { zone, placed, img } }))
+              .catch(() => ({ type: 'zone', data: { zone, placed, img: null } }))
+          );
+        }
+      }
+
+      // Load all images in parallel
+      const loadedResults = await Promise.all(loadingTasks);
+
+      // Create canvas at full resolution
+      const canvas = document.createElement('canvas');
+      canvas.width = canvasWidth;
+      canvas.height = canvasHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        console.error('Failed to get canvas context');
+        return null;
+      }
+
+      // Process and draw background
+      const bgResult = loadedResults.find(r => r.type === 'background');
       if (photoboothBackground) {
         if (isSolidColor) {
           ctx.fillStyle = photoboothBackground;
           ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-        } else if (bgSrc) {
-          try {
-            const bgImg = await loadImageWithFallback(bgSrc);
-            ctx.save();
-            ctx.translate(canvasWidth / 2, canvasHeight / 2);
-            ctx.scale(photoboothBackgroundTransform.scale, photoboothBackgroundTransform.scale);
-            ctx.translate(photoboothBackgroundTransform.offsetX, photoboothBackgroundTransform.offsetY);
-            const bgAspect = bgImg.naturalWidth / bgImg.naturalHeight;
-            const canvasAspect = canvasWidth / canvasHeight;
-            let drawW: number, drawH: number;
-            if (bgAspect > canvasAspect) {
-              drawH = canvasHeight;
-              drawW = canvasHeight * bgAspect;
-            } else {
-              drawW = canvasWidth;
-              drawH = canvasWidth / bgAspect;
-            }
-            ctx.drawImage(bgImg, -drawW / 2, -drawH / 2, drawW, drawH);
-            ctx.restore();
-          } catch {
-            ctx.fillStyle = '#000';
-            ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+        } else if (bgSrc && bgResult?.data) {
+          const bgImg = bgResult.data;
+          ctx.save();
+          ctx.translate(canvasWidth / 2, canvasHeight / 2);
+          ctx.scale(photoboothBackgroundTransform.scale, photoboothBackgroundTransform.scale);
+          ctx.translate(photoboothBackgroundTransform.offsetX, photoboothBackgroundTransform.offsetY);
+          const bgAspect = bgImg.naturalWidth / bgImg.naturalHeight;
+          const canvasAspect = canvasWidth / canvasHeight;
+          let drawW: number, drawH: number;
+          if (bgAspect > canvasAspect) {
+            drawH = canvasHeight;
+            drawW = canvasHeight * bgAspect;
+          } else {
+            drawW = canvasWidth;
+            drawH = canvasWidth / bgAspect;
           }
+          ctx.drawImage(bgImg, -drawW / 2, -drawH / 2, drawW, drawH);
+          ctx.restore();
+        } else {
+          ctx.fillStyle = '#000';
+          ctx.fillRect(0, 0, canvasWidth, canvasHeight);
         }
       } else {
         ctx.fillStyle = '#000';
         ctx.fillRect(0, 0, canvasWidth, canvasHeight);
       }
 
-      // 2. Draw below-frames overlay layers
-      const belowOverlays = photoboothOverlays
-        .filter(o => o.position === 'below-frames' && o.visible)
-        .sort((a, b) => a.layerOrder - b.layerOrder);
-      for (const layer of belowOverlays) {
-        await drawOverlayLayer(ctx, layer);
+      // Draw below-frames overlay layers (before zone images)
+      const belowOverlayResults = loadedResults.filter(r => r.type === 'below-overlay');
+      for (const result of belowOverlayResults) {
+        const { layer, img } = result.data;
+        if (!img) continue;
+        const t = layer.transform;
+        const lx = t.x ?? 0;
+        const ly = t.y ?? 0;
+        const lScale = t.scale ?? 1;
+        const lRotation = t.rotation ?? 0;
+        const w = img.naturalWidth;
+        const h = img.naturalHeight;
+
+        ctx.save();
+        ctx.globalAlpha = t.opacity ?? 1;
+        ctx.translate(lx + w / 2, ly + h / 2);
+        ctx.rotate((lRotation * Math.PI) / 180);
+        ctx.scale(
+          lScale * (t.flipHorizontal ? -1 : 1),
+          lScale * (t.flipVertical ? -1 : 1)
+        );
+        ctx.drawImage(img, -w / 2, -h / 2);
+        ctx.restore();
       }
 
-      // 3. Draw zones with placed images
-      for (const zone of frame.zones) {
-        const placed = placedImages.get(zone.id);
-        if (!placed) continue;
-
-        let img: HTMLImageElement;
-        try {
-          img = await loadImageWithFallback(convertFileSrc(placed.sourceFile.replace('asset://', '')));
-        } catch {
-          continue;
-        }
+      // Process and draw zone images (below overlays first, then zones, then above overlays)
+      const zoneResults = loadedResults.filter(r => r.type === 'zone');
+      for (const result of zoneResults) {
+        const { zone, placed, img } = result.data;
+        if (!img) continue;
 
         const t = placed.transform;
         ctx.save();
@@ -257,23 +362,41 @@ export function PhotoboothProvider({ children }: { children: ReactNode }) {
         ctx.restore();
       }
 
-      // 4. Draw above-frames overlay layers
-      const aboveOverlays = photoboothOverlays
-        .filter(o => o.position === 'above-frames' && o.visible)
-        .sort((a, b) => a.layerOrder - b.layerOrder);
-      for (const layer of aboveOverlays) {
-        await drawOverlayLayer(ctx, layer);
+      // Draw above-frames overlay layers (after zone images)
+      const aboveOverlayResults = loadedResults.filter(r => r.type === 'above-overlay');
+      for (const result of aboveOverlayResults) {
+        const { layer, img } = result.data;
+        if (!img) continue;
+        const t = layer.transform;
+        const lx = t.x ?? 0;
+        const ly = t.y ?? 0;
+        const lScale = t.scale ?? 1;
+        const lRotation = t.rotation ?? 0;
+        const w = img.naturalWidth;
+        const h = img.naturalHeight;
+
+        ctx.save();
+        ctx.globalAlpha = t.opacity ?? 1;
+        ctx.translate(lx + w / 2, ly + h / 2);
+        ctx.rotate((lRotation * Math.PI) / 180);
+        ctx.scale(
+          lScale * (t.flipHorizontal ? -1 : 1),
+          lScale * (t.flipVertical ? -1 : 1)
+        );
+        ctx.drawImage(img, -w / 2, -h / 2);
+        ctx.restore();
       }
 
-      // Convert to PNG bytes
-      const dataUrl = canvas.toDataURL('image/png');
-      const base64 = dataUrl.split(',')[1];
-      const binaryString = atob(base64);
-      const bytes = new Uint8Array(binaryString.length);
-
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
+      // Convert to PNG bytes using toBlob (much faster than toDataURL + manual conversion)
+      const bytes = await new Promise<Uint8Array>((resolve) => {
+        canvas.toBlob((blob) => {
+          if (blob) {
+            blob.arrayBuffer().then(buffer => resolve(new Uint8Array(buffer)));
+          } else {
+            resolve(new Uint8Array(0));
+          }
+        }, 'image/png');
+      });
 
       const filename = `photobooth_${Date.now()}.png`;
       return { bytes, filename };
@@ -281,7 +404,7 @@ export function PhotoboothProvider({ children }: { children: ReactNode }) {
       console.error('Failed to export photobooth canvas:', error);
       return null;
     }
-  }, [photoboothFrame, photoboothCanvasSize, photoboothAutoMatchBackground, photoboothBackgroundDimensions, photoboothBackground, photoboothBackgroundTransform, photoboothOverlays, placedImages, loadImageWithFallback, drawOverlayLayer]);
+  }, [photoboothFrame, photoboothCanvasSize, photoboothAutoMatchBackground, photoboothBackgroundDimensions, photoboothBackground, photoboothBackgroundTransform, photoboothOverlays, placedImages, loadImageWithFallback]);
 
   return (
     <PhotoboothContext.Provider
@@ -309,7 +432,14 @@ export function PhotoboothProvider({ children }: { children: ReactNode }) {
         placedImages,
         setPlacedImages,
         updatePlacedImage,
+        collageIsDirty,
+        setCollageIsDirty,
+        resetCollageDirtyState,
+        isGeneratingCollage,
+        setIsGeneratingCollage,
         exportPhotoboothCanvasAsPNG,
+        currentCollageFilename,
+        setCurrentCollageFilename,
       }}
     >
       {children}

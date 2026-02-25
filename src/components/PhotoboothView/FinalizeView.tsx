@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { ChevronLeft, Monitor, MonitorOff, ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { emitTo } from "@tauri-apps/api/event";
 import { Frame, FrameZone } from "../../types/frame";
 import { PlacedImage } from "../../types/collage";
 import { usePhotobooth } from "../../contexts/PhotoboothContext";
 import { autoPlacePhotos, PhotoForPlacement } from "../../utils/autoPlacement";
+import { useToast } from "../../contexts/ToastContext";
 import "./FinalizeView.css";
 
 interface CurrentSetPhoto {
@@ -21,12 +23,15 @@ interface FinalizeViewProps {
   sessionFolderName: string;
   onBack: () => void;
   updateGuestDisplay: (data: {
+    currentSetPhotos?: Array<{ id: string; thumbnailUrl: string; fullUrl?: string; timestamp: string }>;
+    selectedPhotoIndex?: number | null;
+    displayMode?: 'single' | 'center' | 'canvas' | 'finalize';
+    liveViewStream?: boolean;
+    hdmiStreamActive?: boolean;
     showCapturePreview?: boolean;
     capturedPhotoUrl?: string | null;
-    displayMode?: string;
     finalizeImageUrl?: string | null;
     finalizeQrData?: string | null;
-    [key: string]: any;
   }) => void;
   isSecondScreenOpen: boolean;
   openSecondScreen: () => void;
@@ -58,7 +63,14 @@ export default function FinalizeView({
     // Finalize mode state from photobooth context
     finalizeEditingZoneId: editingZoneId,
     setFinalizeEditingZoneId: setEditingZoneId,
+    currentCollageFilename,
+    setCurrentCollageFilename,
+    exportPhotoboothCanvasAsPNG,
+    isGeneratingCollage,
+    setIsGeneratingCollage,
+    setCollageIsDirty,
   } = usePhotobooth();
+  const { showToast } = useToast();
 
   const [isDisplayingOnGuest, setIsDisplayingOnGuest] = useState(false);
   const [isCompositing, setIsCompositing] = useState(false);
@@ -209,7 +221,7 @@ export default function FinalizeView({
   }, [setEditingZoneId]);
 
   // Handle clicks on canvas background (between zones) to deselect
-  const handleCanvasClick = useCallback((e: React.MouseEvent) => {
+  const handleCanvasClick = useCallback(() => {
     // Clear selection when clicking on canvas background (zones will stop propagation)
     setEditingZoneId(null);
   }, [setEditingZoneId]);
@@ -310,6 +322,8 @@ export default function FinalizeView({
       const placed = autoPlacePhotos(frame.zones, photos, dimsMap);
       if (!aborted) {
         setPlacedImages(placed);
+        // Reset dirty state after auto-placement completes (fresh state, not user-modified yet)
+        setCollageIsDirty(false);
         // Only update ref after successfully placing images
         prevPhotoIdsRef.current = currentPhotoIds;
       }
@@ -318,154 +332,6 @@ export default function FinalizeView({
     loadAndPlace();
     return () => { aborted = true; };
   }, [frame, selectedPhotos, workingFolder, sessionFolderName, setPlacedImages]);
-
-  // Load an image element from a source URL
-  const loadImage = useCallback((src: string): Promise<HTMLImageElement> => {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = () => resolve(img);
-      img.onerror = reject;
-      img.src = src;
-    });
-  }, []);
-
-  // Try loading an image, with fetch+objectURL fallback for CORS
-  const loadImageWithFallback = useCallback(async (src: string): Promise<HTMLImageElement> => {
-    try {
-      return await loadImage(src);
-    } catch {
-      const resp = await fetch(src);
-      const blob = await resp.blob();
-      const url = URL.createObjectURL(blob);
-      const img = await loadImage(url);
-      URL.revokeObjectURL(url);
-      return img;
-    }
-  }, [loadImage]);
-
-  // Composite the full collage to a canvas and return a data URL
-  const compositeFrame = useCallback(async (): Promise<string> => {
-    const canvas = document.createElement('canvas');
-    canvas.width = canvasWidth;
-    canvas.height = canvasHeight;
-    const ctx = canvas.getContext('2d')!;
-
-    // 1. Draw background
-    if (background) {
-      if (isSolidColor) {
-        ctx.fillStyle = background;
-        ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-      } else if (bgSrc) {
-        try {
-          const bgImg = await loadImageWithFallback(bgSrc);
-          ctx.save();
-          ctx.translate(canvasWidth / 2, canvasHeight / 2);
-          ctx.scale(backgroundTransform.scale, backgroundTransform.scale);
-          ctx.translate(backgroundTransform.offsetX, backgroundTransform.offsetY);
-          const bgAspect = bgImg.naturalWidth / bgImg.naturalHeight;
-          const canvasAspect = canvasWidth / canvasHeight;
-          let drawW: number, drawH: number;
-          if (bgAspect > canvasAspect) {
-            drawH = canvasHeight;
-            drawW = canvasHeight * bgAspect;
-          } else {
-            drawW = canvasWidth;
-            drawH = canvasWidth / bgAspect;
-          }
-          ctx.drawImage(bgImg, -drawW / 2, -drawH / 2, drawW, drawH);
-          ctx.restore();
-        } catch {
-          ctx.fillStyle = '#000';
-          ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-        }
-      }
-    } else {
-      ctx.fillStyle = '#000';
-      ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-    }
-
-    // 2. Draw below-frames overlay layers
-    const belowOverlays = overlays
-      .filter(o => o.position === 'below-frames' && o.visible)
-      .sort((a, b) => a.layerOrder - b.layerOrder);
-    for (const layer of belowOverlays) {
-      await drawOverlayLayer(ctx, layer);
-    }
-
-    // 3. Draw zones with placed images
-    for (const zone of frame.zones) {
-      const placed = placedImages.get(zone.id);
-      if (!placed) continue;
-
-      let img: HTMLImageElement;
-      try {
-        img = await loadImageWithFallback(convertFileSrc(placed.sourceFile));
-      } catch {
-        continue;
-      }
-
-      const t = placed.transform;
-      ctx.save();
-      ctx.translate(zone.x + zone.width / 2, zone.y + zone.height / 2);
-      if (zone.rotation) ctx.rotate((zone.rotation * Math.PI) / 180);
-      ctx.beginPath();
-      ctx.rect(-zone.width / 2, -zone.height / 2, zone.width, zone.height);
-      ctx.clip();
-      ctx.translate(t.offsetX, t.offsetY);
-      if (t.rotation) ctx.rotate((t.rotation * Math.PI) / 180);
-      ctx.scale(
-        t.scale * (t.flipHorizontal ? -1 : 1),
-        t.scale * (t.flipVertical ? -1 : 1)
-      );
-      const imgAspect = img.naturalWidth / img.naturalHeight;
-      const zoneAspect = zone.width / zone.height;
-      let drawW: number, drawH: number;
-      if (imgAspect > zoneAspect) {
-        drawW = zone.width;
-        drawH = zone.width / imgAspect;
-      } else {
-        drawH = zone.height;
-        drawW = zone.height * imgAspect;
-      }
-      ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
-      ctx.restore();
-    }
-
-    // 4. Draw above-frames overlay layers
-    const aboveOverlays = overlays
-      .filter(o => o.position === 'above-frames' && o.visible)
-      .sort((a, b) => a.layerOrder - b.layerOrder);
-    for (const layer of aboveOverlays) {
-      await drawOverlayLayer(ctx, layer);
-    }
-
-    return canvas.toDataURL('image/jpeg', 0.9);
-  }, [canvasWidth, canvasHeight, background, isSolidColor, bgSrc, backgroundTransform, overlays, frame, placedImages, loadImageWithFallback]);
-
-  // Helper: draw an overlay layer onto a canvas context
-  const drawOverlayLayer = useCallback(async (ctx: CanvasRenderingContext2D, layer: any) => {
-    try {
-      const overlaySrc = convertFileSrc(layer.sourcePath.replace('asset://', ''));
-      const img = await loadImageWithFallback(overlaySrc);
-      ctx.save();
-      ctx.globalAlpha = layer.opacity ?? 1;
-      const lx = layer.x ?? 0;
-      const ly = layer.y ?? 0;
-      const lScale = layer.scale ?? 1;
-      const lRotation = layer.rotation ?? 0;
-      ctx.translate(lx + (img.naturalWidth * lScale) / 2, ly + (img.naturalHeight * lScale) / 2);
-      ctx.rotate((lRotation * Math.PI) / 180);
-      ctx.scale(
-        lScale * (layer.flipHorizontal ? -1 : 1),
-        lScale * (layer.flipVertical ? -1 : 1)
-      );
-      ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
-      ctx.restore();
-    } catch {
-      // Skip overlay if it fails to load
-    }
-  }, [loadImageWithFallback]);
 
   // Toggle display on guest screen
   const handleToggleDisplay = useCallback(async () => {
@@ -479,28 +345,74 @@ export default function FinalizeView({
       return;
     }
 
-    // Auto-open second screen if not already open
-    if (!isSecondScreenOpen) {
+    // Check if another operation is already generating
+    if (isGeneratingCollage) {
+      showToast('Please wait', 'warning', 2000, 'Collage is being generated...');
+      return;
+    }
+
+    // Start opening second screen early so it loads in parallel with compositing
+    const justOpened = !isSecondScreenOpen;
+    if (justOpened) {
       openSecondScreen();
-      // Wait a moment for the second screen to open
-      await new Promise(resolve => setTimeout(resolve, 500));
     }
 
     setIsCompositing(true);
     try {
-      const dataUrl = await compositeFrame();
-      updateGuestDisplay({
-        displayMode: 'finalize',
-        finalizeImageUrl: dataUrl,
+      let imageUrl: string;
+
+      if (currentCollageFilename) {
+        // Collage already saved to disk by print/QR — load directly
+        const filePath = `${workingFolder}/${sessionFolderName}/${currentCollageFilename}`;
+        imageUrl = convertFileSrc(filePath);
+        showToast('Using cached collage', 'success', 2000, currentCollageFilename);
+      } else {
+        // First time: composite, save to disk, then use file URL
+        setIsGeneratingCollage(true);
+        const exportResult = await exportPhotoboothCanvasAsPNG();
+        if (!exportResult) throw new Error('Export returned null');
+
+        const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+        const randomStr = Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+        const filename = `Collage_${randomStr}.png`;
+
+        await invoke('save_file_to_session_folder', {
+          folderPath: workingFolder,
+          sessionId: sessionFolderName,
+          filename,
+          fileData: Array.from(exportResult.bytes),
+        });
+
+        setCurrentCollageFilename(filename);
+        setIsGeneratingCollage(false);
+        const filePath = `${workingFolder}/${sessionFolderName}/${filename}`;
+        imageUrl = convertFileSrc(filePath);
+      }
+
+      const displayData = {
+        displayMode: 'finalize' as const,
+        finalizeImageUrl: imageUrl,
         finalizeQrData: qrData || null,
-      });
+      };
+
+      if (justOpened) {
+        // updateGuestDisplay won't work here — isSecondScreenOpen is stale in its closure.
+        // Send multiple times to ensure the guest window receives it once its listeners are ready.
+        for (const delay of [500, 1000, 2000]) {
+          await new Promise(resolve => setTimeout(resolve, delay));
+          emitTo('guest-display', 'guest-display:update', displayData);
+        }
+      } else {
+        updateGuestDisplay(displayData);
+      }
       setIsDisplayingOnGuest(true);
     } catch (err) {
       console.error('[FinalizeView] Failed to composite frame:', err);
+      setIsGeneratingCollage(false);
     } finally {
       setIsCompositing(false);
     }
-  }, [isDisplayingOnGuest, isSecondScreenOpen, compositeFrame, updateGuestDisplay, openSecondScreen, qrData]);
+  }, [isDisplayingOnGuest, isSecondScreenOpen, updateGuestDisplay, openSecondScreen, qrData, currentCollageFilename, workingFolder, sessionFolderName, exportPhotoboothCanvasAsPNG, setCurrentCollageFilename, isGeneratingCollage, showToast]);
 
   // Sorted overlay layers for rendering
   const belowFrameOverlays = useMemo(() =>
@@ -561,14 +473,14 @@ export default function FinalizeView({
           <button
             className={`finalize-display-btn ${isDisplayingOnGuest ? 'active' : ''}`}
             onClick={handleToggleDisplay}
-            disabled={isCompositing || placedImages.size === 0}
+            disabled={isCompositing || isGeneratingCollage || placedImages.size === 0}
             title={
               isDisplayingOnGuest
                 ? 'Clear from display'
                 : 'Send to guest display'
             }
           >
-            {isCompositing ? (
+            {isCompositing || isGeneratingCollage ? (
               <>
                 <span className="finalize-spinner" />
                 <span>Compositing...</span>
@@ -755,25 +667,28 @@ function FinalizeOverlay({
 
   if (!src) return null;
 
-  const lx = layer.x ?? 0;
-  const ly = layer.y ?? 0;
-  const lScale = layer.scale ?? 1;
-  const lRotation = layer.rotation ?? 0;
+  const t = layer.transform ?? {};
 
   return (
     <div
       style={{
         position: 'absolute',
-        left: lx,
-        top: ly,
-        transform: `rotate(${lRotation}deg) scale(${lScale}) scaleX(${layer.flipHorizontal ? -1 : 1}) scaleY(${layer.flipVertical ? -1 : 1})`,
-        transformOrigin: 'top left',
-        opacity: layer.opacity ?? 1,
+        left: 0,
+        top: 0,
+        transformOrigin: 'center center',
+        transform: `
+          translate(${t.x ?? 0}px, ${t.y ?? 0}px)
+          rotate(${t.rotation ?? 0}deg)
+          scale(${t.scale ?? 1})
+          scaleX(${t.flipHorizontal ? -1 : 1})
+          scaleY(${t.flipVertical ? -1 : 1})
+        `,
+        opacity: t.opacity ?? 1,
         zIndex,
         pointerEvents: 'none',
       }}
     >
-      <img src={src} alt={layer.name || 'Overlay'} draggable={false} style={{ display: 'block' }} />
+      <img src={src} alt={layer.name || 'Overlay'} draggable={false} style={{ display: 'block', maxWidth: 'none' }} />
     </div>
   );
 }

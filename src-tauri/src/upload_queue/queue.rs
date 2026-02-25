@@ -29,6 +29,7 @@ impl UploadQueue {
     }
 
     /// Add an item to the upload queue
+    #[allow(dead_code)]
     pub async fn enqueue(&self, item: UploadQueueItem) -> Result<(), String> {
         let mut state = self.state.write().await;
         state.items.push(item);
@@ -73,6 +74,7 @@ impl UploadQueue {
     }
 
     /// Get the current state of the queue
+    #[allow(dead_code)]
     pub async fn get_state(&self) -> UploadQueueState {
         let state = self.state.read().await;
         UploadQueueState {
@@ -95,6 +97,7 @@ impl UploadQueue {
     }
 
     /// Remove a specific item from the queue
+    #[allow(dead_code)]
     pub async fn remove_item(&self, item_id: &str) -> Result<(), String> {
         let mut state = self.state.write().await;
         let original_len = state.items.len();

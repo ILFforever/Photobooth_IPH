@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Photobooth IPH</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        width: 100vw;
+        height: 100vh;
+        background: linear-gradient(135deg, #1a1a1a 0%, #252525 100%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+        overflow: hidden;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+
+      .splash-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 20px;
+      }
+
+      .logo-container {
+        width: 96px;
+        height: 96px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .logo {
+        width: 96px;
+        height: 96px;
+        object-fit: contain;
+      }
+
+      .app-name {
+        font-size: 24px;
+        font-weight: 300;
+        color: #e4e4e4;
+        letter-spacing: 4px;
+        text-transform: uppercase;
+      }
+
+      .app-version {
+        font-size: 11px;
+        color: #707070;
+        letter-spacing: 1px;
+        margin-top: -12px;
+        text-transform: uppercase;
+      }
+
+      .progress-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+        margin-top: 16px;
+        width: 240px;
+      }
+
+      .progress-bar {
+        width: 100%;
+        height: 2px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 1px;
+        overflow: hidden;
+        position: relative;
+      }
+
+      .progress-fill {
+        position: absolute;
+        top: 0;
+        left: 0;
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(90deg, #0078d4, #00bcf2);
+        border-radius: 1px;
+        transition: width 0.4s ease;
+      }
+
+      .status-text {
+        font-size: 11px;
+        color: #808080;
+        letter-spacing: 0.5px;
+        min-height: 14px;
+        text-align: center;
+        opacity: 0.8;
+      }
+
+      /* Fade out animation */
+      .fade-out {
+        animation: fadeOut 0.4s ease forwards;
+      }
+
+      @keyframes fadeOut {
+        to {
+          opacity: 0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="splash-container">
+      <div class="logo-container">
+        <img src="/src/assets/images/IPH.png" alt="IPH" class="logo" onerror="this.style.display='none'">
+      </div>
+      <div class="app-name">IPH Photobooth</div>
+      <div class="app-version">Version 1.0.11</div>
+      <div class="progress-container">
+        <div class="progress-bar">
+          <div class="progress-fill" id="progressFill"></div>
+        </div>
+        <div class="status-text" id="status">Initializing...</div>
+      </div>
+    </div>
+
+    <script type="module">
+      import { invoke } from '@tauri-apps/api/core';
+      import { listen } from '@tauri-apps/api/event';
+      import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
+
+      const statusEl = document.getElementById('status');
+      const progressFill = document.getElementById('progressFill');
+      const appWindow = getCurrentWebviewWindow();
+
+      // Listen for progress events
+      const unlisten = await listen('init-progress', (event) => {
+        const { step, total_steps, message } = event.payload;
+        console.log('Init progress:', step, '/', total_steps, '-', message);
+        if (statusEl) {
+          statusEl.textContent = message;
+        }
+        if (progressFill && step && total_steps) {
+          const percent = Math.round((step / total_steps) * 100);
+          progressFill.style.width = percent + '%';
+        }
+      });
+
+      // Listen for completion - then close splash and show main
+      const unlistenComplete = await listen('init-complete', async () => {
+        console.log('Initialization complete');
+        unlisten();
+        unlistenComplete();
+
+        // Fill progress to 100%
+        if (progressFill) {
+          progressFill.style.width = '100%';
+        }
+        if (statusEl) {
+          statusEl.textContent = 'Ready';
+        }
+
+        // Fade out
+        setTimeout(() => {
+          document.body.classList.add('fade-out');
+        }, 300);
+
+        setTimeout(async () => {
+          try {
+            await invoke('close_splash_and_show_main');
+          } catch (e) {
+            console.error('Failed to transition to main window:', e);
+          }
+        }, 700);
+      });
+
+      // Start initialization
+      try {
+        await invoke('initialize_app');
+      } catch (e) {
+        console.error('Initialization failed:', e);
+        if (statusEl) {
+          statusEl.textContent = 'Starting...';
+        }
+        // Continue anyway after a delay
+        setTimeout(async () => {
+          try {
+            await invoke('close_splash_and_show_main');
+          } catch (e) {
+            console.error('Failed to transition:', e);
+          }
+        }, 1000);
+      }
+    </script>
+  </body>
+</html>

@@ -8,8 +8,6 @@ export type { UnlistenFn };
 // Event emitted when capture preview has finished loading in guest display
 const CAPTURE_PREVIEW_LOADED_EVENT = 'guest-display:preview-loaded';
 
-export type { UnlistenFn };
-
 type DisplayMode = 'single' | 'center' | 'canvas' | 'finalize';
 
 interface CurrentSetPhoto {
@@ -167,7 +165,7 @@ export default function GuestDisplay() {
 
     // Setup all listeners
     const setupListeners = async () => {
-      const [unlisten1, unlisten2, unlisten3, unlisten4, unlisten5] = await Promise.all([
+      const [unlisten1, unlisten2, unlisten3, unlisten4, unlisten5, unlisten6] = await Promise.all([
         listen('guest-display:update', (event: { payload: Partial<PhotoState> }) => {
           const payload = event.payload;
           setPhotoState(prev => {
@@ -200,11 +198,18 @@ export default function GuestDisplay() {
         listen('guest-display:center-browse', (event: { payload: number | null }) => {
           setCenterBrowseIndex(event.payload);
         }),
+        listen('guest-display:countdown', (event: { payload: { active: boolean; value: number } }) => {
+          setCountdown(event.payload);
+        }),
       ]);
-      unlisteners = [unlisten1, unlisten2, unlisten3, unlisten4, unlisten5];
+      unlisteners = [unlisten1, unlisten2, unlisten3, unlisten4, unlisten5, unlisten6];
     };
 
-    setupListeners();
+    setupListeners().then(() => {
+      // Notify main window that we're ready to receive state
+      console.log('[GuestDisplay] Listeners ready, requesting initial state');
+      emit('guest-display:ready');
+    });
 
     return () => {
       unlisteners.forEach(u => u());
@@ -282,12 +287,20 @@ export default function GuestDisplay() {
     emit(CAPTURE_PREVIEW_LOADED_EVENT);
   }, []);
 
+  // Show countdown overlay on single and center modes when countdown is active
+  const showCountdownOverlay = countdown.active && (displayMode === 'single' || displayMode === 'center');
+
   return (
     <div className="guest-display">
       {/* Drag handle for moving the window */}
       <div data-tauri-drag-region className="guest-display-drag-handle" />
       <div className="preview-frame">
         <div className="preview-content">
+          {showCountdownOverlay && (
+            <div className="countdown-overlay">
+              <span className="countdown-number">{countdown.value}</span>
+            </div>
+          )}
           <DisplayContent
             displayMode={displayMode}
             currentSetPhotos={currentSetPhotos}
@@ -310,4 +323,12 @@ export default function GuestDisplay() {
                 if (prev === null) return null;
                 const total = currentSetPhotos.length;
                 if (direction === 'prev') return Math.max(0, prev - 1);
-     
+                return Math.min(total - 1, prev + 1);
+              });
+            }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}

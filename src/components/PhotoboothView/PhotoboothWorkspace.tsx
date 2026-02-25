@@ -19,7 +19,7 @@ import PhotoSessionsSidebar from "./PhotoSessionsSidebar";
 import FinalizeView from "./FinalizeView";
 import { type PhotoDownloadedEvent } from "../../services/cameraWebSocket";
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
-import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { listen, emitTo, type UnlistenFn } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useSecondScreen } from "../../hooks/useSecondScreen";
 import { imageCache } from "../../services/ImageCacheService";
@@ -116,31 +116,37 @@ export default function PhotoboothWorkspace() {
   const [centerBrowseIndex, setCenterBrowseIndex] = useState<number | null>(null);
   const [currentSetPhotos, setCurrentSetPhotos] = useState<CurrentSetPhoto[]>([]);
 
-  // Track finalize view animation state to show loading during transition
-  const [isFinalizeAnimating, setIsFinalizeAnimating] = useState(false);
-  const [showFinalizeContent, setShowFinalizeContent] = useState(false);
+  // Slider for compact mode selector
+  const [sliderStyles, setSliderStyles] = useState<{ left: number; width: number } | null>(null);
+  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
-  // Show loading when entering finalize mode, show content after animation
-  useEffect(() => {
-    if (viewMode === 'finalize') {
-      setIsFinalizeAnimating(true);
-      setShowFinalizeContent(false);
-      // Show content after slide animation completes (800ms)
-      const timer = setTimeout(() => {
-        setShowFinalizeContent(true);
-        setIsFinalizeAnimating(false);
-      }, 800);
-      return () => clearTimeout(timer);
+  const updateSliderPosition = useCallback((activeMode: DisplayMode) => {
+    const activeTab = tabRefs.current[activeMode];
+    if (activeTab) {
+      setSliderStyles({
+        left: activeTab.offsetLeft,
+        width: activeTab.offsetWidth,
+      });
     } else {
-      setShowFinalizeContent(false);
-      setIsFinalizeAnimating(false);
+      setSliderStyles(null);
     }
-  }, [viewMode]);
+  }, []);
+
+  useEffect(() => {
+    // Delay to ensure elements are rendered and measured correctly
+    const timer = setTimeout(() => {
+      updateSliderPosition(displayMode);
+    }, 50); // Small delay
+    return () => clearTimeout(timer);
+  }, [displayMode, updateSliderPosition]);
 
   // Capture preview state for guest display
   const [showCapturePreview, setShowCapturePreview] = useState(false);
   const [capturedPhotoUrl, setCapturedPhotoUrl] = useState<string | null>(null);
   const previewTimerStartedRef = useRef(false); // Track if timer has been started
+
+  // QR code data for finalize view (generated from session's Drive folder link)
+  const [sessionQrData, setSessionQrData] = useState<string | null>(null);
 
   // Workflow state
   const [selectedPhotos, setSelectedPhotos] = useState<Set<string>>(new Set());
@@ -229,18 +235,21 @@ export default function PhotoboothWorkspace() {
   // Populate current set photos when loading an existing session
   const lastSessionIdRef = useRef<string | null>(null);
   const lastWorkingFolderRef = useRef<string | null>(null);
+  const lastPhotoCountRef = useRef<number>(0);
   useEffect(() => {
-    // Populate when session changes OR when working folder changes for an existing session
+    // Populate when session changes, when working folder changes, or when photo count changes
     const sessionChanged = currentSession && currentSession.id !== lastSessionIdRef.current;
     const folderChanged = workingFolder && workingFolder !== lastWorkingFolderRef.current;
+    const photoCountChanged = currentSession && currentSession.photos.length !== lastPhotoCountRef.current;
 
-    if (currentSession && (sessionChanged || folderChanged)) {
+    if (currentSession && (sessionChanged || folderChanged || photoCountChanged)) {
       if (sessionChanged) {
         lastSessionIdRef.current = currentSession.id;
       }
       if (workingFolder) {
         lastWorkingFolderRef.current = workingFolder;
       }
+      lastPhotoCountRef.current = currentSession.photos.length;
 
       if (currentSession.photos && currentSession.photos.length > 0) {
         // Get the session folder name
@@ -639,6 +648,20 @@ export default function PhotoboothWorkspace() {
   const handleFinalizeSession = async () => {
     setFinalizeViewMode('finalize');
 
+    // Generate QR code from session's Drive folder link if available
+    const folderLink = currentSession?.googleDriveMetadata?.folderLink;
+    if (folderLink) {
+      try {
+        const qrBase64 = await invoke<string>('generate_qr_code', { url: folderLink });
+        setSessionQrData(qrBase64);
+      } catch (err) {
+        console.error('[PhotoboothWorkspace] Failed to generate QR code:', err);
+        setSessionQrData(null);
+      }
+    } else {
+      setSessionQrData(null);
+    }
+
     // Upload photos to Google Drive if configured
     if (account && currentSession?.googleDriveMetadata?.folderId && workingFolder) {
       const driveFolderId = currentSession.googleDriveMetadata.folderId;
@@ -714,7 +737,8 @@ export default function PhotoboothWorkspace() {
 
   const handleBackToCapture = () => {
     setFinalizeViewMode('capture');
-    setFinalizeEditingZoneId(null); // Clear editing zone when going back
+    setFinalizeEditingZoneId(null);
+    setSessionQrData(null);
   };
 
   // Get selected photos in order (preserving capture order)
@@ -865,12 +889,22 @@ export default function PhotoboothWorkspace() {
     });
   }, [sequence.sequenceState, sequence.currentCountdown, updateCountdown]);
 
+  // Refs for guest-display:ready handler (avoids stale closures)
+  const currentSetPhotosRef = useRef(currentSetPhotos);
+  currentSetPhotosRef.current = currentSetPhotos;
+  const selectedPhotoIndexRef = useRef(selectedPhotoIndex);
+  selectedPhotoIndexRef.current = selectedPhotoIndex;
+  const displayModeRef = useRef(displayMode);
+  displayModeRef.current = displayMode;
+  const centerBrowseIndexRef = useRef(centerBrowseIndex);
+  centerBrowseIndexRef.current = centerBrowseIndex;
+
   // Listen for events from guest display
   useEffect(() => {
     let unlisteners: UnlistenFn[] = [];
 
     const setupListeners = async () => {
-      const [unlisten1, unlisten2, unlisten3] = await Promise.all([
+      const [unlisten1, unlisten2, unlisten3, unlisten4] = await Promise.all([
         listen('guest-display:escape', () => {
           setSelectedPhotoIndex(null);
         }),
@@ -882,8 +916,19 @@ export default function PhotoboothWorkspace() {
           console.log('[PhotoboothWorkspace] Guest display preview loaded');
           handleCapturePreviewLoad();
         }),
+        listen('guest-display:ready', () => {
+          // Guest display listeners are ready — send full current state
+          console.log('[PhotoboothWorkspace] Guest display ready, sending full state');
+          emitTo('guest-display', 'guest-display:mode', displayModeRef.current);
+          emitTo('guest-display', 'guest-display:update', {
+            currentSetPhotos: currentSetPhotosRef.current,
+            selectedPhotoIndex: selectedPhotoIndexRef.current,
+            displayMode: displayModeRef.current,
+          });
+          emitTo('guest-display', 'guest-display:center-browse', centerBrowseIndexRef.current);
+        }),
       ]);
-      unlisteners = [unlisten1, unlisten2, unlisten3];
+      unlisteners = [unlisten1, unlisten2, unlisten3, unlisten4];
     };
 
     setupListeners();
@@ -964,9 +1009,19 @@ export default function PhotoboothWorkspace() {
             <div className="preview-header-right">
               {/* Compact Mode Selector */}
               <div className="mode-selector-compact">
+                {sliderStyles && (
+                  <div
+                    className="mode-selector-indicator"
+                    style={{
+                      left: sliderStyles.left,
+                      width: sliderStyles.width,
+                    }}
+                  />
+                )}
                 {displayPresets.map((preset) => (
                   <button
                     key={preset.id}
+                    ref={el => (tabRefs.current[preset.id] = el)}
                     className={`mode-tab-compact ${displayMode === preset.id ? 'active' : ''}`}
                     onClick={() => {
                       setDisplayMode(preset.id);
@@ -1097,23 +1152,17 @@ export default function PhotoboothWorkspace() {
               transition={{ type: 'tween', duration: 0.8, ease: 'easeInOut' }}
               style={{ position: 'absolute', inset: 0 }}
             >
-              {isFinalizeAnimating ? (
-                <div className="finalize-view-loading">
-                  <div className="finalize-loading-spinner"></div>
-                  <span>Loading...</span>
-                </div>
-              ) : (
-                <FinalizeView
-                  frame={photoboothFrame!}
-                  selectedPhotos={getSelectedPhotosOrdered()}
-                  workingFolder={workingFolder!}
-                  sessionFolderName={sessionFolderName}
-                  onBack={handleBackToCapture}
-                  updateGuestDisplay={updateGuestDisplay}
-                  isSecondScreenOpen={isSecondScreenOpen}
-                  openSecondScreen={openSecondScreen}
-                />
-              )}
+              <FinalizeView
+                frame={photoboothFrame!}
+                selectedPhotos={getSelectedPhotosOrdered()}
+                workingFolder={workingFolder!}
+                sessionFolderName={sessionFolderName}
+                onBack={handleBackToCapture}
+                updateGuestDisplay={updateGuestDisplay}
+                isSecondScreenOpen={isSecondScreenOpen}
+                openSecondScreen={openSecondScreen}
+                qrData={sessionQrData}
+              />
             </motion.div>
           )}
         </AnimatePresence>

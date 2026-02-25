@@ -13,6 +13,7 @@ pub enum UploadStatus {
 }
 
 impl UploadStatus {
+    #[allow(dead_code)]
     pub fn as_str(&self) -> &'static str {
         match self {
             UploadStatus::Pending => "pending",
@@ -75,6 +76,7 @@ impl Default for UploadQueueState {
 }
 
 impl UploadQueueItem {
+    #[allow(dead_code)]
     pub fn new(
         id: String,
         session_id: String,
@@ -109,6 +111,7 @@ impl UploadQueueItem {
         self.retry_count += 1;
     }
 
+    #[allow(dead_code)]
     pub fn get_timeout_duration(&self) -> Duration {
         Duration::from_secs(self.timeout_secs)
     }

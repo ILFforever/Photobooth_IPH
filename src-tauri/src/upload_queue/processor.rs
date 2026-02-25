@@ -4,6 +4,7 @@ use std::sync::Arc;
 use tauri::AppHandle;
 
 /// Initialize and start the upload queue processor
+#[allow(dead_code)]
 pub fn start_upload_queue_processor(
     queue: Arc<UploadQueue>,
     app_handle: AppHandle,

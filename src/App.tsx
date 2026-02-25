@@ -1,20 +1,24 @@
 import { useState, useEffect } from "react";
 import { AnimatePresence } from "framer-motion";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useAuth } from "./contexts/AuthContext";
 import { useQR } from "./contexts/QRContext";
-import { formatFileSize, formatDate } from "./utils/format";
+import { formatFileSize } from "./utils/format";
 import { useGalleryState } from "./hooks/useGalleryState";
 import { useTauriInit, useTauriEvents } from "./hooks/useTauriInit";
 import { useAuthHandlers } from "./hooks/useAuthHandlers";
 import { useDriveFolderPicker } from "./hooks/useDriveFolderPicker";
 import { useQRUpload } from "./hooks/useQRUpload";
 import Header from "./components/Header/Header";
-import HistoryModal from "./components/Modals/HistoryModal";
 import AboutModal from "./components/Modals/AboutModal";
 import FolderPickerModal from "./components/Modals/FolderPickerModal";
 import AddPhotosModal from "./components/Modals/AddPhotosModal";
 import CachedAccountModal from "./components/Modals/CachedAccountModal";
 import DeleteFolderModal from "./components/Modals/DeleteFolderModal";
+import RequirementsModal from "./components/Modals/RequirementsModal";
+import CleanupModal from "./components/Modals/CleanupModal";
 import CollageWorkspace from "./components/Canvas/CollageWorkspace";
 import Sidebar from "./components/Sidebar/Sidebar";
 import { QRSidebar } from "./components/Sidebar/QR";
@@ -24,6 +28,18 @@ import PhotoboothWorkspace from "./components/PhotoboothView/PhotoboothWorkspace
 import "./App.css";
 
 type AppMode = 'photobooth' | 'collage' | 'qr';
+
+interface SystemRequirements {
+  virtualbox_installed: boolean;
+  virtualbox_version: string | null;
+  bundled_installer_available: boolean;
+  recommendations: string[];
+}
+
+interface RequirementCheck {
+  passed: boolean;
+  requirements: SystemRequirements;
+}
 
 function App() {
   // Context hooks - using contexts for auth, QR, etc.
@@ -36,8 +52,6 @@ function App() {
   } = useAuth();
 
   const {
-    setHistory: setHistoryItems,
-    showHistoryModal, setShowHistoryModal,
     uploadProgress, setUploadProgress
   } = useQR();
 
@@ -52,6 +66,49 @@ function App() {
   const [showAppMenu, setShowAppMenu] = useState(false);
   const [showAboutModal, setShowAboutModal] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
+  const [showRequirementsModal, setShowRequirementsModal] = useState(false);
+  const [requirementsChecked, setRequirementsChecked] = useState(false);
+  const [systemRequirements, setSystemRequirements] = useState<SystemRequirements | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showCleanup, setShowCleanup] = useState(false);
+
+  // Track fullscreen state to disable drag region
+  useEffect(() => {
+    const appWindow = getCurrentWindow();
+    const checkFullscreen = async () => {
+      setIsFullscreen(await appWindow.isFullscreen());
+    };
+    const unlisten = appWindow.onResized(() => {
+      checkFullscreen();
+    });
+    return () => { unlisten.then(fn => fn()); };
+  }, []);
+
+  // Listen for window close event from backend to show cleanup modal
+  useEffect(() => {
+    const unlisten = listen('cleanup-requested', () => {
+      setShowCleanup(true);
+    });
+    return () => { unlisten.then(fn => fn()); };
+  }, []);
+
+  // Check system requirements on mount
+  useEffect(() => {
+    const checkRequirements = async () => {
+      try {
+        const result: RequirementCheck = await invoke('get_system_requirements');
+        setSystemRequirements(result.requirements);
+        // Only show modal if VirtualBox is not installed
+        if (!result.passed) {
+          setShowRequirementsModal(true);
+        }
+      } catch (e) {
+        console.error('Failed to check system requirements:', e);
+      }
+      setRequirementsChecked(true);
+    };
+    checkRequirements();
+  }, []);
 
   // Tauri initialization hooks
   const { tauriReady } = useTauriInit({
@@ -61,8 +118,6 @@ function App() {
 
   useTauriEvents({
     tauriReady,
-    setHistory: setHistoryItems,
-    showHistoryModal,
     setUploadProgress,
   });
 
@@ -147,19 +202,23 @@ function App() {
     await qrUpload.handleGenerate(rootFolder);
   };
 
+  const handleExit = () => {
+    setShowCleanup(true);
+  };
+
   return (
-    <div className="app-window">
+    <div className={`app-window${isFullscreen ? ' is-fullscreen' : ''}`}>
       {/* Header */}
       <Header
         showAccountMenu={showAccountMenu}
         setShowAccountMenu={setShowAccountMenu}
         showAppMenu={showAppMenu}
         setShowAppMenu={setShowAppMenu}
-        onShowHistory={() => setShowHistoryModal(true)}
         onShowAbout={() => setShowAboutModal(true)}
         onLogout={handleLogout}
         onLogin={handleLogin}
         onCancelLogin={handleCancelLogin}
+        onExit={handleExit}
         mode={appMode}
         setMode={setAppMode}
       />
@@ -287,17 +346,8 @@ function App() {
         )}
       </AnimatePresence>
 
-      {/* History Modal */}
-      <AnimatePresence>
-        {showHistoryModal && (
-          <HistoryModal
-            show={showHistoryModal}
-            onClose={() => setShowHistoryModal(false)}
-            formatDate={formatDate}
-          />
-        )}
-      </AnimatePresence>
- 
+
+
        {/* About Modal */}
       <AnimatePresence>
         {showAboutModal && (
@@ -307,6 +357,22 @@ function App() {
           />
         )}
       </AnimatePresence>
+
+      {/* System Requirements Modal */}
+      <AnimatePresence>
+        {showRequirementsModal && systemRequirements && (
+          <RequirementsModal
+            show={showRequirementsModal}
+            onClose={() => setShowRequirementsModal(false)}
+            virtualboxInstalled={systemRequirements.virtualbox_installed}
+            virtualboxVersion={systemRequirements.virtualbox_version ?? undefined}
+            bundledInstallerAvailable={systemRequirements.bundled_installer_available}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Cleanup Modal - shown when exiting */}
+      <CleanupModal show={showCleanup} />
     </div>
   );
 }

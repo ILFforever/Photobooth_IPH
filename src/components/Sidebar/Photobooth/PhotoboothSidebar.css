@@ -3766,18 +3766,17 @@
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
-  border: 1px solid var(--border-color);
+  border: none;
+  outline: none;
 }
 
 .qr-action-btn.primary {
   background: var(--accent-color);
-  border-color: var(--accent-color);
   color: white;
 }
 
 .qr-action-btn.primary:hover {
   background: var(--accent-hover);
-  border-color: var(--accent-hover);
   transform: translateY(-1px);
   box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
 }
@@ -3788,7 +3787,7 @@
 }
 
 .qr-action-btn.secondary:hover {
-  background: var(--bg-hover);
+  background: black;
   transform: translateY(-1px);
 }
 
@@ -3800,6 +3799,76 @@
   opacity: 0.5;
   cursor: not-allowed;
   pointer-events: none;
+}
+
+.qr-action-btn.active {
+  background: black;
+  border-color: black;
+}
+
+/* QR Code Dropdown */
+.qr-code-dropdown {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+
+.qr-code-dropdown-frame {
+  background: #fff;
+  padding: 8px;
+  border-radius: 6px;
+}
+
+.qr-code-dropdown-img {
+  width: 140px;
+  height: 140px;
+  display: block;
+}
+
+.qr-code-dropdown-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Upload Collage Button */
+.qr-upload-collage-section {
+  width: 100%;
+}
+
+.qr-upload-collage-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.qr-upload-collage-btn:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+}
+
+.qr-upload-collage-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* Upload Status Section */
@@ -4069,5 +4138,124 @@
   .qr-code-image {
     width: 180px;
     height: 180px;
+  }
+}
+
+/* Regenerate Collage Modal */
+.regenerate-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  animation: fadeIn 0.15s ease;
+}
+
+.regenerate-modal {
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  padding: 24px;
+  min-width: 360px;
+  max-width: 440px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  animation: slideUp 0.2s ease;
+}
+
+.regenerate-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.regenerate-modal-icon {
+  color: #f59e0b;
+  flex-shrink: 0;
+}
+
+.regenerate-modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.regenerate-modal-content {
+  margin-bottom: 20px;
+}
+
+.regenerate-modal-content p {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.regenerate-modal-content p:last-child {
+  margin-bottom: 0;
+}
+
+.regenerate-modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.regenerate-modal-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid transparent;
+}
+
+.regenerate-modal-btn.secondary {
+  background: transparent;
+  border-color: var(--border-color);
+  color: var(--text-secondary);
+}
+
+.regenerate-modal-btn.secondary:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--border-hover);
+}
+
+.regenerate-modal-btn.primary {
+  background: var(--accent-blue);
+  color: white;
+  border-color: var(--accent-blue);
+}
+
+.regenerate-modal-btn.primary:hover {
+  background: var(--accent-blue-hover);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }

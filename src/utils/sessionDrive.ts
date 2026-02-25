@@ -110,8 +110,8 @@ export async function initializeSessionDriveFolder(
   const { createDriveFolder } = await import("./driveFolder");
   const driveFolder = await createDriveFolder(randomFolderName, parentFolderId);
 
-  // Generate shareable link (format: https://drive.google.com/drive/folders/{folderId})
-  const folderLink = `https://drive.google.com/drive/folders/${driveFolder.id}`;
+  // Set "anyone with link" sharing permission and get the shareable link
+  const folderLink = await invoke<string>('share_drive_folder', { folderId: driveFolder.id });
 
   // Update session metadata
   await updateSessionDriveMetadata(

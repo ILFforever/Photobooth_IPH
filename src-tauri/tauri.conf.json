@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Photobooth_IPH",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "identifier": "photobooth-iph",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -17,8 +17,10 @@
         "title": "Photobooth_IPH",
         "width": 1920,
         "height": 1080,
-        "fullscreen": true,
-        "dragDropEnabled": false
+        "fullscreen": false,
+        "dragDropEnabled": false,
+        "visible": false,
+        "center": true
       }
     ],
     "security": {
@@ -31,7 +33,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["msi"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -39,10 +41,14 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "publisher": "Intania Production House",
+    "copyright": "© 2025 Intania Production House",
+    "shortDescription": "Professional-grade photobooth application for event photography",
+    "longDescription": "Photobooth_IPH is a professional photobooth application featuring camera control, collage creation, Google Drive integration, and QR code generation for event photography.",
     "resources": [
       "client_secret.json",
-      "../linux-build/photobooth.iso",
-      "../scripts/*.cmd"
+      "../scripts/*.cmd",
+      "../installers/*.exe"
     ]
   }
 }

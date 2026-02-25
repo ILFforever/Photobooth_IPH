@@ -64,6 +64,11 @@ textarea,
   user-select: none;
   -webkit-app-region: drag;
   flex-shrink: 0;
+  position: relative;
+}
+
+.is-fullscreen .app-header {
+  -webkit-app-region: no-drag;
 }
 
 /* Photobooth Mode Page Divider */
@@ -81,71 +86,12 @@ textarea,
   flex: 0 0 auto;
 }
 
-/* Header Center - Mode Selector */
-.header-center {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: 1 1 auto;
-}
-
-.mode-selector {
-  display: flex;
-  gap: 2px;
-  padding: 2px 8px;
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  -webkit-app-region: no-drag;
-  position: relative;
-}
-
-.mode-active-indicator {
-  position: absolute;
-  left: 0;
-  top: 2px;
-  bottom: 2px;
-  background: rgba(255, 255, 255, 0.06);
-  border-radius: 4px;
-  z-index: 0;
-}
-
-.mode-segment {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: 1;
-  padding: 4px 12px;
-  border-radius: 4px;
-  border: none;
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: color 0.2s ease;
-  white-space: nowrap;
-  -webkit-app-region: no-drag;
-}
-
-.mode-segment:hover {
-  color: var(--text-primary);
-}
-
-.mode-segment.active {
-  color: white;
-}
-
-.mode-label {
-  line-height: 1;
-}
 
 .app-menu-container {
   position: relative;
   display: flex;
   align-items: center;
+  height: 100%;
 }
 
 .app-icon-button {
@@ -161,6 +107,25 @@ textarea,
   position: relative;
 }
 
+/* Header Center - Current Mode Label */
+.header-center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.header-mode-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  line-height: 1;
+  letter-spacing: 0.3px;
+  opacity: 0.5;
+}
+
 .app-icon {
   font-size: 20px;
   cursor: pointer;
@@ -168,6 +133,15 @@ textarea,
   line-height: 1;
   display: block;
   transform: translateY(-3px);
+}
+
+.app-icon-img {
+  height: 20px;
+  width: auto;
+  object-fit: contain;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  display: block;
 }
 
 .app-menu {
@@ -185,22 +159,22 @@ textarea,
   align-items: center;
   white-space: nowrap;
   padding: 0;
-  gap: 6px;
+  gap: 4px;
 }
 
 .app-menu-item {
   width: auto;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   padding: 4px 10px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  color: var(--text-primary);
+  color: var(--text-secondary);
   font-size: 11px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
   text-align: left;
   border-radius: 4px;
 }
@@ -208,14 +182,20 @@ textarea,
 .app-menu-item:hover {
   background: var(--bg-tertiary);
   border-color: var(--text-muted);
+  color: var(--text-primary);
 }
 
-.app-menu-item span:first-child {
-  font-size: 14px;
+.app-menu-item.active {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--text-muted);
+  color: var(--text-primary);
 }
 
 .app-menu-divider {
-  display: none;
+  width: 1px;
+  height: 16px;
+  background: var(--border-color);
+  flex-shrink: 0;
 }
 
 .header-right {

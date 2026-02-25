@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
+     xmlns:bal="http://schemas.microsoft.com/wix/BalExtension">
+
+  <!-- Bundle Configuration - This creates an exe bootstrapper that chains installers -->
+  <Bundle Name="Photobooth_IPH Setup"
+          Version="{{version}}"
+          Manufacturer="Intania Production House"
+          UpgradeCode="{YOUR-GUID-HERE}"
+          IconSourceFile="{{icon_path}}"
+          SplashScreenSourceFile="{{splash_path}}"
+          Condition="VersionNT >= 10.0.17763">
+
+    <!-- Bootstrapper Application UI -->
+    <bal:WixStandardBootstrapperApplication LicenseUrl="" />
+
+    <!-- Chain: Installers run in sequence -->
+    <Chain>
+      <!-- VirtualBox Installation (Optional) -->
+      <!-- Detects if VirtualBox is already installed via registry check -->
+      <ExePackage Id="VirtualBoxInstaller"
+                  Name="Oracle VirtualBox"
+                  SourceFile="{{virtualbox_path}}"
+                  InstallCommand="/silent /norestart"
+                  RepairCommand="/silent /norestart"
+                  UninstallCommand="/silent /norestart"
+                  DetectCondition="VIRTUALBOX_NOT_INSTALLED"
+                  Vital="no"
+                  Permanent="no">
+        <ExitCode Code="0" Result="Success"/>
+        <ExitCode Code="3010" Result="Success" /> // Restart required
+        <ExitCode Code="1641" Result="SuccessReboot" />
+        <ExitCode Code="3010" Result="SuccessReboot" />
+        <ExitCode Code="1618" Result="Fail" />
+      </ExePackage>
+
+      <!-- Main Photobooth_IPH Application (MSI) -->
+      <MsiPackage Id="Photobooth_IPH_Main"
+                  SourceFile="{{msi_path}}"
+                  Compressed="yes"
+                  Vital="yes"
+                  DisplayInternalUI="no"
+                  InstallCondition="VersionNT >= 10.0.17763">
+        <MsiProperty Name="INSTALLDIR" Value="[ProgramFilesFolder][ApplicationFolderName]" />
+      </MsiPackage>
+    </Chain>
+
+    <!-- Variables -->
+    <Variable Name="ApplicationFolderName" Type="string" Value="Photobooth_IPH" />
+    <Variable Name="InstallFolder" Type="string" Value="[ProgramFilesFolder]Photobooth_IPH" />
+
+  </Bundle>
+</Wix>

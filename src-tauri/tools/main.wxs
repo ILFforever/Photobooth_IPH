@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <!-- Custom WiX template for Photobooth_IPH with VirtualBox bundle -->
+  <Bundle UpgradeCode="{{{bundle_upgrade_code}}}" Version="{{version}}"
+          IconSourceFile="{{icon_path}}" Name="{{product_name}} Installer"
+          Manufacturer="{{publisher}}"
+          Condition="VersionNT >= 10.0.17763">
+
+    <!-- Bootstrapper configuration -->
+    <BootstrapperApplication SourceFile="{{wix_bootstrapper_ui_path}}" />
+
+    <!-- Chain contains installers to run in sequence -->
+    <Chain>
+      <!-- Check for and install VirtualBox if needed -->
+      <!-- VirtualBox is detected via registry check and conditionally installed -->
+
+      <!-- Exe packages require silent install parameters -->
+      <!-- This references the bundled VirtualBox installer -->
+
+      <!-- The main Photobooth_IPH MSI package -->
+      <!-- This will be replaced by Tauri with the actual package reference -->
+      <MsiPackage SourceFile="{{msi_path}}" Id="Photobooth_IPH_Main"
+                   Compressed="yes" Vital="yes"
+                   DisplayInternalUI="no"
+                   InstallCondition="VersionNT >= 10.0.17763">
+        <MsiProperty Name="INSTALLDIR" Value="[InstallFolder]" />
+      </MsiPackage>
+
+      <!-- Optional: Restart computer if VirtualBox was installed and requires reboot -->
+      <!-- <RollbackBoundary /> -->
+    </Chain>
+
+    <!-- Variables -->
+    <Variable Name="InstallFolder" Type="string" Value="[ProgramFilesFolder]{{product_name}}" />
+
+  </Bundle>
+</Wix>

@@ -1,5 +1,5 @@
 use crate::photobooth_sessions::types::{
-    DelaySettings, DriveUploadedImage, GoogleDriveMetadata, PhotoboothSessionInfo, PtbPhoto,
+    DelaySettings, DriveUploadedImage, GoogleDriveMetadata, PhotoboothSessionInfo, PhotoExifData, PtbPhoto,
     PtbSessionData, PtbWorkspace,
 };
 use crate::working_folder::commands::generate_cached_thumbnail_high_res;
@@ -82,6 +82,8 @@ fn scan_existing_sessions(folder_path: &str) -> Vec<PtbSessionData> {
                                         shot_count: 0,
                                         photos: Vec::new(),
                                         google_drive_metadata: GoogleDriveMetadata::default(),
+                                        qr_upload_all_images: false,
+                                        photo_naming_scheme: "IPH_{number}".to_string(),
                                     })
                                 })
                             };
@@ -396,6 +398,8 @@ pub async fn create_photobooth_session(
         shot_count: 0,
         photos: Vec::new(),
         google_drive_metadata: GoogleDriveMetadata::default(),
+        qr_upload_all_images: false,
+        photo_naming_scheme: "IPH_{number}".to_string(),
     };
 
     // Create session info
@@ -543,6 +547,46 @@ pub async fn clear_session_drive_uploads(
 
     if let Some(session) = workspace.sessions.iter_mut().find(|s| s.id == session_id) {
         session.google_drive_metadata.uploaded_images.clear();
+        session.last_used_at = chrono::Utc::now().to_rfc3339();
+
+        save_ptb_workspace(folder_path, workspace).await?;
+        Ok(())
+    } else {
+        Err(format!("Session not found: {}", session_id))
+    }
+}
+
+/// Update QR upload setting for a session
+#[tauri::command]
+pub async fn update_session_qr_setting(
+    folder_path: String,
+    session_id: String,
+    qr_upload_all_images: bool,
+) -> Result<(), String> {
+    let (mut workspace, _) = load_ptb_workspace_internal(folder_path.clone()).await?;
+
+    if let Some(session) = workspace.sessions.iter_mut().find(|s| s.id == session_id) {
+        session.qr_upload_all_images = qr_upload_all_images;
+        session.last_used_at = chrono::Utc::now().to_rfc3339();
+
+        save_ptb_workspace(folder_path, workspace).await?;
+        Ok(())
+    } else {
+        Err(format!("Session not found: {}", session_id))
+    }
+}
+
+/// Update photo naming scheme for a session
+#[tauri::command]
+pub async fn update_session_naming_scheme(
+    folder_path: String,
+    session_id: String,
+    photo_naming_scheme: String,
+) -> Result<(), String> {
+    let (mut workspace, _) = load_ptb_workspace_internal(folder_path.clone()).await?;
+
+    if let Some(session) = workspace.sessions.iter_mut().find(|s| s.id == session_id) {
+        session.photo_naming_scheme = photo_naming_scheme;
         session.last_used_at = chrono::Utc::now().to_rfc3339();
 
         save_ptb_workspace(folder_path, workspace).await?;
@@ -854,6 +898,99 @@ pub async fn download_photo_from_daemon(
     Ok(updated_session.unwrap())
 }
 
+/// Delete a single photo from a session
+/// Removes the photo file from disk and updates the session metadata
+#[tauri::command]
+pub async fn delete_session_photo(
+    folder_path: String,
+    session_id: String,
+    filename: String,
+) -> Result<PtbSessionData, String> {
+    println!("[delete_session_photo] Starting deletion for photo: {} in session: {}", filename, session_id);
+
+    let (mut workspace, _) = load_ptb_workspace_internal(folder_path.clone()).await?;
+
+    // Find the session to get its folder name
+    let session_folder_name = workspace
+        .sessions
+        .iter()
+        .find(|s| s.id == session_id)
+        .map(|s| s.folder_name.clone());
+
+    if session_folder_name.is_none() {
+        println!("[delete_session_photo] Session not found: {}", session_id);
+        return Err(format!("Session not found: {}", session_id));
+    }
+
+    let session_folder_name = session_folder_name.unwrap();
+    println!(
+        "[delete_session_photo] Found session folder name: {}",
+        session_folder_name
+    );
+
+    // Delete the photo file from disk
+    let photo_path = std::path::Path::new(&folder_path).join(&session_folder_name).join(&filename);
+    println!("[delete_session_photo] Deleting photo: {:?}", photo_path);
+
+    if photo_path.exists() {
+        fs::remove_file(&photo_path)
+            .map_err(|e| {
+                format!(
+                    "Failed to delete photo file '{}': {}",
+                    photo_path.display(),
+                    e
+                )
+            })?;
+        println!(
+            "[delete_session_photo] Successfully deleted photo: {:?}",
+            photo_path
+        );
+    } else {
+        println!(
+            "[delete_session_photo] Photo file does not exist: {:?}",
+            photo_path
+        );
+    }
+
+    // Remove photo from session metadata and update workspace
+    let updated_session = if let Some(session) = workspace.sessions.iter_mut().find(|s| s.id == session_id) {
+        println!("[delete_session_photo] Removing photo from session metadata");
+
+        // Also remove from Google Drive uploaded images if present
+        session.google_drive_metadata.uploaded_images.retain(|img| img.filename != filename);
+
+        // Remove from photos array
+        let original_len = session.photos.len();
+        session.photos.retain(|p| p.filename != filename);
+        let removed_count = original_len - session.photos.len();
+
+        if removed_count > 0 {
+            println!("[delete_session_photo] Removed {} photo(s) from metadata", removed_count);
+        } else {
+            println!("[delete_session_photo] WARN: Photo was not in photos array");
+        }
+
+        session.shot_count = session.photos.len() as u32;
+        session.last_used_at = chrono::Utc::now().to_rfc3339();
+
+        Some(session.clone())
+    } else {
+        println!(
+            "[delete_session_photo] ERROR: Session not found: {}",
+            session_id
+        );
+        return Err(format!("Session not found: {}", session_id));
+    };
+
+    // Save updated workspace
+    println!("[delete_session_photo] Saving workspace");
+    save_ptb_workspace(folder_path, workspace).await?;
+    println!("[delete_session_photo] Workspace saved successfully");
+
+    println!("[delete_session_photo] END - deletion complete");
+    Ok(updated_session.unwrap())
+}
+
 /// Delete a photobooth session
 /// Removes the session folder from disk and removes it from the workspace
 #[tauri::command]
@@ -949,4 +1086,143 @@ pub async fn delete_photobooth_session(
 
     println!("[delete_photobooth_session] END - deletion complete");
     Ok(())
+}
+
+/// Get EXIF metadata for a photo in a session
+#[tauri::command]
+pub async fn get_photo_exif(
+    folder_path: String,
+    session_id: String,
+    filename: String,
+) -> Result<PhotoExifData, String> {
+    println!("[get_photo_exif] Getting EXIF for: {} in session: {}", filename, session_id);
+
+    // Load workspace to find the session folder name
+    let (workspace, _) = load_ptb_workspace_internal(folder_path.clone()).await?;
+
+    let session_folder_name = workspace
+        .sessions
+        .iter()
+        .find(|s| s.id == session_id)
+        .map(|s| s.folder_name.clone())
+        .ok_or_else(|| format!("Session not found: {}", session_id))?;
+
+    // Build the full photo path
+    let photo_path = std::path::Path::new(&folder_path)
+        .join(&session_folder_name)
+        .join(&filename);
+
+    if !photo_path.exists() {
+        return Err(format!("Photo file not found: {:?}", photo_path));
+    }
+
+    // Get file metadata
+    let metadata = fs::metadata(&photo_path)
+        .map_err(|e| format!("Failed to read photo metadata: {}", e))?;
+    let file_size = Some(metadata.len());
+
+    // Try to read EXIF data using rexif
+    let exif_data = rexif::parse_file(&photo_path).ok();
+
+    let mut image_width: Option<u32> = None;
+    let mut image_height: Option<u32> = None;
+    let mut make: Option<String> = None;
+    let mut model: Option<String> = None;
+    let mut iso: Option<u32> = None;
+    let mut aperture: Option<String> = None;
+    let mut shutter_speed: Option<String> = None;
+    let mut focal_length: Option<String> = None;
+    let mut date_taken: Option<String> = None;
+
+    if let Some(exif) = exif_data {
+        for entry in &exif.entries {
+            match entry.tag {
+                rexif::ExifTag::Make => {
+                    if let rexif::TagValue::Ascii(ref val) = entry.value {
+                        make = Some(val.trim().to_string());
+                    }
+                }
+                rexif::ExifTag::Model => {
+                    if let rexif::TagValue::Ascii(ref val) = entry.value {
+                        model = Some(val.trim().to_string());
+                    }
+                }
+                rexif::ExifTag::ISOSpeedRatings => {
+                    if let rexif::TagValue::U16(ref shorts) = entry.value {
+                        if let Some(&val) = shorts.first() {
+                            iso = Some(val as u32);
+                        }
+                    } else if let rexif::TagValue::U32(ref vals) = entry.value {
+                        if let Some(&val) = vals.first() {
+                            iso = Some(val);
+                        }
+                    }
+                }
+                rexif::ExifTag::FNumber => {
+                    if let rexif::TagValue::URational(ref rats) = entry.value {
+                        if let Some(rat) = rats.first() {
+                            if rat.denominator > 0 {
+                                let f_val = rat.numerator as f64 / rat.denominator as f64;
+                                aperture = Some(format!("f/{:.1}", f_val));
+                            }
+                        }
+                    }
+                }
+                rexif::ExifTag::ExposureTime => {
+                    if let rexif::TagValue::URational(ref rats) = entry.value {
+                        if let Some(rat) = rats.first() {
+                            if rat.numerator > 0 && rat.denominator > 0 {
+                                let exposure = rat.numerator as f64 / rat.denominator as f64;
+                                if exposure >= 1.0 {
+                                    shutter_speed = Some(format!("{}s", exposure));
+                                } else {
+                                    shutter_speed = Some(format!("1/{}", (rat.denominator as f64 / rat.numerator as f64).round() as u32));
+                                }
+                            }
+                        }
+                    }
+                }
+                rexif::ExifTag::FocalLength => {
+                    if let rexif::TagValue::URational(ref rats) = entry.value {
+                        if let Some(rat) = rats.first() {
+                            if rat.denominator > 0 {
+                                let focal_val = rat.numerator as f64 / rat.denominator as f64;
+                                focal_length = Some(format!("{}mm", focal_val.round()));
+                            }
+                        }
+                    }
+                }
+                rexif::ExifTag::DateTimeOriginal => {
+                    if let rexif::TagValue::Ascii(ref val) = entry.value {
+                        date_taken = Some(val.trim().to_string());
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    // If width/height not found in EXIF, try reading from JPEG header
+    if image_width.is_none() || image_height.is_none() {
+        if let Ok(jpeg_data) = fs::read(&photo_path) {
+            if let Ok(decompress) = mozjpeg::Decompress::new_mem(&jpeg_data) {
+                image_width = Some(decompress.width() as u32);
+                image_height = Some(decompress.height() as u32);
+            }
+        }
+    }
+
+    Ok(PhotoExifData {
+        filename,
+        file_size,
+        image_width,
+        image_height,
+        make,
+        model,
+        iso,
+        aperture,
+        shutter_speed,
+        focal_length,
+        date_taken,
+    })
 }

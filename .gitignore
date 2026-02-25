@@ -52,3 +52,9 @@ vm/*.vmdk
 
 # Claude settings
 .claude/settings.local.json
+
+# Executables
+*.exe
+
+# Documents (for now)
+docs/*

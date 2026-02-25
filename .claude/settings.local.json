@@ -67,7 +67,11 @@
       "Bash(du:*)",
       "Bash(\"C:\\\\Program Files\\\\Oracle\\\\VirtualBox\\\\VBoxManage.exe\" showvminfo PhotoboothLinux --machinereadable)",
       "Bash(\"C:\\\\Program Files\\\\Oracle\\\\VirtualBox\\\\VBoxManage.exe\" modifyvm PhotoboothLinux --uartmode1 file \"C:\\\\Users\\\\Asus\\\\AppData\\\\Local\\\\Photobooth_IPH\\\\logs\\\\vbox-console.log\")",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(pdflatex:*)",
+      "Bash(grep:*)",
+      "Bash(npm ls:*)",
+      "Bash(cargo update:*)"
     ],
     "additionalDirectories": [
       "d:\\Photobooth_IPH"

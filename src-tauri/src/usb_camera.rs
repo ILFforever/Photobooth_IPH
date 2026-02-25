@@ -3,6 +3,23 @@ use std::collections::{HashMap, HashSet};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
+/// Helper to run a command without showing console window on Windows
+fn run_command_silent(program: &str, args: &[&str]) -> Result<std::process::Output, std::io::Error> {
+    let mut cmd = Command::new(program);
+    cmd.args(args);
+
+    #[cfg(windows)]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    cmd.output()
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UsbCamera {
     pub uuid: String,
@@ -38,9 +55,7 @@ impl CameraManager {
 
     /// List all USB cameras connected to the host
     pub fn list_cameras(&self) -> Result<Vec<UsbCamera>, String> {
-        let output = Command::new(&self.vbox_manage_path)
-            .args(&["list", "usbhosts"])
-            .output()
+        let output = run_command_silent(&self.vbox_manage_path, &["list", "usbhosts"])
             .map_err(|e| format!("Failed to execute VBoxManage: {}", e))?;
 
         if !output.status.success() {
@@ -142,10 +157,9 @@ impl CameraManager {
     }
 
     /// Get list of existing USB filters for the VM
+    /// Uses --machinereadable for fast, reliable parsing
     fn get_existing_filters(&self) -> Result<HashSet<String>, String> {
-        let output = Command::new(&self.vbox_manage_path)
-            .args(&["showvminfo", &self.vm_name])
-            .output()
+        let output = run_command_silent(&self.vbox_manage_path, &["showvminfo", &self.vm_name, "--machinereadable"])
             .map_err(|e| format!("Failed to get VM info: {}", e))?;
 
         if !output.status.success() {
@@ -154,24 +168,16 @@ impl CameraManager {
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         let mut filters = HashSet::new();
-        let mut in_filter_section = false;
 
+        // --machinereadable outputs lines like: USBFilterName1="Canon Cameras"
         for line in stdout.lines() {
-            let trimmed = line.trim();
-            if trimmed.starts_with("USB Device Filters:") {
-                in_filter_section = true;
-                continue;
-            }
-            // Exit filter section when we hit another top-level section
-            if in_filter_section && !trimmed.is_empty() && !trimmed.starts_with("Name:") && !trimmed.starts_with("VendorId:") {
-                if trimmed.ends_with(':') && !trimmed.contains("USB") {
-                    break;
-                }
-            }
-            if in_filter_section && trimmed.starts_with("Name:") {
-                if let Some(name) = trimmed.split_once(':') {
-                    let name = name.1.trim().to_string();
-                    filters.insert(name);
+            if let Some(rest) = line.strip_prefix("USBFilterName") {
+                // rest is like: 1="Canon Cameras"
+                if let Some((_index, quoted_name)) = rest.split_once('=') {
+                    let name = quoted_name.trim_matches('"').to_string();
+                    if !name.is_empty() {
+                        filters.insert(name);
+                    }
                 }
             }
         }
@@ -181,19 +187,17 @@ impl CameraManager {
 
     /// Add a USB filter for a camera vendor
     fn add_usb_filter(&self, index: usize, name: &str, vendor_id: &str) -> Result<(), String> {
-        let output = Command::new(&self.vbox_manage_path)
-            .args(&[
-                "usbfilter",
-                "add",
-                &index.to_string(),
-                "--target",
-                &self.vm_name,
-                "--name",
-                name,
-                "--vendorid",
-                vendor_id,
-            ])
-            .output()
+        let output = run_command_silent(&self.vbox_manage_path, &[
+            "usbfilter",
+            "add",
+            &index.to_string(),
+            "--target",
+            &self.vm_name,
+            "--name",
+            name,
+            "--vendorid",
+            vendor_id,
+        ])
             .map_err(|e| format!("Failed to add USB filter: {}", e))?;
 
         if !output.status.success() {
@@ -244,9 +248,7 @@ impl CameraManager {
     /// Attach a camera to the VM (runtime-only, no permanent config changes)
     pub fn attach_camera(&self, camera: &UsbCamera) -> Result<(), String> {
         // Check if VM is running
-        let vm_state_output = Command::new(&self.vbox_manage_path)
-            .args(&["showvminfo", &self.vm_name])
-            .output()
+        let vm_state_output = run_command_silent(&self.vbox_manage_path, &["showvminfo", &self.vm_name])
             .map_err(|e| format!("Failed to check VM state: {}", e))?;
 
         let vm_state = String::from_utf8_lossy(&vm_state_output.stdout);
@@ -260,14 +262,12 @@ impl CameraManager {
         }
 
         // Attach the camera using controlvm (runtime-only, no permanent changes)
-        let output = Command::new(&self.vbox_manage_path)
-            .args(&[
-                "controlvm",
-                &self.vm_name,
-                "usbattach",
-                &camera.uuid,
-            ])
-            .output()
+        let output = run_command_silent(&self.vbox_manage_path, &[
+            "controlvm",
+            &self.vm_name,
+            "usbattach",
+            &camera.uuid,
+        ])
             .map_err(|e| format!("Failed to attach USB device: {}", e))?;
 
         if !output.status.success() {
@@ -292,14 +292,12 @@ impl CameraManager {
 
     /// Detach a camera from the VM
     pub fn detach_camera(&self, camera: &UsbCamera) -> Result<(), String> {
-        let output = Command::new(&self.vbox_manage_path)
-            .args(&[
-                "controlvm",
-                &self.vm_name,
-                "usbdetach",
-                &camera.uuid,
-            ])
-            .output()
+        let output = run_command_silent(&self.vbox_manage_path, &[
+            "controlvm",
+            &self.vm_name,
+            "usbdetach",
+            &camera.uuid,
+        ])
             .map_err(|e| format!("Failed to detach USB device: {}", e))?;
 
         if !output.status.success() {

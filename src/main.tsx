@@ -20,7 +20,7 @@ import { PrintSettingsProvider } from "./contexts/PrintSettingsContext";
 import { UploadQueueProvider } from "./contexts/UploadQueueContext";
 import "./components/PhotoboothView/GuestDisplay.css";
 
-// Determine which component to render based on the window label
+// Render the app
 async function renderApp() {
   const root = ReactDOM.createRoot(document.getElementById("root") as HTMLElement);
 
@@ -28,22 +28,25 @@ async function renderApp() {
 
   try {
     const currentWindow = getCurrentWebviewWindow();
-    // In Tauri v2, label is a property, not a method
     const label = currentWindow.label;
     console.log('Window label:', label);
 
     if (label === 'guest-display') {
       AppComponent = GuestDisplay;
       console.log('Rendering GuestDisplay component');
+    } else if (label === 'splash') {
+      // Splash window has its own logic in splash.html
+      console.log('Splash window detected, skipping React render');
+      return;
     } else {
       console.log('Rendering App component');
     }
   } catch (e) {
     console.log('Not in Tauri environment or window not ready, rendering App', e);
-    // Not in Tauri environment or window not ready, default to App
     AppComponent = App;
   }
 
+  // Render the React app
   root.render(
     <React.StrictMode>
       <DndProvider backend={HTML5Backend}>

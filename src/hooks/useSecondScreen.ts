@@ -63,26 +63,8 @@ export function useSecondScreen() {
 
       setIsSecondScreenOpen(true);
 
-      // Store initial data - will be sent when guest display requests it
-      if (initialData) {
-        // Send immediately for already-ready windows, or after delay for new windows
-        const sendData = () => {
-          if (guestWindowRef.current) {
-            emitTo(GUEST_DISPLAY_LABEL, 'guest-display:mode', initialData.displayMode);
-            emitTo(GUEST_DISPLAY_LABEL, 'guest-display:update', {
-              currentSetPhotos: initialData.currentSetPhotos,
-              selectedPhotoIndex: initialData.selectedPhotoIndex,
-            });
-            emitTo(GUEST_DISPLAY_LABEL, 'guest-display:center-browse', initialData.centerBrowseIndex);
-          }
-        };
-
-        // Try immediately first, then retry after delays
-        sendData();
-        setTimeout(sendData, 200);
-        setTimeout(sendData, 500);
-        setTimeout(sendData, 1000);
-      }
+      // Initial data will be sent when the guest display emits 'guest-display:ready'
+      // after its event listeners are set up (handled in PhotoboothWorkspace)
     } catch (error) {
       console.error('Failed to open second screen:', error);
     }

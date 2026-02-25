@@ -1,15 +1,26 @@
-import { useState, useEffect, useMemo } from 'react';
-import { ExternalLink, Copy, Check, Upload, AlertCircle, Folder, Clock, XCircle, Loader, ChevronDown, ChevronRight, AlertTriangle, LogIn } from 'lucide-react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { ExternalLink, Copy, Check, Upload, AlertCircle, Folder, XCircle, Loader, ChevronDown, ChevronRight, AlertTriangle, LogIn, QrCode, Image as ImageIcon } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
+import { open as shellOpen } from '@tauri-apps/plugin-shell';
 import { usePhotoboothSettings } from '../../../../contexts/PhotoboothSettingsContext';
 import { useUploadQueue } from '../../../../contexts/UploadQueueContext';
 import { useAuth } from '../../../../contexts/AuthContext';
+import { usePhotobooth } from '../../../../contexts/PhotoboothContext';
+import { useToast } from '../../../../contexts/ToastContext';
 import { getDriveAuthState, getAuthStateText, DriveAuthState } from '../../../../utils/driveAuthState';
 
 export function QrTabContent() {
-  const { currentSession } = usePhotoboothSettings();
-  const { queueItems, stats, startAutoRefresh, stopAutoRefresh } = useUploadQueue();
+  const { currentSession, workingFolder, sessions } = usePhotoboothSettings();
+  const { queueItems, stats, startAutoRefresh, stopAutoRefresh, enqueuePhotos } = useUploadQueue();
   const { account } = useAuth();
+  const { exportPhotoboothCanvasAsPNG, currentCollageFilename, setCurrentCollageFilename, collageIsDirty, resetCollageDirtyState, isGeneratingCollage, setIsGeneratingCollage } = usePhotobooth();
+  const { showToast } = useToast();
   const [copied, setCopied] = useState(false);
+  const [showQr, setShowQr] = useState(false);
+  const [qrBase64, setQrBase64] = useState<string | null>(null);
+  const [isUploadingCollage, setIsUploadingCollage] = useState(false);
+  const [showRegeneratePrompt, setShowRegeneratePrompt] = useState(false);
+  const [pendingUploadAction, setPendingUploadAction] = useState<(() => void) | null>(null);
 
   const driveMetadata = currentSession?.googleDriveMetadata;
   const folderLink = driveMetadata?.folderLink || '';
@@ -26,6 +37,12 @@ export function QrTabContent() {
   );
 
   const hasDriveFolder = authStateInfo.state !== DriveAuthState.NO_FOLDER;
+
+  // Reset QR when session changes
+  useEffect(() => {
+    setShowQr(false);
+    setQrBase64(null);
+  }, [currentSession?.id]);
 
   // Get upload items for current session
   const sessionItems = currentSession ? queueItems.filter(item => item.sessionId === currentSession.id) : [];
@@ -98,9 +115,115 @@ export function QrTabContent() {
 
   const handleOpenLink = () => {
     if (folderLink) {
-      window.open(folderLink, '_blank');
+      shellOpen(folderLink);
     }
   };
+
+  const handleToggleQr = async () => {
+    if (showQr) {
+      setShowQr(false);
+      return;
+    }
+    if (!qrBase64 && folderLink) {
+      try {
+        const data = await invoke<string>('generate_qr_code', { url: folderLink });
+        setQrBase64(data);
+      } catch (err) {
+        console.error('[QrTabContent] Failed to generate QR:', err);
+      }
+    }
+    setShowQr(true);
+  };
+
+  // Upload current collage to Google Drive
+  const handleUploadCollage = useCallback(async () => {
+    if (!currentSession || !workingFolder || !driveMetadata?.folderId) return;
+
+    // Check if another operation is already generating
+    if (isGeneratingCollage) {
+      showToast('Please wait', 'warning', 2000, 'Collage is being generated...');
+      return;
+    }
+
+    // Check if we need to prompt for regeneration
+    if (currentCollageFilename && collageIsDirty) {
+      // Store the pending upload action and show prompt
+      setPendingUploadAction(() => async () => {
+        await performUpload(currentSession, workingFolder, sessions, driveMetadata);
+      });
+      setShowRegeneratePrompt(true);
+      return;
+    }
+
+    // Proceed with normal upload flow
+    await performUpload(currentSession, workingFolder, sessions, driveMetadata);
+  }, [currentSession, workingFolder, sessions, driveMetadata, currentCollageFilename, collageIsDirty, isGeneratingCollage]);
+
+  // Actual upload execution (extracted for reuse)
+  const performUpload = useCallback(async (currentSession: any, workingFolder: string, sessions: any[], driveMetadata: any) => {
+    setIsUploadingCollage(true);
+    try {
+      const sessionFolder = sessions.find(s => s.id === currentSession.id)?.folderName || currentSession.id;
+      let filename: string;
+
+      if (currentCollageFilename && !collageIsDirty) {
+        // Collage already saved to disk — skip re-export
+        filename = currentCollageFilename;
+        showToast('Using cached collage', 'success', 2000, currentCollageFilename);
+      } else {
+        // Set generating state to block other operations
+        setIsGeneratingCollage(true);
+
+        // Export collage canvas as PNG
+        const exportResult = await exportPhotoboothCanvasAsPNG();
+        if (!exportResult) {
+          showToast('Not ready yet', 'warning', 2000, 'Please wait for photos to load and try again');
+          setIsUploadingCollage(false);
+          setIsGeneratingCollage(false);
+          return;
+        }
+
+        const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+        const randomStr = Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+        filename = `Collage_${randomStr}.png`;
+        setCurrentCollageFilename(filename);
+        resetCollageDirtyState();
+
+        // Save to session folder (upload queue reads from disk)
+        await invoke('save_file_to_session_folder', {
+          folderPath: workingFolder,
+          sessionId: sessionFolder,
+          filename,
+          fileData: Array.from(exportResult.bytes),
+        });
+
+        // Clear generating state after save
+        setIsGeneratingCollage(false);
+      }
+
+      // Enqueue for upload
+      const localPath = `${workingFolder}/${sessionFolder}/${filename}`;
+      await enqueuePhotos(currentSession.id, [{ filename, localPath }], driveMetadata.folderId);
+    } catch (error) {
+      console.error('[QrTabContent] Failed to upload collage:', error);
+      showToast('Upload failed', 'error', 5000, error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsUploadingCollage(false);
+    }
+  }, [currentCollageFilename, collageIsDirty, exportPhotoboothCanvasAsPNG, enqueuePhotos, setCurrentCollageFilename, resetCollageDirtyState, setIsGeneratingCollage, showToast, workingFolder, sessions, driveMetadata, currentSession]);
+
+  const confirmRegenerate = useCallback(() => {
+    setShowRegeneratePrompt(false);
+    if (pendingUploadAction) {
+      pendingUploadAction();
+      setPendingUploadAction(null);
+    }
+  }, [pendingUploadAction]);
+
+  const cancelRegenerate = useCallback(() => {
+    setShowRegeneratePrompt(false);
+    setPendingUploadAction(null);
+  }, []);
 
   // Auto-refresh upload queue for current session
   useEffect(() => {
@@ -194,16 +317,56 @@ export function QrTabContent() {
               <span>{copied ? 'Copied!' : 'Copy Link'}</span>
             </button>
             <button
-              className="qr-action-btn primary"
-              onClick={handleOpenLink}
-              title="Open in Google Drive"
+              className={`qr-action-btn secondary ${showQr ? 'active' : ''}`}
+              onClick={handleToggleQr}
+              title="Show QR code"
               disabled={!authStateText.canViewLink}
             >
-              <ExternalLink size={12} />
-              <span>Open</span>
+              <QrCode size={12} />
+              <span>Show QR</span>
+              <ChevronDown size={10} style={{ transform: showQr ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
             </button>
           </div>
         </div>
+
+        {showQr && qrBase64 && (
+          <div className="qr-code-dropdown">
+            <div className="qr-code-dropdown-frame">
+              <img
+                src={`data:image/png;base64,${qrBase64}`}
+                alt="QR Code"
+                className="qr-code-dropdown-img"
+              />
+            </div>
+            <span className="qr-code-dropdown-label">SCAN FOR PHOTOS</span>
+            <button
+              className="qr-action-btn secondary"
+              onClick={handleOpenLink}
+              title="Open in Google Drive"
+              style={{ alignSelf: 'stretch', justifyContent: 'center' }}
+            >
+              <ExternalLink size={12} />
+              <span>Open in Drive</span>
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Upload Collage Button */}
+      <div className="qr-upload-collage-section">
+        <button
+          className="qr-upload-collage-btn"
+          onClick={handleUploadCollage}
+          disabled={isUploadingCollage || !driveMetadata?.folderId}
+          title="Export and upload the current collage to Google Drive"
+        >
+          {isUploadingCollage ? (
+            <Loader size={14} className="spinning" />
+          ) : (
+            <ImageIcon size={14} />
+          )}
+          <span>{isUploadingCollage ? 'Uploading...' : 'Upload Collage to Drive'}</span>
+        </button>
       </div>
 
       {/* Upload Status Section */}
@@ -280,6 +443,31 @@ export function QrTabContent() {
           </div>
         )}
       </div>
+
+      {/* Regenerate Collage Prompt Modal */}
+      {showRegeneratePrompt && (
+        <div className="regenerate-modal-overlay" onClick={cancelRegenerate}>
+          <div className="regenerate-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="regenerate-modal-header">
+              <AlertCircle size={18} className="regenerate-modal-icon" />
+              <h3>Collage Modified</h3>
+            </div>
+            <div className="regenerate-modal-content">
+              <p>The collage has been modified since it was last exported.</p>
+              <p>Would you like to generate a new image with your changes?</p>
+            </div>
+            <div className="regenerate-modal-actions">
+              <button className="regenerate-modal-btn secondary" onClick={cancelRegenerate}>
+                <span>Use Old Version</span>
+              </button>
+              <button className="regenerate-modal-btn primary" onClick={confirmRegenerate}>
+                <ImageIcon size={14} />
+                <span>Generate New</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

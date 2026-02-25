@@ -1,8 +1,11 @@
 import { motion, AnimatePresence } from "framer-motion";
+import { useState } from "react";
 import "./QRSidebar.css";
 import type { GoogleAccount, NoPreviewImage, UploadProgress } from "../../../types/qr";
 import Icon from "@mdi/react";
-import { mdiRocketLaunch, mdiCheckCircle, mdiFolder, mdiMagnify, mdiUpload, mdiLockOpen, mdiQrcode, mdiAlert } from "@mdi/js";
+import { mdiRocketLaunch, mdiCheckCircle, mdiFolder, mdiMagnify, mdiUpload, mdiLockOpen, mdiQrcode, mdiAlert, mdiHistory } from "@mdi/js";
+import HistoryModal from "../../Modals/HistoryModal";
+import { formatDate } from "../../../utils/format";
 
 interface QRSidebarProps {
   account: GoogleAccount | null;
@@ -32,6 +35,7 @@ export default function QRSidebar({
   onCancelUpload,
 }: QRSidebarProps) {
   const totalImages = selectedImages.length + noPreviewImages.length;
+  const [showHistory, setShowHistory] = useState(false);
 
   return (
     <div className="sidebar">
@@ -178,6 +182,24 @@ export default function QRSidebar({
           )}
         </AnimatePresence>
       </motion.div>
+
+      <button
+        className="qr-history-button"
+        onClick={() => setShowHistory(true)}
+      >
+        <Icon path={mdiHistory} size={0.7} />
+        <span>Upload History</span>
+      </button>
+
+      <AnimatePresence>
+        {showHistory && (
+          <HistoryModal
+            show={showHistory}
+            onClose={() => setShowHistory(false)}
+            formatDate={formatDate}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

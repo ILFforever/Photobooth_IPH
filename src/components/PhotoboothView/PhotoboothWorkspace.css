@@ -112,6 +112,18 @@
   border-radius: 8px;
   padding: 2px;
   gap: 2px;
+  position: relative; /* Added for indicator positioning */
+}
+
+.mode-selector-indicator {
+  position: absolute;
+  top: 2px; /* Matches padding of parent */
+  height: calc(100% - 4px); /* Matches padding of parent */
+  background: #000000; /* Active tab background color */
+  border-radius: 6px; /* Matches button border-radius */
+  transition: left 0.2s ease-in-out, width 0.2s ease-in-out;
+  z-index: 0; /* Ensures it's underneath the buttons */
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .mode-tab-compact {
@@ -125,16 +137,18 @@
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.2s ease;
+  position: relative; /* Added to keep text/icon above indicator */
+  z-index: 1; /* Added to keep text/icon above indicator */
 }
 
 .mode-tab-compact:hover {
-  background: var(--bg-primary);
+  background: var(--bg-primary); /* Keep hover background for inactive tabs */
   color: var(--text-primary);
 }
 
 .mode-tab-compact.active {
-  background: #000000;
-  color: white;
+  background: transparent; /* Make active tab background transparent to show indicator */
+  color: white; /* Active text color */
 }
 
 /* ========== DISPLAY MODES ========== */
@@ -2051,6 +2065,86 @@
   }
 }
 
+/* Delete button overlay on thumbnails */
+.thumbnail-delete-overlay {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 2;
+}
+
+.thumbnail-delete-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  background: rgba(220, 38, 38, 0.9);
+  color: white;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(0.9);
+  transition: all 0.2s ease;
+}
+
+.thumbnail-item:hover .thumbnail-delete-btn {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.thumbnail-delete-btn:hover {
+  background: rgba(220, 38, 38, 1);
+  transform: scale(1.1);
+}
+
+.thumbnail-delete-confirm {
+  display: flex;
+  gap: 4px;
+}
+
+.thumbnail-delete-btn-confirm,
+.thumbnail-delete-btn-cancel {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s ease;
+}
+
+.thumbnail-delete-btn-confirm {
+  background: rgba(220, 38, 38, 0.9);
+  color: white;
+}
+
+.thumbnail-delete-btn-confirm:hover:not(:disabled) {
+  background: rgba(220, 38, 38, 1);
+}
+
+.thumbnail-delete-btn-confirm:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.thumbnail-delete-btn-cancel {
+  background: rgba(100, 100, 100, 0.9);
+  color: white;
+}
+
+.thumbnail-delete-btn-cancel:hover:not(:disabled) {
+  background: rgba(120, 120, 120, 1);
+}
+
+.thumbnail-delete-btn-cancel:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
 /* Empty state for sessions with no photos */
 .photo-thumbnails-empty {
   display: flex;
@@ -3166,5 +3260,272 @@
   }
 }
 
+/* ========== PHOTO CONTEXT MENU ========== */
 
+.context-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+}
+
+.photo-context-menu {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+  min-width: 180px;
+  overflow: hidden;
+  backdrop-filter: blur(10px);
+}
+
+.context-menu-header {
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.context-menu-filename {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+  display: block;
+}
+
+.context-menu-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: 4px 0;
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: transparent;
+  border: none;
+  width: 100%;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.context-menu-item:hover {
+  background: var(--bg-secondary);
+}
+
+.context-menu-item svg {
+  flex-shrink: 0;
+}
+
+.context-menu-item-danger {
+  color: #ef4444;
+}
+
+.context-menu-item-danger:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* Thumbnail deleting state */
+.thumbnail-item.deleting {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.thumbnail-deleting-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 4px;
+}
+
+/* ========== PHOTO INFO MODAL ========== */
+
+.photo-info-modal {
+  min-width: 1000px;
+  max-width: 1000px;
+}
+
+.photo-info-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.photo-info-header h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.modal-close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.modal-close-btn:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.photo-info-content {
+  padding: 20px;
+}
+
+.photo-info-two-columns {
+  display: flex;
+  gap: 24px;
+}
+
+.photo-info-left,
+.photo-info-right {
+  flex: 1;
+}
+
+.photo-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.photo-info-row:last-child {
+  border-bottom: none;
+}
+
+.photo-info-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.photo-info-value {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  text-align: right;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.photo-info-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border-color);
+  gap: 8px;
+}
+
+.btn-secondary {
+  padding: 8px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-secondary:hover {
+  background: var(--bg-tertiary);
+}
+
+/* Photo info sections */
+.photo-info-section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 8px 0 4px 0;
+  margin-top: 8px;
+}
+
+.photo-info-section-title:first-child {
+  margin-top: 0;
+}
+
+.photo-info-section {
+  margin-bottom: 4px;
+}
+
+.photo-info-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 32px;
+  color: var(--text-muted);
+}
+
+/* Photo info two column layout */
+.photo-info-two-columns {
+  display: flex;
+  gap: 24px;
+}
+
+.photo-info-left {
+  flex: 1;
+}
+
+.photo-info-right {
+  flex: 1;
+  position: relative;
+}
+
+.photo-info-right::before {
+  content: '';
+  position: absolute;
+  left: -12px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border-color);
+}
+
+.photo-info-preview {
+  margin-top: 16px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  max-width: 90px;
+  align-self: center;
+}
+
+.photo-preview-image {
+  width: 100%;
+  height: auto;
+  display: block;
+  object-fit: contain;
+}
 

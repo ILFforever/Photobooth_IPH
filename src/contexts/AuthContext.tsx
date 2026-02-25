@@ -1,5 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { getRootFolder } from '../utils/driveFolder';
+import { createContext, useContext, useState, ReactNode } from 'react';
 import type { GoogleAccount, DriveFolder } from '../types/qr';
 
 export type { GoogleAccount, DriveFolder };
@@ -26,18 +25,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [cachedAccount, setCachedAccount] = useState<GoogleAccount | null>(null);
   const [showCachedAccountConfirm, setShowCachedAccountConfirm] = useState(false);
 
-  // Load persisted root folder on mount
-  useEffect(() => {
-    getRootFolder()
-      .then((folder) => {
-        if (folder) {
-          setRootFolder(folder);
-        }
-      })
-      .catch((error) => {
-        console.error('Failed to load root folder:', error);
-      });
-  }, []);
+  // Note: Root folder loading is handled by useTauriInit to avoid duplicate calls
+  // This context only stores the state
 
   return (
     <AuthContext.Provider

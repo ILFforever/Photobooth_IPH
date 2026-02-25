@@ -27,7 +27,7 @@ export function WorkingFolderSection({
           <span className="collapsible-title">Working Folder</span>
         </div>
         {folderName ? (
-          <span className="collapsible-badge" title={workingFolder}>
+          <span className="collapsible-badge" title={workingFolder ?? undefined}>
             {folderName}
           </span>
         ) : (
