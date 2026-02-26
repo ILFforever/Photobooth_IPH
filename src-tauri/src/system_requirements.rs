@@ -714,6 +714,7 @@ fn run_command_silent(program: &str, args: &[&str]) -> Result<std::process::Outp
 }
 
 /// Initialize the app - runs ISO extraction, USB filter setup, and VM boot with progress updates
+/// Includes a timeout and skip option if VM fails to boot
 #[tauri::command]
 pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
     use tauri::Emitter;
@@ -723,7 +724,7 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
     const VBOX_MANAGE: &str = r"C:\Program Files\Oracle\VirtualBox\VBoxManage.exe";
     const DAEMON_URL: &str = "http://localhost:58321/api/health";
     const HEALTH_TIMEOUT_MS: u64 = 2000;
-    const MAX_BOOT_WAIT_SECS: u64 = 90;
+    const MAX_BOOT_WAIT_SECS: u64 = 30; // Reduced from 90s to 30s for faster startup
 
     // Step 1: ISO extraction
     let _ = window.emit("init-progress", serde_json::json!({
@@ -742,9 +743,9 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
         }
         Err(e) => {
             let msg = if e.contains("Source ISO not found") {
-                "No source ISO found (dev mode)".to_string()
+                "No source ISO found (dev mode - VM features disabled)".to_string()
             } else {
-                format!("ISO extraction: {}", e)
+                format!("ISO extraction warning: {}", e)
             };
             let _ = window.emit("init-progress", serde_json::json!({
                 "step": 1,
@@ -773,7 +774,7 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
             let _ = window.emit("init-progress", serde_json::json!({
                 "step": 2,
                 "total_steps": 5,
-                "message": format!("USB filters: {}", e)
+                "message": format!("USB filters setup: {}", e)
             }));
         }
     }
@@ -782,18 +783,18 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
     let _ = window.emit("init-progress", serde_json::json!({
         "step": 3,
         "total_steps": 5,
-        "message": "Checking VirtualBox..."
+        "message": "Checking VirtualBox installation..."
     }));
 
     if !std::path::Path::new(VBOX_MANAGE).exists() {
         let _ = window.emit("init-progress", serde_json::json!({
             "step": 3,
             "total_steps": 5,
-            "message": "VirtualBox not found - skipping VM boot"
+            "message": "VirtualBox not found - camera features unavailable"
         }));
         // Skip VM boot steps, go straight to complete
         let _ = window.emit("init-complete", ());
-        return Ok("Initialization complete (no VirtualBox)".to_string());
+        return Ok("Initialization complete (VirtualBox not installed - camera features disabled)".to_string());
     }
 
     // Check if VM exists
@@ -807,33 +808,47 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
         let _ = window.emit("init-progress", serde_json::json!({
             "step": 3,
             "total_steps": 5,
-            "message": format!("VM '{}' not found - skipping VM boot", VM_NAME)
+            "message": format!("VM '{}' not found - camera features unavailable", VM_NAME)
         }));
         let _ = window.emit("init-complete", ());
-        return Ok("Initialization complete (no VM)".to_string());
+        return Ok("Initialization complete (VM not found - run VM setup first)".to_string());
     }
 
     let _ = window.emit("init-progress", serde_json::json!({
         "step": 3,
         "total_steps": 5,
-        "message": "VirtualBox found"
+        "message": "VirtualBox and VM found"
     }));
 
     // Step 4: Check VM state and boot/reboot
     let _ = window.emit("init-progress", serde_json::json!({
         "step": 4,
         "total_steps": 5,
-        "message": "Checking VM status..."
+        "message": "Checking VM state..."
     }));
 
     let showvminfo_output = run_command_silent(VBOX_MANAGE, &["showvminfo", VM_NAME]);
-    let is_running = match &showvminfo_output {
+    let vm_state = match &showvminfo_output {
         Ok(output) => {
             let info = String::from_utf8_lossy(&output.stdout);
-            info.contains("State:") && info.contains("running")
+            // Extract VM state info (format: "State: running (since...)")
+            if let Some(line) = info.lines().find(|l| l.starts_with("State:")) {
+                line.trim().to_string()
+            } else {
+                "State: unknown".to_string()
+            }
         }
-        Err(_) => false,
+        Err(e) => {
+            format!("State: error - {}", e)
+        }
     };
+
+    let is_running = vm_state.contains("running");
+    let is_aborted = vm_state.contains("aborted") || vm_state.contains("saved");
+    let is_powered_off = vm_state.contains("powered off") || vm_state.contains("offline");
+
+    // Log VM state for debugging
+    eprintln!("[initialize_app] VM state: {}", vm_state);
 
     if is_running {
         // VM is already running - power it off first
@@ -844,34 +859,56 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
         }));
 
         let _ = run_command_silent(VBOX_MANAGE, &["controlvm", VM_NAME, "poweroff"]);
+        eprintln!("[initialize_app] Powered off running VM");
+    } else if is_aborted {
+        let _ = window.emit("init-progress", serde_json::json!({
+            "step": 4,
+            "total_steps": 5,
+            "message": "VM was aborted - cleaning up..."
+        }));
+        eprintln!("[initialize_app] VM is in aborted state");
+    } else if is_powered_off {
+        let _ = window.emit("init-progress", serde_json::json!({
+            "step": 4,
+            "total_steps": 5,
+            "message": "VM is powered off - starting..."
+        }));
+    } else {
+        let _ = window.emit("init-progress", serde_json::json!({
+            "step": 4,
+            "total_steps": 5,
+            "message": format!("VM state: {} - starting...", vm_state)
+        }));
     }
 
     // Wait for VM session lock to be released before starting
     let _ = window.emit("init-progress", serde_json::json!({
         "step": 4,
         "total_steps": 5,
-        "message": "Waiting for VM to be ready..."
+        "message": "Releasing VM lock..."
     }));
 
-    match wait_for_vm_unlocked(VBOX_MANAGE, VM_NAME, 30).await {
-        Ok(true) => {}
+    match wait_for_vm_unlocked(VBOX_MANAGE, VM_NAME, 20).await {
+        Ok(true) => {
+            eprintln!("[initialize_app] VM unlocked successfully");
+            // Add a small delay to ensure VirtualBox fully releases the lock
+            sleep(Duration::from_millis(500)).await;
+        }
         Ok(false) => {
+            eprintln!("[initialize_app] VM unlock timeout - will try to start anyway");
             let _ = window.emit("init-progress", serde_json::json!({
                 "step": 4,
                 "total_steps": 5,
-                "message": "VM session lock timed out - continuing anyway"
+                "message": "VM lock timeout - trying anyway..."
             }));
-            let _ = window.emit("init-complete", ());
-            return Ok("Initialization complete (VM locked)".to_string());
         }
         Err(e) => {
+            eprintln!("[initialize_app] VM unlock error: {} - continuing anyway", e);
             let _ = window.emit("init-progress", serde_json::json!({
                 "step": 4,
                 "total_steps": 5,
-                "message": format!("VM check error: {}", e)
+                "message": format!("VM check: {} - continuing", e)
             }));
-            let _ = window.emit("init-complete", ());
-            return Ok("Initialization complete (VM check error)".to_string());
         }
     }
 
@@ -884,48 +921,74 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
     // Optimize AHCI port count
     let _ = run_command_silent(VBOX_MANAGE, &["storagectl", VM_NAME, "--name", "SATA", "--portcount", "2"]);
 
-    // Start VM headless
+    // Start VM headless with retry logic for lock errors
     let _ = window.emit("init-progress", serde_json::json!({
         "step": 4,
         "total_steps": 5,
-        "message": "Starting VM..."
+        "message": "Booting VirtualBox VM..."
     }));
 
-    let start_output = run_command_silent(VBOX_MANAGE, &["startvm", VM_NAME, "--type", "headless"]);
-    match start_output {
-        Ok(output) if output.status.success() => {
-            let _ = window.emit("init-progress", serde_json::json!({
-                "step": 4,
-                "total_steps": 5,
-                "message": if is_running { "VM rebooted successfully" } else { "VM started successfully" }
-            }));
+    eprintln!("[initialize_app] Starting VM: {}", VM_NAME);
+
+    // Try to start VM with up to 3 retries for lock errors
+    let mut vm_started = false;
+    let mut start_error = String::new();
+
+    for attempt in 0..3 {
+        let start_output = run_command_silent(VBOX_MANAGE, &["startvm", VM_NAME, "--type", "headless"]);
+
+        match start_output {
+            Ok(output) if output.status.success() => {
+                eprintln!("[initialize_app] VM start command succeeded");
+                vm_started = true;
+                let _ = window.emit("init-progress", serde_json::json!({
+                    "step": 4,
+                    "total_steps": 5,
+                    "message": if is_running { "VM rebooted" } else { "VM started" }
+                }));
+                break;
+            }
+            Ok(output) => {
+                let err = String::from_utf8_lossy(&output.stderr).to_string();
+                start_error = err.clone();
+
+                // Check if this is a lock error that might resolve with retry
+                if err.contains("locked") || err.contains("VBOX_E_INVALID_OBJECT_STATE") {
+                    eprintln!("[initialize_app] VM start attempt {} failed (locked): {}", attempt + 1, err);
+                    if attempt < 2 {
+                        // Wait before retry
+                        sleep(Duration::from_millis(500)).await;
+                        continue;
+                    }
+                }
+
+                eprintln!("[initialize_app] VM start failed (non-zero exit): {}", err);
+                break;
+            }
+            Err(e) => {
+                start_error = format!("{}", e);
+                eprintln!("[initialize_app] VM start error: {}", e);
+                break;
+            }
         }
-        Ok(output) => {
-            let err = String::from_utf8_lossy(&output.stderr);
-            let _ = window.emit("init-progress", serde_json::json!({
-                "step": 4,
-                "total_steps": 5,
-                "message": format!("VM start failed: {}", err)
-            }));
-            let _ = window.emit("init-complete", ());
-            return Ok("Initialization complete (VM start failed)".to_string());
-        }
-        Err(e) => {
-            let _ = window.emit("init-progress", serde_json::json!({
-                "step": 4,
-                "total_steps": 5,
-                "message": format!("VM start error: {}", e)
-            }));
-            let _ = window.emit("init-complete", ());
-            return Ok("Initialization complete (VM start error)".to_string());
-        }
+    }
+
+    if !vm_started {
+        eprintln!("[initialize_app] Failed to start VM after retries: {}", start_error);
+        let _ = window.emit("init-progress", serde_json::json!({
+            "step": 4,
+            "total_steps": 5,
+            "message": format!("VM start failed - camera unavailable")
+        }));
+        let _ = window.emit("init-complete", ());
+        return Ok("Initialization complete (VM start failed - camera features disabled)".to_string());
     }
 
     // Step 5: Wait for VM daemon to come online
     let _ = window.emit("init-progress", serde_json::json!({
         "step": 5,
         "total_steps": 5,
-        "message": "Waiting for VM to come online..."
+        "message": "Connecting to VM daemon..."
     }));
 
     let client = reqwest::Client::builder()
@@ -935,44 +998,64 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
 
     let start_time = std::time::Instant::now();
     let mut vm_online = false;
+    let mut last_error = String::new();
+
+    eprintln!("[initialize_app] Waiting for daemon at {} (max {}s)", DAEMON_URL, MAX_BOOT_WAIT_SECS);
 
     while start_time.elapsed().as_secs() < MAX_BOOT_WAIT_SECS {
         let elapsed = start_time.elapsed().as_secs();
-        let _ = window.emit("init-progress", serde_json::json!({
-            "step": 5,
-            "total_steps": 5,
-            "message": format!("Waiting for VM daemon... ({}s)", elapsed)
-        }));
+        let remaining = MAX_BOOT_WAIT_SECS.saturating_sub(elapsed);
+
+        // Update progress every 3 seconds
+        if elapsed % 3 == 0 || remaining < 5 {
+            let _ = window.emit("init-progress", serde_json::json!({
+                "step": 5,
+                "total_steps": 5,
+                "message": format!("Waiting for VM daemon... {}s remaining", remaining)
+            }));
+        }
 
         match client.get(DAEMON_URL).send().await {
             Ok(resp) if resp.status().is_success() => {
                 vm_online = true;
+                eprintln!("[initialize_app] Daemon is online! (took {}s)", elapsed);
                 break;
             }
-            _ => {}
+            Ok(resp) => {
+                last_error = format!("HTTP {}", resp.status());
+            }
+            Err(e) => {
+                last_error = format!("{}", e);
+            }
         }
 
-        sleep(Duration::from_secs(2)).await;
+        sleep(Duration::from_secs(1)).await;
     }
 
     if vm_online {
         let _ = window.emit("init-progress", serde_json::json!({
             "step": 5,
             "total_steps": 5,
-            "message": "VM is online and ready"
+            "message": "VM online - camera features ready"
         }));
     } else {
+        let elapsed = start_time.elapsed().as_secs();
+        eprintln!("[initialize_app] Daemon timeout after {}s. Last error: {}", elapsed, last_error);
         let _ = window.emit("init-progress", serde_json::json!({
             "step": 5,
             "total_steps": 5,
-            "message": "VM did not respond in time - continuing anyway"
+            "message": format!("VM timeout ({}s) - camera features unavailable", elapsed)
         }));
     }
 
-    // Initialization complete
+    // Initialization complete - always emit this so the splash screen closes
     let _ = window.emit("init-complete", ());
 
-    Ok("Initialization complete".to_string())
+    if vm_online {
+        Ok("Initialization complete - VM online".to_string())
+    } else {
+        Ok("Initialization complete - VM not responding (camera features disabled)".to_string())
+    }
 }
 
 /// Close the splash screen and show the main window

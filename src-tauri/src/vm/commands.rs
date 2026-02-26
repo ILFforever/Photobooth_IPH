@@ -161,10 +161,12 @@ pub async fn wait_for_vm_unlocked(vbox_manage: &str, vm_name: &str, max_wait_sec
     use tokio::time::{sleep, Duration};
 
     let mut killed_process = false;
+    let mut killed_vboxsvc = false;
     let start = std::time::Instant::now();
 
     loop {
         if start.elapsed().as_secs() >= max_wait_secs {
+            eprintln!("[wait_for_vm_unlocked] Timeout after {}s", max_wait_secs);
             return Ok(false);
         }
 
@@ -175,11 +177,9 @@ pub async fn wait_for_vm_unlocked(vbox_manage: &str, vm_name: &str, max_wait_sec
 
         // Look for SessionState - "Unlocked" means we can start it.
         // If SessionState is absent entirely, the VM has no session (poweroff) = unlocked.
-        let mut found_session_state = false;
         let mut is_locked = false;
         for line in info.lines() {
             if line.starts_with("SessionState=") {
-                found_session_state = true;
                 let state = line.trim_start_matches("SessionState=").trim_matches('"');
                 if state != "Unlocked" {
                     is_locked = true;
@@ -189,14 +189,27 @@ pub async fn wait_for_vm_unlocked(vbox_manage: &str, vm_name: &str, max_wait_sec
         }
 
         if !is_locked {
+            eprintln!("[wait_for_vm_unlocked] Unlocked after {}s", start.elapsed().as_secs());
             return Ok(true);
         }
 
-        // After 10 seconds of waiting, force-kill VBoxHeadless to release the stale lock
-        if !killed_process && start.elapsed().as_secs() >= 10 {
+        let elapsed = start.elapsed().as_secs();
+
+        // After 3 seconds of waiting, force-kill VBoxHeadless to release the stale lock
+        if !killed_process && elapsed >= 3 {
             killed_process = true;
+            eprintln!("[wait_for_vm_unlocked] Killing VBoxHeadless.exe (locked for {}s)", elapsed);
             let _ = run_command_silent("taskkill", &["/F", "/IM", "VBoxHeadless.exe"]);
-            // Give it a moment after the kill
+            // Give it more time after the kill
+            sleep(Duration::from_secs(2)).await;
+            continue;
+        }
+
+        // After 10 seconds, also kill VBoxSVC which may be holding the lock
+        if !killed_vboxsvc && elapsed >= 10 {
+            killed_vboxsvc = true;
+            eprintln!("[wait_for_vm_unlocked] Also killing VBoxSVC.exe");
+            let _ = run_command_silent("taskkill", &["/F", "/IM", "VBoxSVC.exe"]);
             sleep(Duration::from_secs(2)).await;
             continue;
         }
@@ -209,8 +222,6 @@ pub async fn wait_for_vm_unlocked(vbox_manage: &str, vm_name: &str, max_wait_sec
 /// Force stops the VM immediately and starts it again in headless mode
 #[tauri::command]
 pub async fn restart_vm() -> Result<String, String> {
-    use tokio::time::{sleep, Duration};
-
     const VM_NAME: &str = "PhotoboothLinux";
     const VBOX_MANAGE: &str = r"C:\Program Files\Oracle\VirtualBox\VBoxManage.exe";
 

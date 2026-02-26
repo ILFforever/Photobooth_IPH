@@ -188,22 +188,49 @@
         }, 700);
       });
 
-      // Start initialization
+      // Start initialization with a fallback timeout
+      // Even if initialization hangs, force-close splash after 45 seconds
+      const FORCE_CLOSE_MS = 45000;
+      let initializationCompleted = false;
+
+      const forceCloseTimeout = setTimeout(async () => {
+        if (!initializationCompleted) {
+          console.warn('[Splash] Initialization timeout - forcing close');
+          if (statusEl) statusEl.textContent = 'Loading app...';
+          if (progressFill) progressFill.style.width = '100%';
+          setTimeout(async () => {
+            try {
+              await invoke('close_splash_and_show_main');
+            } catch (e) {
+              console.error('[Splash] Force close failed:', e);
+              // Last resort - just close the splash window
+              try {
+                await appWindow.close();
+              } catch (e2) {
+                console.error('[Splash] Could not close window:', e2);
+              }
+            }
+          }, 500);
+        }
+      }, FORCE_CLOSE_MS);
+
       try {
         await invoke('initialize_app');
+        initializationCompleted = true;
+        clearTimeout(forceCloseTimeout);
       } catch (e) {
-        console.error('Initialization failed:', e);
-        if (statusEl) {
-          statusEl.textContent = 'Starting...';
-        }
-        // Continue anyway after a delay
+        console.error('[Splash] Initialization failed:', e);
+        initializationCompleted = true;
+        clearTimeout(forceCloseTimeout);
+        if (statusEl) statusEl.textContent = 'Loading app...';
+        // Continue anyway after a short delay - app should work even if VM fails
         setTimeout(async () => {
           try {
             await invoke('close_splash_and_show_main');
-          } catch (e) {
-            console.error('Failed to transition:', e);
+          } catch (e2) {
+            console.error('[Splash] Failed to transition:', e2);
           }
-        }, 1000);
+        }, 500);
       }
     </script>
   </body>
