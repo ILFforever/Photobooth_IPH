@@ -84,6 +84,7 @@ pub fn run() {
             .decorations(false)
             .always_on_top(true)
             .skip_taskbar(true)
+            .devtools(true)
             .build();
 
             Ok(())

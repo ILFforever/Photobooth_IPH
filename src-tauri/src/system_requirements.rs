@@ -3,6 +3,36 @@
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::fs::OpenOptions;
+use std::io::Write;
+
+/// Simple file logger that writes to AppData (supports formatting like println!)
+macro_rules! log_file {
+    ($($arg:tt)*) => {
+        {
+            // Print to stderr first (immediate, no blocking I/O)
+            eprintln!("[init] {}", format!($($arg)*));
+            // Then try to write to file (fire and forget, don't block on errors)
+            let msg = format!($($arg)*);
+            if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+                let log_dir = std::path::PathBuf::from(&local_app_data).join("Photobooth_IPH").join("logs");
+                let _ = std::fs::create_dir_all(&log_dir);
+                let log_path = log_dir.join("init.log");
+
+                // Use spawn_blocking for file I/O to avoid blocking the async task
+                let _ = std::thread::spawn(move || {
+                    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(&log_path) {
+                        use std::time::SystemTime;
+                        use std::time::UNIX_EPOCH;
+                        let secs = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+                        let _ = writeln!(file, "[{}] {}", secs, msg);
+                    }
+                });
+            }
+        }
+    };
+}
+
 use crate::usb_camera::ensure_usb_filters;
 use crate::vm::commands::wait_for_vm_unlocked;
 use crate::version::APP_VERSION;
@@ -720,6 +750,8 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
     use tauri::Emitter;
     use tokio::time::{sleep, Duration};
 
+    log_file!("=== STARTING INITIALIZATION ===");
+
     const VM_NAME: &str = "PhotoboothLinux";
     const VBOX_MANAGE: &str = r"C:\Program Files\Oracle\VirtualBox\VBoxManage.exe";
     const DAEMON_URL: &str = "http://localhost:58321/api/health";
@@ -727,6 +759,7 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
     const MAX_BOOT_WAIT_SECS: u64 = 30; // Reduced from 90s to 30s for faster startup
 
     // Step 1: ISO extraction
+    log_file!(" Step 1: ISO extraction");
     let _ = window.emit("init-progress", serde_json::json!({
         "step": 1,
         "total_steps": 5,
@@ -735,6 +768,7 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
 
     match extract_iso_to_appdata() {
         Ok(_msg) => {
+            log_file!(" ISO extraction OK");
             let _ = window.emit("init-progress", serde_json::json!({
                 "step": 1,
                 "total_steps": 5,
@@ -742,6 +776,7 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
             }));
         }
         Err(e) => {
+            log_file!(" ISO extraction error: {}", e);
             let msg = if e.contains("Source ISO not found") {
                 "No source ISO found (dev mode - VM features disabled)".to_string()
             } else {
@@ -755,31 +790,49 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
         }
     }
 
-    // Step 2: USB filters setup
+    // Step 2: USB filters setup (with timeout to prevent hanging)
+    log_file!(" Step 2: USB filters");
     let _ = window.emit("init-progress", serde_json::json!({
         "step": 2,
         "total_steps": 5,
         "message": "Setting up USB camera filters..."
     }));
 
-    match ensure_usb_filters().await {
-        Ok(count) => {
+    // Run USB filter setup with a 5-second timeout
+    let usb_result = tokio::time::timeout(
+        Duration::from_secs(5),
+        ensure_usb_filters()
+    ).await;
+
+    match usb_result {
+        Ok(Ok(count)) => {
+            log_file!(" USB filters OK: {}", count);
             let _ = window.emit("init-progress", serde_json::json!({
                 "step": 2,
                 "total_steps": 5,
                 "message": format!("Configured {} camera USB filters", count)
             }));
         }
-        Err(e) => {
+        Ok(Err(e)) => {
+            log_file!(" USB filters error: {}", e);
             let _ = window.emit("init-progress", serde_json::json!({
                 "step": 2,
                 "total_steps": 5,
-                "message": format!("USB filters setup: {}", e)
+                "message": "USB filters skipped".to_string()
+            }));
+        }
+        Err(_) => {
+            log_file!(" USB filters timeout - skipping");
+            let _ = window.emit("init-progress", serde_json::json!({
+                "step": 2,
+                "total_steps": 5,
+                "message": "USB filters timeout - skipped".to_string()
             }));
         }
     }
 
     // Step 3: Check VirtualBox installation
+    log_file!(" Step 3: VirtualBox check");
     let _ = window.emit("init-progress", serde_json::json!({
         "step": 3,
         "total_steps": 5,
@@ -787,6 +840,7 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
     }));
 
     if !std::path::Path::new(VBOX_MANAGE).exists() {
+        log_file!(" VirtualBox not found - skipping VM");
         let _ = window.emit("init-progress", serde_json::json!({
             "step": 3,
             "total_steps": 5,
@@ -797,14 +851,27 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
         return Ok("Initialization complete (VirtualBox not installed - camera features disabled)".to_string());
     }
 
-    // Check if VM exists
-    let list_output = run_command_silent(VBOX_MANAGE, &["list", "vms"]);
-    let vm_exists = match &list_output {
-        Ok(output) => String::from_utf8_lossy(&output.stdout).contains(VM_NAME),
-        Err(_) => false,
+    // Check if VM exists (with timeout protection)
+    log_file!(" Checking if VM exists...");
+    let vm_check_result = tokio::time::timeout(
+        Duration::from_secs(3),
+        tokio::task::spawn_blocking(move || {
+            run_command_silent(VBOX_MANAGE, &["list", "vms"])
+        })
+    ).await;
+
+    let vm_exists = match vm_check_result {
+        Ok(Ok(Ok(output))) => {
+            String::from_utf8_lossy(&output.stdout).contains(VM_NAME)
+        }
+        _ => {
+            log_file!(" VM check timeout or error - assuming VM doesn't exist");
+            false
+        }
     };
 
     if !vm_exists {
+        log_file!(" VM not found - skipping VM boot");
         let _ = window.emit("init-progress", serde_json::json!({
             "step": 3,
             "total_steps": 5,
@@ -848,7 +915,7 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
     let is_powered_off = vm_state.contains("powered off") || vm_state.contains("offline");
 
     // Log VM state for debugging
-    eprintln!("[initialize_app] VM state: {}", vm_state);
+    log_file!(" VM state: {}", vm_state);
 
     if is_running {
         // VM is already running - power it off first
@@ -859,14 +926,14 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
         }));
 
         let _ = run_command_silent(VBOX_MANAGE, &["controlvm", VM_NAME, "poweroff"]);
-        eprintln!("[initialize_app] Powered off running VM");
+        log_file!(" Powered off running VM");
     } else if is_aborted {
         let _ = window.emit("init-progress", serde_json::json!({
             "step": 4,
             "total_steps": 5,
             "message": "VM was aborted - cleaning up..."
         }));
-        eprintln!("[initialize_app] VM is in aborted state");
+        log_file!(" VM is in aborted state");
     } else if is_powered_off {
         let _ = window.emit("init-progress", serde_json::json!({
             "step": 4,
@@ -890,12 +957,12 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
 
     match wait_for_vm_unlocked(VBOX_MANAGE, VM_NAME, 20).await {
         Ok(true) => {
-            eprintln!("[initialize_app] VM unlocked successfully");
+            log_file!(" VM unlocked successfully");
             // Add a small delay to ensure VirtualBox fully releases the lock
             sleep(Duration::from_millis(500)).await;
         }
         Ok(false) => {
-            eprintln!("[initialize_app] VM unlock timeout - will try to start anyway");
+            log_file!(" VM unlock timeout - will try to start anyway");
             let _ = window.emit("init-progress", serde_json::json!({
                 "step": 4,
                 "total_steps": 5,
@@ -903,7 +970,7 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
             }));
         }
         Err(e) => {
-            eprintln!("[initialize_app] VM unlock error: {} - continuing anyway", e);
+            log_file!(" VM unlock error: {} - continuing anyway", e);
             let _ = window.emit("init-progress", serde_json::json!({
                 "step": 4,
                 "total_steps": 5,
@@ -928,7 +995,7 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
         "message": "Booting VirtualBox VM..."
     }));
 
-    eprintln!("[initialize_app] Starting VM: {}", VM_NAME);
+    log_file!(" Starting VM: {}", VM_NAME);
 
     // Try to start VM with up to 3 retries for lock errors
     let mut vm_started = false;
@@ -939,7 +1006,7 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
 
         match start_output {
             Ok(output) if output.status.success() => {
-                eprintln!("[initialize_app] VM start command succeeded");
+                log_file!(" VM start command succeeded");
                 vm_started = true;
                 let _ = window.emit("init-progress", serde_json::json!({
                     "step": 4,
@@ -954,7 +1021,7 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
 
                 // Check if this is a lock error that might resolve with retry
                 if err.contains("locked") || err.contains("VBOX_E_INVALID_OBJECT_STATE") {
-                    eprintln!("[initialize_app] VM start attempt {} failed (locked): {}", attempt + 1, err);
+                    log_file!(" VM start attempt {} failed (locked): {}", attempt + 1, err);
                     if attempt < 2 {
                         // Wait before retry
                         sleep(Duration::from_millis(500)).await;
@@ -962,19 +1029,19 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
                     }
                 }
 
-                eprintln!("[initialize_app] VM start failed (non-zero exit): {}", err);
+                log_file!(" VM start failed (non-zero exit): {}", err);
                 break;
             }
             Err(e) => {
                 start_error = format!("{}", e);
-                eprintln!("[initialize_app] VM start error: {}", e);
+                log_file!(" VM start error: {}", e);
                 break;
             }
         }
     }
 
     if !vm_started {
-        eprintln!("[initialize_app] Failed to start VM after retries: {}", start_error);
+        log_file!(" Failed to start VM after retries: {}", start_error);
         let _ = window.emit("init-progress", serde_json::json!({
             "step": 4,
             "total_steps": 5,
@@ -1000,7 +1067,7 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
     let mut vm_online = false;
     let mut last_error = String::new();
 
-    eprintln!("[initialize_app] Waiting for daemon at {} (max {}s)", DAEMON_URL, MAX_BOOT_WAIT_SECS);
+    log_file!(" Waiting for daemon at {} (max {}s)", DAEMON_URL, MAX_BOOT_WAIT_SECS);
 
     while start_time.elapsed().as_secs() < MAX_BOOT_WAIT_SECS {
         let elapsed = start_time.elapsed().as_secs();
@@ -1018,7 +1085,7 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
         match client.get(DAEMON_URL).send().await {
             Ok(resp) if resp.status().is_success() => {
                 vm_online = true;
-                eprintln!("[initialize_app] Daemon is online! (took {}s)", elapsed);
+                log_file!(" Daemon is online! (took {}s)", elapsed);
                 break;
             }
             Ok(resp) => {
@@ -1040,7 +1107,7 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
         }));
     } else {
         let elapsed = start_time.elapsed().as_secs();
-        eprintln!("[initialize_app] Daemon timeout after {}s. Last error: {}", elapsed, last_error);
+        log_file!(" Daemon timeout after {}s. Last error: {}", elapsed, last_error);
         let _ = window.emit("init-progress", serde_json::json!({
             "step": 5,
             "total_steps": 5,

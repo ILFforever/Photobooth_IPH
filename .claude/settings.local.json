@@ -75,7 +75,8 @@
       "Bash(npx create-next-app@latest . --typescript --tailwind --app --no-src-dir --import-alias \"@/*\" --use-npm --yes --project-name \"photobooth-fe\")",
       "Bash(timeout 30 bash -c 'until curl -s -m 2 http://localhost:58321/api/health > /dev/null 2>&1; do echo \"\"Waiting for VM daemon...\"\"; sleep 3; done; echo \"\"VM daemon is online!\"\"')",
       "Bash(taskkill /F /IM VBoxHeadless.exe)",
-      "Bash(taskkill //F //IM VBoxHeadless.exe)"
+      "Bash(taskkill //F //IM VBoxHeadless.exe)",
+      "Bash(taskkill //F //IM photobooth-iph.exe)"
     ],
     "additionalDirectories": [
       "d:\\Photobooth_IPH"

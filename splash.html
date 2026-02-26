@@ -128,74 +128,80 @@
     </div>
 
     <script type="module">
-      import { invoke } from '@tauri-apps/api/core';
-      import { listen } from '@tauri-apps/api/event';
-      import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
+      document.getElementById('status').textContent = 'Loading...';
+
+      // Use global Tauri API (withGlobalTauri: true in tauri.conf.json)
+      // Bare imports like '@tauri-apps/api/core' only work in dev (Vite resolves them)
+      // but fail silently in production builds where splash.html is a raw HTML file.
+      const { invoke } = window.__TAURI__.core;
+      const { listen } = window.__TAURI__.event;
+      const { getCurrentWebviewWindow } = window.__TAURI__.webviewWindow;
 
       const statusEl = document.getElementById('status');
       const progressFill = document.getElementById('progressFill');
       const versionEl = document.getElementById('version');
       const appWindow = getCurrentWebviewWindow();
 
-      // Fetch version from Rust
+      // Fetch version from Rust (non-blocking, don't await)
+      invoke('get_app_version')
+        .then(version => {
+          if (versionEl) {
+            versionEl.textContent = `Version ${version}`;
+          }
+        })
+        .catch(e => {
+          console.error('[Splash] Failed to fetch version:', e);
+          versionEl.textContent = 'v1.0.0'; // Fallback version
+        });
+
+      // Set up event listeners first
+      let initComplete = false;
+
       try {
-        const version = await invoke('get_app_version');
-        if (versionEl) {
-          versionEl.textContent = `Version ${version}`;
-        }
+        const unlisten = await listen('init-progress', (event) => {
+          const { step, total_steps, message } = event.payload;
+          if (statusEl) {
+            statusEl.textContent = message;
+          }
+          if (progressFill && step && total_steps) {
+            const percent = Math.round((step / total_steps) * 100);
+            progressFill.style.width = percent + '%';
+          }
+        });
+        const unlistenComplete = await listen('init-complete', async () => {
+          initComplete = true;
+          if (unlisten) unlisten();
+          if (unlistenComplete) unlistenComplete();
+
+          // Fill progress to 100%
+          if (progressFill) {
+            progressFill.style.width = '100%';
+          }
+          if (statusEl) {
+            statusEl.textContent = 'Ready';
+          }
+
+          // Fade out
+          setTimeout(() => {
+            document.body.classList.add('fade-out');
+          }, 300);
+
+          setTimeout(async () => {
+            try {
+              await invoke('close_splash_and_show_main');
+            } catch (e) {
+              console.error('[Splash] Failed to transition:', e);
+            }
+          }, 700);
+        });
       } catch (e) {
-        console.error('Failed to fetch version:', e);
+        console.error('[Splash] Failed to set up listeners:', e);
       }
 
-      // Listen for progress events
-      const unlisten = await listen('init-progress', (event) => {
-        const { step, total_steps, message } = event.payload;
-        console.log('Init progress:', step, '/', total_steps, '-', message);
-        if (statusEl) {
-          statusEl.textContent = message;
-        }
-        if (progressFill && step && total_steps) {
-          const percent = Math.round((step / total_steps) * 100);
-          progressFill.style.width = percent + '%';
-        }
-      });
-
-      // Listen for completion - then close splash and show main
-      const unlistenComplete = await listen('init-complete', async () => {
-        console.log('Initialization complete');
-        unlisten();
-        unlistenComplete();
-
-        // Fill progress to 100%
-        if (progressFill) {
-          progressFill.style.width = '100%';
-        }
-        if (statusEl) {
-          statusEl.textContent = 'Ready';
-        }
-
-        // Fade out
-        setTimeout(() => {
-          document.body.classList.add('fade-out');
-        }, 300);
-
-        setTimeout(async () => {
-          try {
-            await invoke('close_splash_and_show_main');
-          } catch (e) {
-            console.error('Failed to transition to main window:', e);
-          }
-        }, 700);
-      });
-
-      // Start initialization with a fallback timeout
-      // Even if initialization hangs, force-close splash after 45 seconds
-      const FORCE_CLOSE_MS = 45000;
-      let initializationCompleted = false;
-
+      // Force-close safety net (15 seconds max wait)
       const forceCloseTimeout = setTimeout(async () => {
-        if (!initializationCompleted) {
-          console.warn('[Splash] Initialization timeout - forcing close');
+        if (!initComplete) {
+          console.warn('[Splash] Timeout - forcing app load');
           if (statusEl) statusEl.textContent = 'Loading app...';
           if (progressFill) progressFill.style.width = '100%';
           setTimeout(async () => {
@@ -203,7 +209,6 @@
               await invoke('close_splash_and_show_main');
             } catch (e) {
               console.error('[Splash] Force close failed:', e);
-              // Last resort - just close the splash window
               try {
                 await appWindow.close();
               } catch (e2) {
@@ -212,25 +217,28 @@
             }
           }, 500);
         }
-      }, FORCE_CLOSE_MS);
+      }, 15000); // Reduced to 15 seconds
+
+      statusEl.textContent = 'Initializing...';
+
+      // Set a timeout to detect if invoke hangs
+      let invokeCompleted = false;
+      setTimeout(() => {
+        if (!invokeCompleted) {
+          console.error('[Splash] invoke appears to be hanging (> 5s)');
+          statusEl.textContent = 'Initializing (slow...)';
+        }
+      }, 5000);
 
       try {
-        await invoke('initialize_app');
-        initializationCompleted = true;
-        clearTimeout(forceCloseTimeout);
+        const result = await invoke('initialize_app');
+        invokeCompleted = true;
+        // Don't clear timeout - let init-complete event handle closing
       } catch (e) {
-        console.error('[Splash] Initialization failed:', e);
-        initializationCompleted = true;
-        clearTimeout(forceCloseTimeout);
-        if (statusEl) statusEl.textContent = 'Loading app...';
-        // Continue anyway after a short delay - app should work even if VM fails
-        setTimeout(async () => {
-          try {
-            await invoke('close_splash_and_show_main');
-          } catch (e2) {
-            console.error('[Splash] Failed to transition:', e2);
-          }
-        }, 500);
+        invokeCompleted = true;
+        console.error('[Splash] initialize_app error:', e);
+        statusEl.textContent = 'Init error: ' + e;
+        // Don't clear timeout - force close will handle it
       }
     </script>
   </body>
