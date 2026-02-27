@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { ChevronLeft, Monitor, MonitorOff, ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { emitTo } from "@tauri-apps/api/event";
+import { emitTo } from '@tauri-apps/api/event';
 import { Frame, FrameZone } from "../../types/frame";
 import { PlacedImage } from "../../types/collage";
 import { usePhotobooth } from "../../contexts/PhotoboothContext";
@@ -648,6 +648,7 @@ export default function FinalizeView({
           </>
         )}
       </div>
+
     </div>
   );
 }

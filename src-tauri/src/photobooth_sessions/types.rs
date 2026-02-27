@@ -57,10 +57,16 @@ pub struct PtbSessionData {
     pub photos: Vec<PtbPhoto>,
     #[serde(default)]
     pub google_drive_metadata: GoogleDriveMetadata,
+    #[serde(default = "default_true")]
+    pub qr_upload_enabled: bool,
     #[serde(default)]
     pub qr_upload_all_images: bool,
     #[serde(default = "default_photo_naming_scheme")]
     pub photo_naming_scheme: String,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn default_photo_naming_scheme() -> String {

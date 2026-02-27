@@ -2011,6 +2011,40 @@
   border-radius: 4px;
   overflow: hidden;
   position: relative;
+  transition: outline 0.15s ease, box-shadow 0.15s ease;
+}
+
+.thumbnail-item:hover {
+  outline: 1px solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.3);
+}
+
+/* Three-dot menu button on thumbnails */
+.thumbnail-menu-btn {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  background: rgba(0, 0, 0, 0.55);
+  border: none;
+  border-radius: 3px;
+  color: white;
+  font-size: 8px;
+  letter-spacing: 1px;
+  line-height: 1;
+  padding: 2px 4px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease;
+  z-index: 2;
+}
+
+.thumbnail-item:hover .thumbnail-menu-btn {
+  opacity: 0.8;
+}
+
+.thumbnail-menu-btn:hover {
+  opacity: 1 !important;
+  background: rgba(0, 0, 0, 0.8);
 }
 
 .thumbnail-image {
@@ -3060,6 +3094,13 @@
   cursor: pointer;
   transition: all 0.15s ease;
   color: #eab308;
+}
+
+.upload-item-retry-btn svg {
+  width: 10px;
+  height: 10px;
+  stroke-width: 2.5;
+  stroke: #eab308;
 }
 
 .upload-item-retry-btn:hover {

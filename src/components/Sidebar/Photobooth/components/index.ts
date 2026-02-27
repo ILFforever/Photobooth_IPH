@@ -8,3 +8,5 @@ export { QrSettingsSection } from './QrSettingsSection';
 export { QrInfoModal } from './QrInfoModal';
 export { PrintTabContent } from './PrintTabContent';
 export { QrTabContent } from './QrTabContent';
+export { GifTabContent } from './GifTabContent';
+export { GifSettingsSection } from './GifSettingsSection';

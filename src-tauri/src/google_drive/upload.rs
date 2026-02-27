@@ -256,10 +256,14 @@ pub async fn process_photos(
                 );
                 println!("   📡 Emitted progress event");
 
-                let mime = if ext_str == "png" {
-                    "image/png"
-                } else {
-                    "image/jpeg"
+                let mime = match ext_str.as_str() {
+                    "png" => "image/png",
+                    "jpg" | "jpeg" => "image/jpeg",
+                    "gif" => "image/gif",
+                    "mp4" => "video/mp4",
+                    "webm" => "video/webm",
+                    "mov" => "video/quicktime",
+                    _ => "application/octet-stream",
                 };
                 println!("   📋 MIME type: {}", mime);
 

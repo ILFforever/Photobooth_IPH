@@ -82,6 +82,7 @@ fn scan_existing_sessions(folder_path: &str) -> Vec<PtbSessionData> {
                                         shot_count: 0,
                                         photos: Vec::new(),
                                         google_drive_metadata: GoogleDriveMetadata::default(),
+                                        qr_upload_enabled: true,
                                         qr_upload_all_images: false,
                                         photo_naming_scheme: "IPH_{number}".to_string(),
                                     })
@@ -122,12 +123,6 @@ async fn load_ptb_workspace_internal(folder_path: String) -> Result<(PtbWorkspac
             "[load_ptb_workspace_internal] Loaded existing .ptb file with {} sessions",
             workspace.sessions.len()
         );
-        for session in &workspace.sessions {
-            println!(
-                "[load_ptb_workspace_internal] - Session: id={}, folderName={}",
-                session.id, session.folder_name
-            );
-        }
         Ok((workspace, false))
     } else {
         // Create a new workspace, but first scan for existing session folders
@@ -398,6 +393,7 @@ pub async fn create_photobooth_session(
         shot_count: 0,
         photos: Vec::new(),
         google_drive_metadata: GoogleDriveMetadata::default(),
+        qr_upload_enabled: true,
         qr_upload_all_images: false,
         photo_naming_scheme: "IPH_{number}".to_string(),
     };
@@ -562,11 +558,15 @@ pub async fn update_session_qr_setting(
     folder_path: String,
     session_id: String,
     qr_upload_all_images: bool,
+    qr_upload_enabled: Option<bool>,
 ) -> Result<(), String> {
     let (mut workspace, _) = load_ptb_workspace_internal(folder_path.clone()).await?;
 
     if let Some(session) = workspace.sessions.iter_mut().find(|s| s.id == session_id) {
         session.qr_upload_all_images = qr_upload_all_images;
+        if let Some(enabled) = qr_upload_enabled {
+            session.qr_upload_enabled = enabled;
+        }
         session.last_used_at = chrono::Utc::now().to_rfc3339();
 
         save_ptb_workspace(folder_path, workspace).await?;

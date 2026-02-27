@@ -1,5 +1,6 @@
 use crate::vm::types::VmLogsResponse;
-use std::fs;
+use std::fs::File;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::PathBuf;
 use std::process::Command;
 use tauri::Manager;
@@ -19,6 +20,28 @@ fn run_command_silent(program: &str, args: &[&str]) -> Result<std::process::Outp
     }
 
     cmd.output()
+}
+
+/// Read the last N lines from a file by seeking from the end.
+/// Only reads up to `tail_bytes` from the end of the file instead of the whole thing.
+fn read_tail_lines(path: &PathBuf, num_lines: usize) -> Result<Vec<String>, String> {
+    let mut file = File::open(path).map_err(|e| format!("Failed to open: {}", e))?;
+    let metadata = file.metadata().map_err(|e| format!("Failed to get metadata: {}", e))?;
+    let file_size = metadata.len();
+
+    // Read at most 64KB from the end — plenty for ~100-1000 lines
+    let tail_bytes: u64 = 65536;
+    let start_pos = if file_size > tail_bytes { file_size - tail_bytes } else { 0 };
+
+    file.seek(SeekFrom::Start(start_pos)).map_err(|e| format!("Seek failed: {}", e))?;
+
+    let mut buf = String::new();
+    file.read_to_string(&mut buf).map_err(|e| format!("Read failed: {}", e))?;
+
+    let all_lines: Vec<&str> = buf.lines().collect();
+    let skip = if all_lines.len() > num_lines { all_lines.len() - num_lines } else { 0 };
+
+    Ok(all_lines[skip..].iter().map(|s| s.to_string()).collect())
 }
 
 /// Read the VM console log file
@@ -66,14 +89,14 @@ pub async fn get_vm_logs(lines: Option<usize>) -> Result<VmLogsResponse, String>
         }
     }
 
-    // Try to find and read the log file
-    let mut log_content: Option<String> = None;
+    // Try to find the log file and read only the tail
+    let mut log_lines: Option<Vec<String>> = None;
 
     for path in &possible_paths {
         if path.exists() {
-            match fs::read_to_string(&path) {
-                Ok(content) => {
-                    log_content = Some(content);
+            match read_tail_lines(&path, num_lines) {
+                Ok(lines) => {
+                    log_lines = Some(lines);
                     break;
                 }
                 Err(e) => {
@@ -87,8 +110,8 @@ pub async fn get_vm_logs(lines: Option<usize>) -> Result<VmLogsResponse, String>
         }
     }
 
-    let log_content = match log_content {
-        Some(content) => content,
+    let log_lines = match log_lines {
+        Some(lines) => lines,
         None => {
             // If no log file found, return helpful error message with searched paths
             let paths_str: Vec<String> = possible_paths
@@ -110,16 +133,6 @@ pub async fn get_vm_logs(lines: Option<usize>) -> Result<VmLogsResponse, String>
         }
     };
 
-    // Get the last N lines
-    let log_lines: Vec<String> = log_content
-        .lines()
-        .rev()
-        .take(num_lines)
-        .map(|s: &str| s.to_string())
-        .collect();
-
-    // Reverse back to original order
-    let log_lines: Vec<String> = log_lines.into_iter().rev().collect();
     let line_count = log_lines.len();
 
     Ok(VmLogsResponse {

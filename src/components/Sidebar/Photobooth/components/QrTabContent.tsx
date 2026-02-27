@@ -7,10 +7,10 @@ import { useUploadQueue } from '../../../../contexts/UploadQueueContext';
 import { useAuth } from '../../../../contexts/AuthContext';
 import { usePhotobooth } from '../../../../contexts/PhotoboothContext';
 import { useToast } from '../../../../contexts/ToastContext';
-import { getDriveAuthState, getAuthStateText, DriveAuthState } from '../../../../utils/driveAuthState';
+import { getDriveAuthState, getAuthStateText, DriveAuthState, areUploadsEnabled } from '../../../../utils/driveAuthState';
 
 export function QrTabContent() {
-  const { currentSession, workingFolder, sessions } = usePhotoboothSettings();
+  const { currentSession, workingFolder, sessions, qrUploadEnabled } = usePhotoboothSettings();
   const { queueItems, stats, startAutoRefresh, stopAutoRefresh, enqueuePhotos } = useUploadQueue();
   const { account } = useAuth();
   const { exportPhotoboothCanvasAsPNG, currentCollageFilename, setCurrentCollageFilename, collageIsDirty, resetCollageDirtyState, isGeneratingCollage, setIsGeneratingCollage } = usePhotobooth();
@@ -138,6 +138,18 @@ export function QrTabContent() {
   const handleUploadCollage = useCallback(async () => {
     if (!currentSession || !workingFolder || !driveMetadata?.folderId) return;
 
+    // Block uploads if QR upload is disabled
+    if (!qrUploadEnabled) {
+      showToast('Upload Disabled', 'warning', 3000, 'QR upload is disabled in settings.');
+      return;
+    }
+
+    // Block uploads on account mismatch or not authenticated
+    if (!areUploadsEnabled(authStateInfo.state)) {
+      showToast('Upload Blocked', 'error', 4000, authStateText.title + ': ' + authStateText.message);
+      return;
+    }
+
     // Check if another operation is already generating
     if (isGeneratingCollage) {
       showToast('Please wait', 'warning', 2000, 'Collage is being generated...');
@@ -153,7 +165,7 @@ export function QrTabContent() {
 
     // Proceed with normal upload flow
     await performUpload(currentSession, workingFolder, sessions, driveMetadata);
-  }, [currentSession, workingFolder, sessions, driveMetadata, currentCollageFilename, collageIsDirty, isGeneratingCollage]);
+  }, [currentSession, workingFolder, sessions, driveMetadata, currentCollageFilename, collageIsDirty, isGeneratingCollage, authStateInfo.state, authStateText]);
 
   // Actual upload execution (extracted for reuse)
   const performUpload = useCallback(async (currentSession: any, workingFolder: string, sessions: any[], driveMetadata: any, forceOldVersion = false) => {

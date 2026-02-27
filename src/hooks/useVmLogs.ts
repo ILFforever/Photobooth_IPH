@@ -17,9 +17,26 @@ export function useVmLogs() {
   const [isRestartingVm, setIsRestartingVm] = useState(false);
   const [showRestartConfirm, setShowRestartConfirm] = useState(false);
 
+  // Parse raw log strings into structured entries
+  const parseLogs = useCallback((logs: string[]): VmLogEntry[] => {
+    return logs.map((log) => {
+      let level: VmLogEntry['level'] = 'info';
+      const lower = log.toLowerCase();
+      if (lower.includes('error') || lower.includes('failed')) {
+        level = 'error';
+      } else if (lower.includes('warning') || lower.includes('warn')) {
+        level = 'warning';
+      } else if (lower.includes('success') || lower.includes('connected')) {
+        level = 'success';
+      }
+      return { timestamp: '', level, message: log };
+    });
+  }, []);
+
   // Fetch VM logs from file via Tauri
-  const fetchVmLogs = useCallback(async () => {
-    setIsLoadingLogs(true);
+  // showLoading controls whether the loading spinner is shown (false for background polling)
+  const fetchVmLogs = useCallback(async (showLoading = true) => {
+    if (showLoading) setIsLoadingLogs(true);
     setLogsError(null);
 
     try {
@@ -27,34 +44,15 @@ export function useVmLogs() {
         lines: 100,
       });
 
-      // Parse logs into structured format
-      const parsedLogs: VmLogEntry[] = response.logs.map((log) => {
-        // Try to parse log level from message
-        let level: VmLogEntry['level'] = 'info';
-        if (log.toLowerCase().includes('error') || log.toLowerCase().includes('failed')) {
-          level = 'error';
-        } else if (log.toLowerCase().includes('warning') || log.toLowerCase().includes('warn')) {
-          level = 'warning';
-        } else if (log.toLowerCase().includes('success') || log.toLowerCase().includes('connected')) {
-          level = 'success';
-        }
-
-        return {
-          timestamp: '', // Log file doesn't include timestamps, could add if needed
-          level,
-          message: log,
-        };
-      });
-
-      setVmLogs(parsedLogs);
+      setVmLogs(parseLogs(response.logs));
     } catch (error) {
       console.error('Failed to fetch VM logs:', error);
       setLogsError(error instanceof Error ? error.message : 'Failed to fetch logs');
       setVmLogs([]);
     } finally {
-      setIsLoadingLogs(false);
+      if (showLoading) setIsLoadingLogs(false);
     }
-  }, []);
+  }, [parseLogs]);
 
   // Open VM logs modal and fetch logs
   const handleOpenVmLogs = useCallback(() => {
@@ -94,10 +92,10 @@ export function useVmLogs() {
     setShowRestartConfirm(false);
   }, []);
 
-  // Auto-refresh logs every 3 seconds when modal is open
+  // Auto-refresh logs every second when modal is open (silent, no loading spinner)
   useEffect(() => {
     if (showVmLogs) {
-      const interval = setInterval(fetchVmLogs, 3000);
+      const interval = setInterval(() => fetchVmLogs(false), 1000);
       return () => clearInterval(interval);
     }
   }, [showVmLogs, fetchVmLogs]);

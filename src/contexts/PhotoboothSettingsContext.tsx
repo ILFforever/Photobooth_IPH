@@ -30,6 +30,7 @@ export interface PhotoboothSessionInfo {
   lastUsedAt: string;
   thumbnails: string[]; // Thumbnail URLs for the session's photos
   googleDriveMetadata: GoogleDriveMetadata;
+  qrUploadEnabled?: boolean;
   qrUploadAllImages?: boolean;
   photoNamingScheme?: string;
 }
@@ -51,8 +52,27 @@ export interface PhotoboothSession {
   shotCount: number;
   photos: SessionPhoto[];
   googleDriveMetadata: GoogleDriveMetadata;
+  qrUploadEnabled?: boolean;
   qrUploadAllImages?: boolean;
   photoNamingScheme?: string;
+}
+
+// Last generated media
+export interface LastGeneratedMedia {
+  gif?: {
+    filePath: string;
+    fileName: string;
+    fileSize: number;
+    photoCount: number;
+    generatedAt: string;
+  };
+  video?: {
+    filePath: string;
+    fileName: string;
+    fileSize: number;
+    photoCount: number;
+    generatedAt: string;
+  };
 }
 
 interface PhotoboothSettingsContextType {
@@ -68,8 +88,17 @@ interface PhotoboothSettingsContextType {
   setWorkingFolder: (folder: string | null) => void;
   photoNamingScheme: string;
   setPhotoNamingScheme: (scheme: string) => void;
+  qrUploadEnabled: boolean;
+  setQrUploadEnabled: (value: boolean) => void;
   qrUploadAllImages: boolean;
   setQrUploadAllImages: (value: boolean) => void;
+  // Auto GIF settings
+  autoGifEnabled: boolean;
+  setAutoGifEnabled: (value: boolean) => void;
+  autoGifFormat: 'gif' | 'both' | 'video';
+  setAutoGifFormat: (value: 'gif' | 'both' | 'video') => void;
+  autoGifPhotoSource: 'collage' | 'all';
+  setAutoGifPhotoSource: (value: 'collage' | 'all') => void;
   // Delay settings loaded from .ptb
   delaySettingsLoaded: boolean;
   // Session management
@@ -95,6 +124,11 @@ interface PhotoboothSettingsContextType {
   // Session settings management
   updateSessionQrSetting: (sessionId: string, qrUploadAllImages: boolean) => Promise<void>;
   updateSessionNamingScheme: (sessionId: string, photoNamingScheme: string) => Promise<void>;
+  // Last generated media
+  lastGeneratedMedia: LastGeneratedMedia | null;
+  setLastGif: (gif: { filePath: string; fileName: string; fileSize: number; photoCount: number }) => void;
+  setLastVideo: (video: { filePath: string; fileName: string; fileSize: number; photoCount: number }) => void;
+  clearLastGenerated: () => void;
 }
 
 const PhotoboothSettingsContext = createContext<PhotoboothSettingsContextType | undefined>(undefined);
@@ -108,13 +142,21 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
   const [photoReviewTime, setPhotoReviewTime] = useState(3);
   const [workingFolder, setWorkingFolder] = useState<string | null>(null);
   const [photoNamingScheme, setPhotoNamingScheme] = useState('IPH_{number}');
+  const [qrUploadEnabled, setQrUploadEnabled] = useState(true);
   const [qrUploadAllImages, setQrUploadAllImages] = useState(false);
+  // Auto GIF settings
+  const [autoGifEnabled, setAutoGifEnabled] = useState(false);
+  const [autoGifFormat, setAutoGifFormat] = useState<'gif' | 'both' | 'video'>('both');
+  const [autoGifPhotoSource, setAutoGifPhotoSource] = useState<'collage' | 'all'>('collage');
   const [delaySettingsLoaded, setDelaySettingsLoaded] = useState(false);
 
   // Session management state
   const [currentSession, setCurrentSession] = useState<PhotoboothSession | null>(null);
   const [sessions, setSessions] = useState<PhotoboothSessionInfo[]>([]);
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
+
+  // Last generated media state
+  const [lastGeneratedMedia, setLastGeneratedMedia] = useState<LastGeneratedMedia | null>(null);
 
   // Track last folder to detect when folder changes
   const lastFolderRef = useRef<string | null>(null);
@@ -683,7 +725,10 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
   // Load QR and naming scheme settings from current session
   useEffect(() => {
     if (currentSession) {
-      // Load QR upload setting from session
+      // Load QR upload settings from session
+      if (currentSession.qrUploadEnabled !== undefined) {
+        setQrUploadEnabled(currentSession.qrUploadEnabled);
+      }
       if (currentSession.qrUploadAllImages !== undefined) {
         setQrUploadAllImages(currentSession.qrUploadAllImages);
       }
@@ -697,7 +742,8 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
   // Update QR setting for a session
   const updateSessionQrSetting = useCallback(async (
     sessionId: string,
-    qrUploadAllImagesValue: boolean
+    qrUploadAllImagesValue: boolean,
+    qrUploadEnabledValue?: boolean
   ) => {
     if (!workingFolder) {
       throw new Error('Working folder must be set first');
@@ -707,18 +753,23 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
       folderPath: workingFolder,
       sessionId,
       qrUploadAllImages: qrUploadAllImagesValue,
+      qrUploadEnabled: qrUploadEnabledValue,
     });
 
     // Update the session in the local state
+    const updates: Partial<PhotoboothSessionInfo> = { qrUploadAllImages: qrUploadAllImagesValue };
+    if (qrUploadEnabledValue !== undefined) {
+      updates.qrUploadEnabled = qrUploadEnabledValue;
+    }
     setSessions(prev => prev.map(s =>
       s.id === sessionId
-        ? { ...s, qrUploadAllImages: qrUploadAllImagesValue }
+        ? { ...s, ...updates }
         : s
     ));
 
     // Update current session if it matches
     if (currentSession?.id === sessionId) {
-      setCurrentSession(prev => prev ? { ...prev, qrUploadAllImages: qrUploadAllImagesValue } : null);
+      setCurrentSession(prev => prev ? { ...prev, ...updates } : null);
     }
   }, [workingFolder, currentSession]);
 
@@ -750,6 +801,16 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
     }
   }, [workingFolder, currentSession]);
 
+  // Wrapper for setQrUploadEnabled that saves to current session
+  const handleSetQrUploadEnabled = useCallback((value: boolean) => {
+    setQrUploadEnabled(value);
+    if (currentSession && workingFolder) {
+      updateSessionQrSetting(currentSession.id, qrUploadAllImages, value).catch(err => {
+        console.error('Failed to save QR enabled setting to session:', err);
+      });
+    }
+  }, [currentSession, workingFolder, qrUploadAllImages, updateSessionQrSetting]);
+
   // Wrapper for setQrUploadAllImages that saves to current session
   const handleSetQrUploadAllImages = useCallback((value: boolean) => {
     setQrUploadAllImages(value);
@@ -777,6 +838,34 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
     }
   }, [workingFolder, refreshSessions]);
 
+  // Set last generated GIF
+  const setLastGif = useCallback((gif: { filePath: string; fileName: string; fileSize: number; photoCount: number }) => {
+    setLastGeneratedMedia(prev => ({
+      ...prev,
+      gif: {
+        ...gif,
+        generatedAt: new Date().toISOString(),
+      },
+      video: prev?.video,
+    }));
+  }, []);
+
+  // Set last generated video
+  const setLastVideo = useCallback((video: { filePath: string; fileName: string; fileSize: number; photoCount: number }) => {
+    setLastGeneratedMedia(prev => ({
+      gif: prev?.gif,
+      video: {
+        ...video,
+        generatedAt: new Date().toISOString(),
+      },
+    }));
+  }, []);
+
+  // Clear all last generated media
+  const clearLastGenerated = useCallback(() => {
+    setLastGeneratedMedia(null);
+  }, []);
+
   return (
     <PhotoboothSettingsContext.Provider
       value={{
@@ -792,8 +881,16 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
         setWorkingFolder,
         photoNamingScheme,
         setPhotoNamingScheme: handleSetPhotoNamingScheme,
+        qrUploadEnabled,
+        setQrUploadEnabled: handleSetQrUploadEnabled,
         qrUploadAllImages,
         setQrUploadAllImages: handleSetQrUploadAllImages,
+        autoGifEnabled,
+        setAutoGifEnabled,
+        autoGifFormat,
+        setAutoGifFormat,
+        autoGifPhotoSource,
+        setAutoGifPhotoSource,
         delaySettingsLoaded,
         currentSession,
         sessions,
@@ -814,6 +911,10 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
         deleteSessionPhoto,
         updateSessionQrSetting,
         updateSessionNamingScheme,
+        lastGeneratedMedia,
+        setLastGif,
+        setLastVideo,
+        clearLastGenerated,
       }}
     >
       {children}

@@ -12,6 +12,7 @@ import { usePhotobooth } from "../../contexts/PhotoboothContext";
 import { useToast } from "../../contexts/ToastContext";
 import { useUploadQueue } from "../../contexts/UploadQueueContext";
 import { useAuth } from "../../contexts/AuthContext";
+import { getDriveAuthState, areUploadsEnabled } from "../../utils/driveAuthState";
 import { PhotoboothControls } from "./PhotoboothControls";
 import DisplayContent from "./DisplayContent";
 import CurrentSetPhotoStrip from "./CurrentSetPhotoStrip";
@@ -91,6 +92,7 @@ export default function PhotoboothWorkspace() {
     loadSession,
     updateCurrentSessionFromDownload,
     createNewSession,
+    qrUploadEnabled,
     qrUploadAllImages
   } = usePhotoboothSettings();
   const { captureError, clearCaptureError, isCameraConnected, hasEverConnected, isConnecting, addPhotoDownloadedListener, removePhotoDownloadedListener } = useCamera();
@@ -444,7 +446,7 @@ export default function PhotoboothWorkspace() {
 
       // PRIORITY 3: Auto-upload to Google Drive (non-blocking)
       // Only if user is logged in, Drive folder is configured, AND "Upload all images" is enabled
-      if (account && updatedSession.googleDriveMetadata?.folderId && qrUploadAllImages) {
+      if (qrUploadEnabled && account && updatedSession.googleDriveMetadata?.folderId && qrUploadAllImages) {
         const driveFolderId = updatedSession.googleDriveMetadata.folderId;
         console.log('[PhotoboothWorkspace::handlePhotoDownloaded] Auto-uploading to Drive folder:', driveFolderId);
 
@@ -662,8 +664,9 @@ export default function PhotoboothWorkspace() {
       setSessionQrData(null);
     }
 
-    // Upload photos to Google Drive if configured
-    if (account && currentSession?.googleDriveMetadata?.folderId && workingFolder) {
+    // Upload photos to Google Drive if configured and account matches
+    const driveAuthState = getDriveAuthState(currentSession?.googleDriveMetadata, account);
+    if (qrUploadEnabled && account && currentSession?.googleDriveMetadata?.folderId && workingFolder && areUploadsEnabled(driveAuthState.state)) {
       const driveFolderId = currentSession.googleDriveMetadata.folderId;
 
       try {
@@ -731,7 +734,7 @@ export default function PhotoboothWorkspace() {
         console.error('[PhotoboothWorkspace::handleFinalizeSession] Upload error:', error);
       }
     } else {
-      console.log('[PhotoboothWorkspace::handleFinalizeSession] Skipping upload - Drive not configured');
+      console.log('[PhotoboothWorkspace::handleFinalizeSession] Skipping upload - Drive not configured or account mismatch');
     }
   };
 

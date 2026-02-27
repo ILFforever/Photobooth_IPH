@@ -3133,6 +3133,7 @@ dependencies = [
  "percent-encoding 2.3.2",
  "qrcode",
  "rand 0.8.5",
+ "rayon",
  "reqwest 0.11.27",
  "rexif",
  "serde",

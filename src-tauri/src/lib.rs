@@ -17,6 +17,7 @@ mod working_folder;
 mod custom_sets;
 mod photobooth_sessions;
 mod upload_queue;
+mod gif_generator;
 mod system_requirements;
 mod version;
 
@@ -40,6 +41,7 @@ use custom_sets::*;
 use photobooth_sessions::*;
 use upload_queue::*;
 use upload_queue::queue::UploadQueue;
+use gif_generator::*;
 use system_requirements::*;
 use version::*;
 
@@ -212,6 +214,9 @@ pub fn run() {
             // App Initialization
             initialize_app,
             close_splash_and_show_main,
+            // GIF/Video Generation
+            generate_gif,
+            generate_slideshow_video,
             // QR Code
             utils::qr_code::generate_qr_code,
         ])

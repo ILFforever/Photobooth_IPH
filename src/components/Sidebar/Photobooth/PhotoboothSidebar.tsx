@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Printer, QrCode, Image as ImageIcon } from "lucide-react";
+import { Printer, QrCode, Film, Image as ImageIcon } from "lucide-react";
 import { open } from '@tauri-apps/plugin-dialog';
 import { CameraSection } from "./CameraSection";
 import { LiveViewSection } from "./LiveViewSection";
@@ -31,6 +31,8 @@ import {
   QrInfoModal,
   PrintTabContent,
   QrTabContent,
+  GifTabContent,
+  GifSettingsSection,
 } from "./components";
 import "./PhotoboothSidebar.css";
 
@@ -40,8 +42,8 @@ interface PhotoboothSidebarProps {
   isoValues?: string[];
 }
 
-type PhotoboothTab = 'camera' | 'photobooth' | 'print' | 'qr' | 'edit';
-type CollapsibleSection = 'camera' | 'liveview' | 'folder' | 'photobooth' | 'frame' | 'session' | 'naming' | 'qr';
+type PhotoboothTab = 'camera' | 'photobooth' | 'print' | 'qr' | 'gif' | 'edit';
+type CollapsibleSection = 'camera' | 'liveview' | 'folder' | 'photobooth' | 'frame' | 'session' | 'naming' | 'qr' | 'gif';
 type SettingType = 'shutter' | 'aperture' | 'iso' | 'ev' | 'wb' | 'metering' | 'folder' | 'mode' | null;
 
 export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
@@ -75,7 +77,11 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
     photoReviewTime, setPhotoReviewTime,
     workingFolder, setWorkingFolder,
     photoNamingScheme, setPhotoNamingScheme,
+    qrUploadEnabled, setQrUploadEnabled,
     qrUploadAllImages, setQrUploadAllImages,
+    autoGifEnabled, setAutoGifEnabled,
+    autoGifFormat, setAutoGifFormat,
+    autoGifPhotoSource, setAutoGifPhotoSource,
   } = usePhotoboothSettings();
 
   const { printCollage, isPrinting } = usePrintSettings();
@@ -91,6 +97,7 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
     session: false,
     naming: false,
     qr: false,
+    gif: false,
   });
   const [activeSetting, setActiveSetting] = useState<SettingType>(null);
   const [hasSelectedCamera, setHasSelectedCamera] = useState(false);
@@ -111,9 +118,13 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
     }
   }, [viewMode]);
 
+  // Track whether editingZoneId was just set (to avoid race with tab-clearing effect)
+  const editingZoneJustSetRef = useRef(false);
+
   // Auto-switch to Edit tab when a zone is clicked in finalize mode
   useEffect(() => {
     if (viewMode === 'finalize' && editingZoneId) {
+      editingZoneJustSetRef.current = true;
       setActiveTab('edit');
     }
   }, [viewMode, editingZoneId]);
@@ -121,9 +132,21 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
   // Clear editing zone when switching away from Edit tab
   useEffect(() => {
     if (viewMode === 'finalize' && activeTab !== 'edit' && editingZoneId) {
+      // Skip if editingZoneId was just set — the tab switch hasn't happened yet
+      if (editingZoneJustSetRef.current) {
+        editingZoneJustSetRef.current = false;
+        return;
+      }
       setFinalizeEditingZoneId(null);
     }
   }, [viewMode, activeTab, editingZoneId, setFinalizeEditingZoneId]);
+
+  // Auto-switch back from Edit tab when zone is deselected
+  useEffect(() => {
+    if (viewMode === 'finalize' && !editingZoneId && activeTab === 'edit') {
+      setActiveTab('qr');
+    }
+  }, [viewMode, editingZoneId, activeTab]);
 
   // Show toast on reconnection success
   const previousConnectionStateRef = useRef<ConnectionState>('NC');
@@ -237,10 +260,11 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
                     Print
                   </button>
                   <button
-                    className={`photobooth-tab ${activeTab === 'edit' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('edit')}
+                    className={`photobooth-tab ${activeTab === 'gif' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('gif')}
                   >
-                    Edit
+                    <Film size={14} />
+                    GIF
                   </button>
                 </>
               )}
@@ -345,50 +369,69 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
                   sessionDriveRootFolder={sessionDriveRootFolder}
                   isLoadingDriveFolder={isLoadingDriveFolder}
                   onOpenDriveFolderPicker={handleOpenDriveFolderPicker}
+                  qrUploadEnabled={qrUploadEnabled}
+                  setQrUploadEnabled={setQrUploadEnabled}
                   qrUploadAllImages={qrUploadAllImages}
                   setQrUploadAllImages={setQrUploadAllImages}
                   onShowInfo={handleShowQrInfo}
                 />
+
+                <GifSettingsSection
+                  expanded={expandedSections.gif}
+                  onToggle={() => toggleSection('gif')}
+                  autoGifEnabled={autoGifEnabled}
+                  setAutoGifEnabled={setAutoGifEnabled}
+                  autoGifFormat={autoGifFormat}
+                  setAutoGifFormat={setAutoGifFormat}
+                  autoGifPhotoSource={autoGifPhotoSource}
+                  setAutoGifPhotoSource={setAutoGifPhotoSource}
+                />
               </div>
 
               {/* Finalize Mode Tabs */}
-              <div className="tab-panel" style={{ display: viewMode === 'finalize' ? 'flex' : 'none' }}>
-                {activeTab === 'print' && (
-                  <PrintTabContent
-                    isPrinting={isPrinting}
-                    onPrint={printCollage}
-                  />
-                )}
+              {viewMode === 'finalize' && (
+                <>
+                  <div className="tab-panel" style={{ display: activeTab === 'print' ? 'flex' : 'none' }}>
+                    <PrintTabContent
+                      isPrinting={isPrinting}
+                      onPrint={printCollage}
+                    />
+                  </div>
 
-                {activeTab === 'qr' && (
-                  <QrTabContent />
-                )}
+                  <div className="tab-panel" style={{ display: activeTab === 'qr' ? 'flex' : 'none' }}>
+                    <QrTabContent />
+                  </div>
 
-                {activeTab === 'edit' && (
-                  <div className="finalize-tab-content">
-                    {!editingZoneId || !placedImages.has(editingZoneId) ? (
-                      <div className="print-settings-container">
-                        <div className="print-section">
-                          <div className="print-section-header">
-                            <ImageIcon size={16} />
-                            <span className="print-section-title">Edit Photo</span>
-                          </div>
-                          <div className="print-info-content">
-                            <p>Click a photo in the collage to adjust its position, zoom, rotation, and flip settings.</p>
-                            <p className="print-hint">Drag photos to reposition them within their frames.</p>
+                  <div className="tab-panel" style={{ display: activeTab === 'gif' ? 'flex' : 'none' }}>
+                    <GifTabContent />
+                  </div>
+
+                  <div className="tab-panel" style={{ display: activeTab === 'edit' ? 'flex' : 'none' }}>
+                    <div className="finalize-tab-content">
+                      {!editingZoneId || !placedImages.has(editingZoneId) ? (
+                        <div className="print-settings-container">
+                          <div className="print-section">
+                            <div className="print-section-header">
+                              <ImageIcon size={16} />
+                              <span className="print-section-title">Edit Photo</span>
+                            </div>
+                            <div className="print-info-content">
+                              <p>Click a photo in the collage to adjust its position, zoom, rotation, and flip settings.</p>
+                              <p className="print-hint">Drag photos to reposition them within their frames.</p>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ) : (
-                      <EditTabContent
-                        zoneId={editingZoneId}
-                        placedImage={placedImages.get(editingZoneId)!}
-                        onUpdate={updatePlacedImage}
-                      />
-                    )}
+                      ) : (
+                        <EditTabContent
+                          zoneId={editingZoneId}
+                          placedImage={placedImages.get(editingZoneId)!}
+                          onUpdate={updatePlacedImage}
+                        />
+                      )}
+                    </div>
                   </div>
-                )}
-              </div>
+                </>
+              )}
             </div>
           </div>
         </div>

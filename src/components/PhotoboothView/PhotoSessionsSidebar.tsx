@@ -445,6 +445,7 @@ export default function PhotoSessionsSidebar({
                                 <div
                                   key={idx}
                                   className={`thumbnail-item ${isDeletingPhoto ? 'deleting' : ''}`}
+                                  title={filename}
                                   onContextMenu={(e) => handlePhotoRightClick(set.id, thumbnail, e)}
                                 >
                                   <img
@@ -454,6 +455,13 @@ export default function PhotoSessionsSidebar({
                                     loading="lazy"
                                     decoding="async"
                                   />
+                                  <button
+                                    className="thumbnail-menu-btn"
+                                    onClick={(e) => handlePhotoRightClick(set.id, thumbnail, e)}
+                                    title={filename}
+                                  >
+                                    •••
+                                  </button>
                                   {uploadStatus && (
                                     <div
                                       className="thumbnail-upload-indicator"

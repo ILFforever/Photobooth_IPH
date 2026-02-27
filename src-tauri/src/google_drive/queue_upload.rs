@@ -58,7 +58,10 @@ pub async fn upload_photo_to_drive(
             "jpg" | "jpeg" => "image/jpeg",
             "gif" => "image/gif",
             "webp" => "image/webp",
-            _ => return Err(format!("Unsupported image format: {}", ext_str)),
+            "mp4" => "video/mp4",
+            "webm" => "video/webm",
+            "mov" => "video/quicktime",
+            _ => return Err(format!("Unsupported file format: {}", ext_str)),
         }
     } else {
         return Err("No file extension".to_string());
@@ -193,7 +196,10 @@ pub async fn upload_photo_to_drive_internal(
             "jpg" | "jpeg" => "image/jpeg",
             "gif" => "image/gif",
             "webp" => "image/webp",
-            _ => return Err(format!("Unsupported image format: {}", ext_str)),
+            "mp4" => "video/mp4",
+            "webm" => "video/webm",
+            "mov" => "video/quicktime",
+            _ => return Err(format!("Unsupported file format: {}", ext_str)),
         }
     } else {
         return Err("No file extension".to_string());

@@ -2288,6 +2288,23 @@
   flex-shrink: 0;
 }
 
+/* QR Upload Toggle Row */
+.qr-upload-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.qr-upload-toggle-row .setting-label-full {
+  margin-bottom: 2px;
+}
+
+.qr-upload-toggle-row .setting-hint {
+  margin-bottom: 0;
+}
+
 /* QR Info Banner */
 .qr-info-banner {
   display: flex;
@@ -3608,14 +3625,15 @@
 /* Toggle Button */
 .toggle-btn {
   position: relative;
-  width: 40px;
-  height: 22px;
+  width: 44px;
+  height: 24px;
   background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
-  border-radius: 11px;
+  border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s ease;
   padding: 0;
+  flex-shrink: 0;
 }
 
 .toggle-btn:hover {
@@ -3623,24 +3641,40 @@
 }
 
 .toggle-btn.active {
-  background: var(--accent-blue);
-  border-color: var(--accent-blue);
+  background: #000000;
+  border-color: #333333;
 }
 
 .toggle-slider {
   position: absolute;
-  top: 2px;
-  left: 2px;
+  top: 3px;
+  left: 3px;
   width: 16px;
   height: 16px;
-  background: white;
-  border-radius: 50%;
+  background: var(--text-muted);
+  border-radius: 4px;
   transition: all 0.2s ease;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.toggle-slider::after {
+  content: '';
+  width: 2px;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.4);
+  border-radius: 1px;
+  transition: background 0.2s ease;
 }
 
 .toggle-btn.active .toggle-slider {
-  transform: translateX(18px);
+  transform: translateX(20px);
+  background: #ffffff;
+}
+
+.toggle-btn.active .toggle-slider::after {
+  background: #4ade80;
 }
 
 /* Print Action Section */
@@ -4293,3 +4327,483 @@
     transform: translateY(0);
   }
 }
+
+/* ===== GIF Tab Styles ===== */
+/* Segmented Control Slider */
+.gif-segmented-control {
+  position: relative;
+  display: flex;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 3px;
+  width: 100%;
+}
+
+.gif-segmented-control .slider-track {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  background: #000000;
+  border-radius: 6px;
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 1;
+}
+
+.gif-segmented-control[data-option-count="2"] .slider-track {
+  width: calc(50% - 3px);
+}
+
+.gif-segmented-control[data-option-count="3"] .slider-track {
+  width: calc(33.333% - 2px);
+}
+
+.gif-segmented-control[data-active-index="0"] .slider-track {
+  transform: translateX(3px);
+}
+
+.gif-segmented-control[data-active-index="1"] .slider-track {
+  transform: translateX(calc(100% + 3px));
+}
+
+.gif-segmented-control[data-active-index="2"][data-option-count="3"] .slider-track {
+  transform: translateX(calc(200% + 3px));
+}
+
+.gif-segmented-option {
+  flex: 1;
+  position: relative;
+  z-index: 2;
+  text-align: center;
+}
+
+.gif-segmented-option button {
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.gif-segmented-option button:hover:not(:disabled) {
+  color: var(--text-primary);
+}
+
+.gif-segmented-option button.active {
+  color: white;
+}
+
+.gif-segmented-option button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.gif-source-toggle,
+.gif-output-toggle {
+  width: 100%;
+}
+
+.gif-selection-label {
+  width: 100%;
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 0 2px;
+}
+
+.gif-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+  gap: 6px;
+  width: 100%;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.gif-photo-item {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 4px;
+  overflow: hidden;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: all 0.15s;
+}
+
+.gif-photo-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.gif-photo-item:hover {
+  border-color: var(--text-muted);
+}
+
+.gif-photo-item.selected {
+  border-color: var(--accent-color);
+}
+
+.gif-photo-check {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 18px;
+  height: 18px;
+  background: var(--accent-color);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+
+.gif-photo-skeleton {
+  position: relative;
+  width: 65.75px;
+  height: 64.75px;
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.gif-photo-placeholder {
+  width: 100%;
+  height: 100%;
+  background: var(--bg-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+}
+
+.gif-progress-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.gif-generate-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  background: #000000;
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.gif-generate-btn:hover:not(:disabled) {
+  background: #1a1a1a;
+}
+
+.gif-generate-btn:active:not(:disabled) {
+  background: #0a0a0a;
+}
+
+.gif-generate-btn:disabled {
+  background: #0a0a0a;
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.gif-generate-btn .spinning {
+  animation: spin 1s linear infinite;
+}
+
+/* Generated Media List */
+.gif-media-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gif-media-item {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  transition: border-color 0.2s ease;
+}
+
+.gif-media-item:hover {
+  border-color: #666;
+}
+
+.gif-media-preview-container {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: var(--bg-tertiary);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.gif-media-preview {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.gif-media-info {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.gif-media-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.gif-media-meta {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.gif-media-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.gif-media-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 70px;
+  height: 30px;
+  padding: 0 12px;
+  background: #333;
+  border: 1px solid #555;
+  border-radius: 6px;
+  color: #e4e4e4;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.gif-media-btn:hover {
+  background: #444;
+  border-color: #666;
+}
+
+.gif-media-btn:active {
+  background: #222;
+  transform: translateY(1px);
+}
+
+.gif-media-btn:hover svg,
+.gif-media-btn:hover svg *,
+.gif-media-btn:hover svg path,
+.gif-media-btn:hover svg circle,
+.gif-media-btn:hover svg line,
+.gif-media-btn:hover svg polyline,
+.gif-media-btn:hover svg rect {
+  stroke: white !important;
+}
+
+/* Video replay overlay */
+.gif-media-replay-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: white;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.2s ease;
+}
+
+.gif-media-replay-overlay:hover {
+  background: rgba(0, 0, 0, 0.7);
+}
+
+.gif-media-replay-overlay span {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* Progress bars for GIF and video generation */
+.gif-progress-bars {
+  display: flex;
+  gap: 8px;
+  margin-left: 8px;
+}
+
+.gif-progress-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+}
+
+.gif-progress-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent-blue);
+}
+
+.gif-progress-text {
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+/* GIF Settings Section */
+.gif-settings-section .toggle-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.gif-settings-section .toggle-info {
+  flex: 1;
+}
+
+.gif-settings-section .toggle-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.gif-settings-section .toggle-description {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.gif-settings-section .gif-segmented-control {
+  display: flex;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 3px;
+  gap: 2px;
+  margin-bottom: 12px;
+}
+
+.gif-settings-section .gif-segmented-option {
+  flex: 1;
+  text-align: center;
+}
+
+.gif-settings-section .gif-segmented-option button {
+  width: 100%;
+  padding: 7px 8px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.gif-settings-section .gif-segmented-option button:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.gif-settings-section .gif-segmented-option button.active {
+  color: white;
+  background: var(--accent-blue);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+/* Notice banners */
+.gif-settings-section .setting-notice {
+  font-size: 10px;
+  line-height: 1.5;
+  padding: 8px 10px;
+  border-radius: 6px;
+  margin-bottom: 4px;
+}
+
+.gif-settings-section .setting-notice.notice-warning {
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.gif-settings-section .setting-notice.notice-success {
+  color: #34d399;
+  background: rgba(52, 211, 153, 0.08);
+  border: 1px solid rgba(52, 211, 153, 0.2);
+}
+
+.gif-settings-section .setting-notice.notice-info {
+  color: var(--accent-blue);
+  background: rgba(0, 120, 212, 0.08);
+  border: 1px solid rgba(0, 120, 212, 0.2);
+}
+
+.gif-settings-section .setting-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-top: 8px;
+  margin-bottom: 4px;
+}
+
+/* Disabled overlay for settings when toggle is off */
+.gif-settings-section .gif-settings-body {
+  transition: opacity 0.2s ease;
+}
+
+.gif-settings-section .gif-settings-body.disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
