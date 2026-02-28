@@ -335,3 +335,9 @@ pub fn force_exit_app(app_handle: tauri::AppHandle) {
     }
     app_handle.exit(0);
 }
+
+/// Restart the application
+#[tauri::command]
+pub fn restart_app(app_handle: tauri::AppHandle) {
+    app_handle.restart();
+}

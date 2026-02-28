@@ -11,6 +11,7 @@ import { useTauriInit, useTauriEvents } from "./hooks/useTauriInit";
 import { useAuthHandlers } from "./hooks/useAuthHandlers";
 import { useDriveFolderPicker } from "./hooks/useDriveFolderPicker";
 import { useQRUpload } from "./hooks/useQRUpload";
+import { useUpdateCheck } from "./hooks/useUpdateCheck";
 import Header from "./components/Header/Header";
 import AboutModal from "./components/Modals/AboutModal";
 import FolderPickerModal from "./components/Modals/FolderPickerModal";
@@ -19,6 +20,7 @@ import CachedAccountModal from "./components/Modals/CachedAccountModal";
 import DeleteFolderModal from "./components/Modals/DeleteFolderModal";
 import RequirementsModal from "./components/Modals/RequirementsModal";
 import CleanupModal from "./components/Modals/CleanupModal";
+import UpdateModal from "./components/Modals/UpdateModal";
 import CollageWorkspace from "./components/Canvas/CollageWorkspace";
 import Sidebar from "./components/Sidebar/Sidebar";
 import { QRSidebar } from "./components/Sidebar/QR";
@@ -55,6 +57,17 @@ function App() {
     uploadProgress, setUploadProgress
   } = useQR();
 
+  // Update check hook - auto-checks for updates on startup
+  const {
+    versionStatus,
+    showUpdateModal,
+    setShowUpdateModal,
+    updateTarget,
+    setUpdateTarget,
+    checkForUpdates,
+    showUpdateFor,
+  } = useUpdateCheck({ autoCheck: true });
+
   // Gallery state hook (handles images, thumbnails, drag-drop)
   const gallery = useGalleryState();
 
@@ -82,6 +95,27 @@ function App() {
       checkFullscreen();
     });
     return () => { unlisten.then(fn => fn()); };
+  }, []);
+
+  // Disable right-click context menu globally
+  useEffect(() => {
+    const handleContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+    };
+    document.addEventListener('contextmenu', handleContextMenu);
+    return () => document.removeEventListener('contextmenu', handleContextMenu);
+  }, []);
+
+  // Disable Ctrl+R / F5 reload in production
+  useEffect(() => {
+    if (import.meta.env.DEV) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey && e.key === 'r') || e.key === 'F5') {
+        e.preventDefault();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   // F11 to toggle fullscreen (global, works in all modes)
@@ -186,6 +220,18 @@ function App() {
       return () => document.removeEventListener('click', handleClickOutside);
     }
   }, [showAccountMenu, showAppMenu]);
+
+  // F1 toggles the logo/app menu
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'F1') {
+        e.preventDefault();
+        setShowAppMenu(prev => !prev);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Wrapper handlers for gallery operations (close menu after)
   const handleAddSingleImage = async () => {
@@ -368,6 +414,21 @@ function App() {
           <AboutModal
             show={showAboutModal}
             onClose={() => setShowAboutModal(false)}
+            versionStatus={versionStatus}
+            onCheckUpdates={checkForUpdates}
+            onShowUpdate={showUpdateFor}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Update Modal */}
+      <AnimatePresence>
+        {showUpdateModal && versionStatus && (
+          <UpdateModal
+            show={showUpdateModal}
+            onClose={() => setShowUpdateModal(false)}
+            updateType={updateTarget}
+            versionStatus={versionStatus}
           />
         )}
       </AnimatePresence>
@@ -386,7 +447,7 @@ function App() {
       </AnimatePresence>
 
       {/* Cleanup Modal - shown when exiting */}
-      <CleanupModal show={showCleanup} />
+      <CleanupModal show={showCleanup} onCancel={() => setShowCleanup(false)} />
     </div>
   );
 }

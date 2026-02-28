@@ -1,7 +1,21 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { open } from '@tauri-apps/plugin-shell';
 import { invoke } from '@tauri-apps/api/core';
-import { useState } from 'react';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import { useState, useEffect, useRef } from 'react';
+import { useToast } from '../../contexts/ToastContext';
+import { RefreshCw, Loader2 } from 'lucide-react';
+import './RequirementsModal.css';
+
+interface RequirementCheck {
+  passed: boolean;
+  requirements: {
+    virtualbox_installed: boolean;
+    virtualbox_version: string | null;
+    bundled_installer_available: boolean;
+    recommendations: string[];
+  };
+}
 
 interface RequirementsModalProps {
   show: boolean;
@@ -19,6 +33,19 @@ export default function RequirementsModal({
   bundledInstallerAvailable = false,
 }: RequirementsModalProps) {
   const [isInstalling, setIsInstalling] = useState(false);
+  const [isWaitingForInstall, setIsWaitingForInstall] = useState(false);
+  const [installDetected, setInstallDetected] = useState(false);
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const { showToast } = useToast();
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+      }
+    };
+  }, []);
 
   if (!show) return null;
 
@@ -26,18 +53,62 @@ export default function RequirementsModal({
     open('https://www.virtualbox.org/wiki/Downloads');
   };
 
+  const checkVirtualBoxInstalled = async (): Promise<boolean> => {
+    try {
+      const result: RequirementCheck = await invoke('get_system_requirements');
+      return result.requirements.virtualbox_installed;
+    } catch {
+      return false;
+    }
+  };
+
+  const startPollingForVirtualBox = () => {
+    setIsWaitingForInstall(true);
+
+    // Poll every 2 seconds for VirtualBox installation
+    pollingRef.current = setInterval(async () => {
+      const isInstalled = await checkVirtualBoxInstalled();
+      if (isInstalled) {
+        // Stop polling
+        if (pollingRef.current) {
+          clearInterval(pollingRef.current);
+          pollingRef.current = null;
+        }
+        setIsWaitingForInstall(false);
+        setInstallDetected(true);
+
+        // Show success toast
+        showToast(
+          'VirtualBox installed successfully!',
+          'success',
+          0,
+          'Please restart the app to enable camera features.'
+        );
+      }
+    }, 2000);
+  };
+
   const installBundledVirtualBox = async () => {
     setIsInstalling(true);
     try {
+      // Exit fullscreen so the user can interact with the installer / UAC prompt
+      const appWindow = getCurrentWindow();
+      if (await appWindow.isFullscreen()) {
+        await appWindow.setFullscreen(false);
+      }
       await invoke('launch_virtualbox_installer');
-      // Close modal after launching installer
-      onClose();
+      // Start polling for VirtualBox installation
+      startPollingForVirtualBox();
     } catch (error) {
       console.error('Failed to launch VirtualBox installer:', error);
       // Fallback to download
       downloadVirtualBox();
     }
     setIsInstalling(false);
+  };
+
+  const handleRestart = async () => {
+    await invoke('restart_app');
   };
 
   return (
@@ -53,21 +124,38 @@ export default function RequirementsModal({
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
-          className="modal-content"
-          style={{ maxWidth: '500px' }}
+          className="modal-content requirements-modal"
           onClick={(e) => e.stopPropagation()}
         >
           <div style={{ textAlign: 'center' }}>
             <div style={{ fontSize: '48px', marginBottom: '0.75rem' }}>
-              {virtualboxInstalled ? '✅' : '⚠️'}
+              {installDetected ? '✅' : isWaitingForInstall ? <Loader2 size={48} className="spin" /> : virtualboxInstalled ? '✅' : '⚠️'}
             </div>
             <h2 style={{ marginBottom: '0.5rem' }}>
-              {virtualboxInstalled ? 'System Requirements Met' : 'System Requirements'}
+              {installDetected ? 'Installation Complete!' : isWaitingForInstall ? 'Installing VirtualBox...' : virtualboxInstalled ? 'System Requirements Met' : 'System Requirements'}
             </h2>
           </div>
 
           <div style={{ marginBottom: '1.5rem', lineHeight: '1.6', color: 'var(--text-secondary)' }}>
-            {virtualboxInstalled ? (
+            {installDetected ? (
+              <div style={{ background: 'rgba(46, 160, 67, 0.1)', padding: '1rem', borderRadius: '8px', textAlign: 'center', border: '1px solid rgba(46, 160, 67, 0.3)' }}>
+                <p style={{ marginBottom: '0.5rem', fontSize: '14px', color: 'var(--text-primary)' }}>
+                  <strong>VirtualBox has been installed!</strong>
+                </p>
+                <p style={{ fontSize: '13px', marginBottom: '1rem' }}>
+                  Please restart Photobooth_IPH to enable camera features.
+                </p>
+              </div>
+            ) : isWaitingForInstall ? (
+              <div style={{ background: 'var(--bg-primary)', padding: '1rem', borderRadius: '8px', textAlign: 'center' }}>
+                <p style={{ fontSize: '13px', marginBottom: '0.5rem' }}>
+                  <strong>Waiting for VirtualBox installation to complete...</strong>
+                </p>
+                <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  This window will update automatically when installation is done.
+                </p>
+              </div>
+            ) : virtualboxInstalled ? (
               <div style={{ background: 'var(--bg-primary)', padding: '1rem', borderRadius: '8px', textAlign: 'center' }}>
                 <p style={{ marginBottom: '0.5rem', fontSize: '14px', color: 'var(--text-primary)' }}>
                   <strong>VirtualBox {virtualboxVersion || ''} is installed</strong>
@@ -117,8 +205,32 @@ export default function RequirementsModal({
             )}
           </div>
 
-          <div style={{ display: 'flex', gap: '0.75rem' }}>
-            {!virtualboxInstalled && (
+          <div className="buttons-container">
+            {installDetected ? (
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={handleRestart}
+                className="btn-primary"
+              >
+                Restart Now
+              </motion.button>
+            ) : isWaitingForInstall ? (
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => {
+                  if (pollingRef.current) {
+                    clearInterval(pollingRef.current);
+                    pollingRef.current = null;
+                  }
+                  setIsWaitingForInstall(false);
+                }}
+                className="btn-secondary"
+              >
+                Cancel
+              </motion.button>
+            ) : !virtualboxInstalled && (
               <>
                 {bundledInstallerAvailable ? (
                   <motion.button
@@ -127,9 +239,8 @@ export default function RequirementsModal({
                     onClick={installBundledVirtualBox}
                     disabled={isInstalling}
                     className="btn-primary"
-                    style={{ flex: 1 }}
                   >
-                    {isInstalling ? 'Installing...' : 'Install Now'}
+                    {isInstalling ? 'Launching installer...' : 'Install Now'}
                   </motion.button>
                 ) : (
                   <motion.button
@@ -137,25 +248,25 @@ export default function RequirementsModal({
                     whileTap={{ scale: 0.98 }}
                     onClick={downloadVirtualBox}
                     className="btn-primary"
-                    style={{ flex: 1 }}
                   >
                     Download VirtualBox
                   </motion.button>
                 )}
               </>
             )}
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={onClose}
-              className="btn-secondary"
-              style={{ flex: virtualboxInstalled ? 1 : bundledInstallerAvailable && !virtualboxInstalled ? 0 : 1 }}
-            >
-              {virtualboxInstalled ? 'Continue' : 'Skip for Now'}
-            </motion.button>
+            {!installDetected && !isWaitingForInstall && (
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={onClose}
+                className={`btn-secondary${virtualboxInstalled || !bundledInstallerAvailable ? '' : ' btn-hidden'}`}
+              >
+                {virtualboxInstalled ? 'Continue' : 'Skip for Now'}
+              </motion.button>
+            )}
           </div>
 
-          {!virtualboxInstalled && !bundledInstallerAvailable && (
+          {!installDetected && !isWaitingForInstall && !virtualboxInstalled && !bundledInstallerAvailable && (
             <p style={{ marginTop: '1rem', fontSize: '11px', color: 'var(--text-secondary)', textAlign: 'center' }}>
               Download VirtualBox from the official website and install it manually.
             </p>

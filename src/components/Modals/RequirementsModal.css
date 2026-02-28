@@ -1,0 +1,84 @@
+.requirements-modal .modal-content {
+  max-width: 500px;
+}
+
+.requirements-modal .buttons-container {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.requirements-modal .btn-primary {
+  flex: 1;
+  background: var(--accent-blue);
+  color: white;
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: all 0.15s ease;
+}
+
+.requirements-modal .btn-primary:hover:not(:disabled) {
+  background: var(--accent-blue-hover);
+  box-shadow: var(--shadow-md);
+}
+
+.requirements-modal .btn-primary:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.requirements-modal .btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.requirements-modal .btn-secondary {
+  flex: 1;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.requirements-modal .btn-secondary:hover {
+  background: var(--bg-primary);
+  border-color: var(--text-muted);
+}
+
+.requirements-modal .btn-secondary:active {
+  transform: translateY(1px);
+}
+
+/* Single button layout */
+.requirements-modal .btn-primary.single-button {
+  flex: 1;
+}
+
+/* Hidden utility class */
+.requirements-modal .btn-hidden {
+  display: none;
+}
+
+/* Loading spinner animation */
+.requirements-modal .spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

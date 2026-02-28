@@ -76,10 +76,14 @@
       "Bash(timeout 30 bash -c 'until curl -s -m 2 http://localhost:58321/api/health > /dev/null 2>&1; do echo \"\"Waiting for VM daemon...\"\"; sleep 3; done; echo \"\"VM daemon is online!\"\"')",
       "Bash(taskkill /F /IM VBoxHeadless.exe)",
       "Bash(taskkill //F //IM VBoxHeadless.exe)",
-      "Bash(taskkill //F //IM photobooth-iph.exe)"
+      "Bash(taskkill //F //IM photobooth-iph.exe)",
+      "Bash(magick IPH.png -gravity center -background transparent -extent 239x239 IPH_square.png)",
+      "Bash(magick IPH_square.png -resize 1024x1024 IPH_1024.png)",
+      "Bash(npx sharp-cli \"src/assets/images/IPH.png\" --resize 239 239 --fit contain --background transparent --output \"src/assets/images/IPH_square.png\")"
     ],
     "additionalDirectories": [
-      "d:\\Photobooth_IPH"
+      "d:\\Photobooth_IPH",
+      "D:\\Photobooth_IPH"
     ]
   }
 }

@@ -198,7 +198,7 @@
         console.error('[Splash] Failed to set up listeners:', e);
       }
 
-      // Force-close safety net (15 seconds max wait)
+      // Force-close safety net (45 seconds max wait - must be longer than VM boot timeout of 30s)
       const forceCloseTimeout = setTimeout(async () => {
         if (!initComplete) {
           console.warn('[Splash] Timeout - forcing app load');
@@ -217,7 +217,7 @@
             }
           }, 500);
         }
-      }, 15000); // Reduced to 15 seconds
+      }, 45000); // Increased to 45 seconds (buffer over 30s VM boot timeout)
 
       statusEl.textContent = 'Initializing...';
 

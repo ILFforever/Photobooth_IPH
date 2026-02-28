@@ -3,7 +3,7 @@
 
 /// Embedded app version - update this when releasing a new app build
 /// Format: MAJOR.MINOR.PATCH (e.g., "1.0.13")
-pub const APP_VERSION: &str = "1.1.0";
+pub const APP_VERSION: &str = "1.2.5";
 
 /// Application display name
 pub const APP_NAME: &str = "Photobooth IPH";
@@ -13,6 +13,9 @@ pub const APP_SHORT_NAME: &str = "IPH Photobooth";
 
 /// Company name
 pub const COMPANY_NAME: &str = "Intania Production House";
+
+/// Update API base URL
+pub const UPDATE_API_BASE: &str = "https://photobooth-iph.fly.dev";
 
 use serde::{Deserialize, Serialize};
 

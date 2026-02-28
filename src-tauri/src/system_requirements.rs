@@ -42,6 +42,7 @@ use std::os::windows::process::CommandExt;
 
 // Import Manager trait for window management
 use tauri::Manager;
+use tauri::Emitter;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SystemRequirements {
@@ -57,22 +58,19 @@ pub struct RequirementCheck {
     pub requirements: SystemRequirements,
 }
 
-/// App version info from update server
-#[derive(Debug, Serialize, Deserialize)]
-pub struct AppVersionInfo {
+/// Latest version info from the new update API (same shape for both msi and vm)
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct LatestVersionInfo {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub release_type: String,
     pub version: String,
-    pub download_url: String,
-    pub release_date: String,
-    pub changelog: String,
-}
-
-/// VM version info from update server
-#[derive(Debug, Serialize, Deserialize)]
-pub struct VMVersionInfo {
-    pub version: String,
-    pub iso_url: String,
-    pub release_date: String,
-    pub changelog: String,
+    pub has_download: bool,
+    pub file_hash: Option<String>,
+    pub file_size: Option<u64>,
+    pub release_notes: Vec<String>,
+    #[serde(default)]
+    pub created_at: Option<serde_json::Value>, // Can be string or Firebase Timestamp object
 }
 
 /// Extended app version info with update status
@@ -81,6 +79,10 @@ pub struct AppVersionStatus {
     pub current_version: String,
     pub latest_version: Option<String>,
     pub update_available: bool,
+    pub release_notes: Vec<String>,
+    pub file_size: Option<u64>,
+    pub has_download: bool,
+    pub is_dev_build: bool, // true if local version > remote version
 }
 
 /// Extended VM version info with update status
@@ -91,6 +93,9 @@ pub struct VMVersionStatus {
     pub update_available: bool,
     pub iso_exists: bool,
     pub iso_modified_date: Option<String>,
+    pub release_notes: Vec<String>,
+    pub file_size: Option<u64>,
+    pub has_download: bool,
 }
 
 /// Combined version status for both app and VM
@@ -164,6 +169,10 @@ pub fn get_app_version_status() -> AppVersionStatus {
         current_version: get_embedded_app_version(),
         latest_version: None,
         update_available: false,
+        release_notes: Vec::new(),
+        file_size: None,
+        has_download: false,
+        is_dev_build: false,
     }
 }
 
@@ -239,6 +248,9 @@ pub fn get_vm_version_status() -> VMVersionStatus {
         update_available: false,
         iso_exists,
         iso_modified_date,
+        release_notes: Vec::new(),
+        file_size: None,
+        has_download: false,
     }
 }
 
@@ -246,18 +258,14 @@ pub fn get_vm_version_status() -> VMVersionStatus {
 fn get_possible_iso_paths() -> Vec<std::path::PathBuf> {
     let mut paths = Vec::new();
 
-    // First check AppData (where ISO is extracted on first run)
-    if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
-        paths.push(std::path::PathBuf::from(local_app_data)
-            .join("Photobooth_IPH")
-            .join("linux-build")
-            .join("photobooth.iso"));
-    }
-
-    // Then check next to exe (for dev mode or direct installations)
     if let Ok(exe_path) = std::env::current_exe() {
         let mut exe_dir = exe_path;
         exe_dir.pop();
+
+        // First check _up_/linux-build (MSI extraction point - Program Files)
+        paths.push(exe_dir.join("_up_").join("linux-build").join("photobooth.iso"));
+
+        // Then check linux-build next to exe (dev mode)
         paths.push(exe_dir.join("linux-build").join("photobooth.iso"));
     }
 
@@ -288,40 +296,20 @@ fn get_current_vm_version_for_path(iso_path: &std::path::Path) -> String {
     "unknown".to_string()
 }
 
-/// Fetch latest VM version from update server
-pub async fn check_vm_update_server(url: &str) -> Result<VMVersionInfo, String> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
-
-    let response = client.get(url)
-        .send()
-        .await
-        .map_err(|e| format!("Failed to fetch version info: {}", e))?;
-
-    if !response.status().is_success() {
-        return Err(format!("Server returned status: {}", response.status()));
-    }
-
-    let info: VMVersionInfo = response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse version info: {}", e))?;
-
-    Ok(info)
-}
-
 /// Download and install VM update
-pub async fn download_vm_update(url: &str) -> Result<String, String> {
+pub async fn download_vm_update(url: &str, version: Option<&str>, window: Option<tauri::Window>) -> Result<String, String> {
+    use sha2::{Sha256, Digest};
+    use futures::StreamExt;
+
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(300)) // 5 min timeout
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
-    // Get the destination path
+    // Get the destination path (_up_/linux-build for MSI installs)
     let mut iso_path = std::env::current_exe().unwrap_or_default();
     iso_path.pop(); // Remove exe name
+    iso_path.push("_up_");
     iso_path.push("linux-build");
 
     // Ensure directory exists
@@ -333,7 +321,7 @@ pub async fn download_vm_update(url: &str) -> Result<String, String> {
     // Download to temporary file first
     let temp_path = iso_path.join("photobooth.new.iso");
 
-    let mut response = client.get(url)
+    let response = client.get(url)
         .send()
         .await
         .map_err(|e| format!("Failed to download update: {}", e))?;
@@ -342,21 +330,46 @@ pub async fn download_vm_update(url: &str) -> Result<String, String> {
         return Err(format!("Download failed with status: {}", response.status()));
     }
 
+    let total_size = response.content_length().unwrap_or(0);
+    let mut downloaded: u64 = 0;
+    let mut hasher = Sha256::new();
     let mut file = std::fs::File::create(&temp_path)
         .map_err(|e| format!("Failed to create temp file: {}", e))?;
 
-    // Copy download to file
-    while let Some(chunk) = response.chunk().await
-        .map_err(|e| format!("Failed to read chunk: {}", e))?
-    {
-        // Bytes implements Deref<Target=[u8]>, so we can use it directly
+    let mut stream = response.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("Failed to read chunk: {}", e))?;
         std::io::Write::write_all(&mut file, &chunk)
             .map_err(|e| format!("Failed to write to file: {}", e))?;
+        hasher.update(&chunk);
+        downloaded += chunk.len() as u64;
+
+        // Emit progress if window is provided
+        if let Some(ref win) = window {
+            let _ = win.emit("update-download-progress", serde_json::json!({
+                "downloaded": downloaded,
+                "total": total_size,
+                "percent": if total_size > 0 { (downloaded as f64 / total_size as f64 * 100.0) as u32 } else { 0 }
+            }));
+        }
     }
+
+    // Drop file to flush before rename
+    drop(file);
 
     // Replace old ISO with new one
     std::fs::rename(&temp_path, &output_path)
         .map_err(|e| format!("Failed to replace VM ISO: {}", e))?;
+
+    // Update photobooth.version.txt if version was provided
+    if let Some(ver) = version {
+        let version_path = iso_path.join("photobooth.version.txt");
+        if std::fs::write(&version_path, ver).is_err() {
+            log_file!("[UPDATE] Warning: Failed to write version.txt, continuing anyway");
+        } else {
+            log_file!("[UPDATE] Updated photobooth.version.txt to: {}", ver);
+        }
+    }
 
     Ok(output_path.display().to_string())
 }
@@ -400,17 +413,29 @@ pub fn check_virtualbox_installed() -> (bool, Option<String>) {
 }
 
 /// Check for bundled VirtualBox installer
+/// Checks next to exe (where Tauri extracts resources) and in installers/ subfolder (dev mode)
 pub fn check_bundled_installer() -> bool {
-    // Check in the installers folder relative to the executable
-    let mut exe_path = std::env::current_exe().unwrap_or_default();
-    exe_path.pop(); // Remove exe name
-    exe_path.push("installers");
+    let exe_dir = if let Ok(mut exe_path) = std::env::current_exe() {
+        exe_path.pop();
+        exe_path
+    } else {
+        return false;
+    };
 
-    if let Ok(entries) = std::fs::read_dir(&exe_path) {
-        for entry in entries.flatten() {
-            if let Ok(name) = entry.file_name().into_string() {
-                if name.contains("VirtualBox") && name.ends_with(".exe") {
-                    return true;
+    // Locations to check in order of priority
+    let check_paths = [
+        exe_dir.join("_up_").join("installers"),   // MSI extraction point (_up_/installers/)
+        exe_dir.join("installers"),                // installers/ subfolder (dev mode)
+        exe_dir.clone(),                           // Next to exe (direct bundle)
+    ];
+
+    for check_path in check_paths {
+        if let Ok(entries) = std::fs::read_dir(&check_path) {
+            for entry in entries.flatten() {
+                if let Ok(name) = entry.file_name().into_string() {
+                    if name.contains("VirtualBox") && name.ends_with(".exe") {
+                        return true;
+                    }
                 }
             }
         }
@@ -419,18 +444,29 @@ pub fn check_bundled_installer() -> bool {
 }
 
 /// Get path to bundled VirtualBox installer
+/// Checks next to exe (where Tauri extracts resources) and in installers/ subfolder (dev mode)
 pub fn get_bundled_installer_path() -> Option<PathBuf> {
-    let mut exe_path = std::env::current_exe().unwrap_or_default();
-    exe_path.pop();
-    exe_path.push("installers");
+    let exe_dir = if let Ok(mut exe_path) = std::env::current_exe() {
+        exe_path.pop();
+        exe_path
+    } else {
+        return None;
+    };
 
-    if let Ok(entries) = std::fs::read_dir(&exe_path) {
-        for entry in entries.flatten() {
-            if let Ok(name) = entry.file_name().into_string() {
-                if name.contains("VirtualBox") && name.ends_with(".exe") {
-                    let mut path = exe_path.clone();
-                    path.push(&name);
-                    return Some(path);
+    // Locations to check in order of priority
+    let check_paths = [
+        exe_dir.join("_up_").join("installers"),   // MSI extraction point (_up_/installers/)
+        exe_dir.join("installers"),                // installers/ subfolder (dev mode)
+        exe_dir.clone(),                           // Next to exe (direct bundle)
+    ];
+
+    for check_path in check_paths {
+        if let Ok(entries) = std::fs::read_dir(&check_path) {
+            for entry in entries.flatten() {
+                if let Ok(name) = entry.file_name().into_string() {
+                    if name.contains("VirtualBox") && name.ends_with(".exe") {
+                        return Some(check_path.join(&name));
+                    }
                 }
             }
         }
@@ -476,12 +512,13 @@ pub fn check_system_requirements() -> RequirementCheck {
 }
 
 /// Launch the bundled VirtualBox installer
+/// Uses ShellExecute (via open crate) so Windows can handle UAC elevation
 #[tauri::command]
 pub fn launch_virtualbox_installer() -> Result<(), String> {
     if let Some(installer_path) = get_bundled_installer_path() {
-        std::process::Command::new(&installer_path)
-            .args(["--silent", "--msiparams", "REBOOT=ReallySuppress"])
-            .spawn()
+        // Use open::that which calls ShellExecuteW - this properly handles UAC elevation
+        // unlike std::process::Command which uses CreateProcess and can't elevate
+        open::that(&installer_path)
             .map_err(|e| format!("Failed to launch installer: {}", e))?;
         Ok(())
     } else {
@@ -530,49 +567,158 @@ pub fn get_version_status() -> VersionStatus {
 
 /// Check for app updates from server
 #[tauri::command]
-pub async fn check_app_updates(url: String) -> Result<AppVersionStatus, String> {
+pub async fn check_app_updates() -> Result<AppVersionStatus, String> {
+    let url = format!("{}/api/versions/latest?type=msi", crate::version::UPDATE_API_BASE);
+    log_file!("[UPDATE] Checking for app updates at: {}", url);
+
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .build()
-        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+        .map_err(|e| {
+            log_file!("[UPDATE] Failed to create HTTP client: {}", e);
+            format!("Failed to create HTTP client: {}", e)
+        })?;
 
     let response = client.get(&url)
         .send()
         .await
-        .map_err(|e| format!("Failed to fetch app version info: {}", e))?;
+        .map_err(|e| {
+            log_file!("[UPDATE] Failed to fetch app version info: {}", e);
+            format!("Failed to fetch app version info: {}", e)
+        })?;
+
+    // Handle 404 - no app releases found
+    if response.status() == 404 {
+        log_file!("[UPDATE] No app releases found (404)");
+        return Ok(AppVersionStatus {
+            current_version: get_embedded_app_version(),
+            latest_version: None,
+            update_available: false,
+            release_notes: vec![],
+            file_size: None,
+            has_download: false,
+            is_dev_build: false,
+        });
+    }
 
     if !response.status().is_success() {
+        log_file!("[UPDATE] Server returned status: {}", response.status());
         return Err(format!("Server returned status: {}", response.status()));
     }
 
-    let info: AppVersionInfo = response
+    let info: LatestVersionInfo = response
         .json()
         .await
-        .map_err(|e| format!("Failed to parse app version info: {}", e))?;
+        .map_err(|e| {
+            log_file!("[UPDATE] Failed to parse app version info: {}", e);
+            format!("Failed to parse app version info: {}", e)
+        })?;
 
     let current_version = get_embedded_app_version();
-    let update_available = match compare_versions(&info.version, &current_version) {
-        Ok(is_newer) => is_newer,
+    log_file!("[UPDATE] Current app version: {}, Latest version: {}", current_version, info.version);
+
+    // Check if local version is newer (dev build)
+    // compare_versions(a, b) returns true if b > a
+    let is_dev_build = match compare_versions(&info.version, &current_version) {
+        Ok(local_is_newer) => {
+            if local_is_newer {
+                log_file!("[UPDATE] Local version is newer, assuming dev build");
+            }
+            local_is_newer
+        },
         Err(_) => false,
+    };
+
+    let update_available = if is_dev_build {
+        false
+    } else {
+        match compare_versions(&current_version, &info.version) {
+            Ok(is_newer) => {
+                log_file!("[UPDATE] Update available: {}", is_newer);
+                is_newer
+            },
+            Err(e) => {
+                log_file!("[UPDATE] Version comparison error: {}", e);
+                false
+            },
+        }
     };
 
     Ok(AppVersionStatus {
         current_version,
         latest_version: Some(info.version.clone()),
         update_available,
+        release_notes: info.release_notes,
+        file_size: info.file_size,
+        has_download: info.has_download,
+        is_dev_build,
     })
 }
 
 /// Check for VM updates from server
 #[tauri::command]
-pub async fn check_vm_updates(url: String) -> Result<VMVersionStatus, String> {
-    let info = check_vm_update_server(&url).await?;
+pub async fn check_vm_updates() -> Result<VMVersionStatus, String> {
+    let url = format!("{}/api/versions/latest?type=vm", crate::version::UPDATE_API_BASE);
+    log_file!("[UPDATE] Checking for VM updates at: {}", url);
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| {
+            log_file!("[UPDATE] Failed to create HTTP client: {}", e);
+            format!("Failed to create HTTP client: {}", e)
+        })?;
+
+    let response = client.get(&url)
+        .send()
+        .await
+        .map_err(|e| {
+            log_file!("[UPDATE] Failed to fetch VM version info: {}", e);
+            format!("Failed to fetch VM version info: {}", e)
+        })?;
+
+    // Handle 404 - no VM releases found
+    if response.status() == 404 {
+        log_file!("[UPDATE] No VM releases found (404)");
+        let current_status = get_vm_version_status();
+        return Ok(VMVersionStatus {
+            current_version: current_status.current_version,
+            latest_version: None,
+            update_available: false,
+            iso_exists: current_status.iso_exists,
+            iso_modified_date: current_status.iso_modified_date,
+            release_notes: vec![],
+            file_size: None,
+            has_download: false,
+        });
+    }
+
+    if !response.status().is_success() {
+        log_file!("[UPDATE] Server returned status: {}", response.status());
+        return Err(format!("Server returned status: {}", response.status()));
+    }
+
+    let info: LatestVersionInfo = response
+        .json()
+        .await
+        .map_err(|e| {
+            log_file!("[UPDATE] Failed to parse VM version info: {}", e);
+            format!("Failed to parse VM version info: {}", e)
+        })?;
+
     let current_status = get_vm_version_status();
+    log_file!("[UPDATE] Current VM version: {}, Latest version: {}", current_status.current_version, info.version);
 
     // Compare versions to check if update is available
-    let update_available = match compare_versions(&info.version, &current_status.current_version) {
-        Ok(is_newer) => is_newer,
-        Err(_) => false,
+    let update_available = match compare_versions(&current_status.current_version, &info.version) {
+        Ok(is_newer) => {
+            log_file!("[UPDATE] VM update available: {}", is_newer);
+            is_newer
+        },
+        Err(e) => {
+            log_file!("[UPDATE] VM version comparison error: {}", e);
+            false
+        },
     };
 
     Ok(VMVersionStatus {
@@ -581,15 +727,18 @@ pub async fn check_vm_updates(url: String) -> Result<VMVersionStatus, String> {
         update_available,
         iso_exists: current_status.iso_exists,
         iso_modified_date: current_status.iso_modified_date,
+        release_notes: info.release_notes,
+        file_size: info.file_size,
+        has_download: info.has_download,
     })
 }
 
 /// Check for both app and VM updates from servers
 #[tauri::command]
-pub async fn check_all_updates(app_url: String, vm_url: String) -> Result<VersionStatus, String> {
+pub async fn check_all_updates() -> Result<VersionStatus, String> {
     let (app_result, vm_result) = tokio::join!(
-        check_app_updates(app_url),
-        check_vm_updates(vm_url)
+        check_app_updates(),
+        check_vm_updates()
     );
 
     Ok(VersionStatus {
@@ -598,10 +747,139 @@ pub async fn check_all_updates(app_url: String, vm_url: String) -> Result<Versio
     })
 }
 
+/// Download and install MSI update
+#[tauri::command]
+pub async fn download_msi_update(window: tauri::Window) -> Result<String, String> {
+    use sha2::{Sha256, Digest};
+    use tauri::Emitter;
+    use futures::StreamExt;
+
+    let download_url = format!("{}/api/releases/download?type=msi", crate::version::UPDATE_API_BASE);
+    log_file!("[UPDATE] Starting MSI download from: {}", download_url);
+
+    // First, get the version info for hash verification
+    let check_url = format!("{}/api/versions/latest?type=msi", crate::version::UPDATE_API_BASE);
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(600))
+        .build()
+        .map_err(|e| {
+            log_file!("[UPDATE] Failed to create HTTP client: {}", e);
+            format!("HTTP client error: {}", e)
+        })?;
+
+    let info: LatestVersionInfo = client.get(&check_url).send().await
+        .map_err(|e| {
+            log_file!("[UPDATE] Failed to get version info: {}", e);
+            format!("Failed to get version info: {}", e)
+        })?
+        .json().await
+        .map_err(|e| {
+            log_file!("[UPDATE] Failed to parse version info: {}", e);
+            format!("Failed to parse version info: {}", e)
+        })?;
+
+    // Download to temp directory
+    let temp_dir = std::env::temp_dir();
+    let msi_path = temp_dir.join(format!("Photobooth_IPH_{}.msi", info.version));
+    log_file!("[UPDATE] Downloading MSI to: {}", msi_path.display());
+    log_file!("[UPDATE] Expected file size: {} bytes", info.file_size.unwrap_or(0));
+
+    let response = client.get(&download_url).send().await
+        .map_err(|e| {
+            log_file!("[UPDATE] Download failed: {}", e);
+            format!("Download failed: {}", e)
+        })?;
+
+    if !response.status().is_success() {
+        log_file!("[UPDATE] Download failed with status: {}", response.status());
+        return Err(format!("Download failed with status: {}", response.status()));
+    }
+
+    let total_size = response.content_length().or(info.file_size).unwrap_or(0);
+    let mut downloaded: u64 = 0;
+    let mut hasher = Sha256::new();
+    let mut file = std::fs::File::create(&msi_path)
+        .map_err(|e| {
+            log_file!("[UPDATE] Failed to create file: {}", e);
+            format!("Failed to create file: {}", e)
+        })?;
+
+    log_file!("[UPDATE] Starting download stream...");
+    let mut stream = response.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| {
+            log_file!("[UPDATE] Download chunk error: {}", e);
+            format!("Download error: {}", e)
+        })?;
+        std::io::Write::write_all(&mut file, &chunk)
+            .map_err(|e| format!("Write error: {}", e))?;
+        hasher.update(&chunk);
+        downloaded += chunk.len() as u64;
+
+        // Emit progress every chunk
+        let _ = window.emit("update-download-progress", serde_json::json!({
+            "downloaded": downloaded,
+            "total": total_size,
+            "percent": if total_size > 0 { (downloaded as f64 / total_size as f64 * 100.0) as u32 } else { 0 }
+        }));
+
+        // Log progress at 25%, 50%, 75%, 100%
+        if total_size > 0 {
+            let percent = (downloaded as f64 / total_size as f64 * 100.0) as u32;
+            if percent % 25 == 0 || downloaded == total_size {
+                log_file!("[UPDATE] Download progress: {}% ({} / {} bytes)", percent, downloaded, total_size);
+            }
+        }
+    }
+
+    log_file!("[UPDATE] Download complete, verifying hash...");
+    // Verify hash
+    if let Some(expected_hash) = &info.file_hash {
+        let result = format!("sha256:{:x}", hasher.finalize());
+        log_file!("[UPDATE] Expected hash: {}", expected_hash);
+        log_file!("[UPDATE] Computed hash: {}", result);
+        if expected_hash.starts_with("sha256:") {
+            let expected = expected_hash.strip_prefix("sha256:").unwrap_or(expected_hash);
+            let result_short = result.strip_prefix("sha256:").unwrap_or(&result);
+            if expected != result_short {
+                log_file!("[UPDATE] Hash mismatch! Removing downloaded file.");
+                let _ = std::fs::remove_file(&msi_path);
+                return Err(format!("Hash mismatch: expected {}, got {}", expected_hash, result));
+            }
+        }
+        log_file!("[UPDATE] Hash verification successful!");
+    } else {
+        log_file!("[UPDATE] No hash provided, skipping verification.");
+    }
+
+    log_file!("[UPDATE] MSI download complete: {}", msi_path.display());
+    Ok(msi_path.display().to_string())
+}
+
+/// Launch the downloaded MSI installer and exit the app
+#[tauri::command]
+pub async fn launch_msi_installer(msi_path: String, app: tauri::AppHandle) -> Result<(), String> {
+    log_file!("[UPDATE] Launching MSI installer: {}", msi_path);
+
+    // Launch msiexec with the downloaded MSI
+    std::process::Command::new("msiexec")
+        .args(&["/i", &msi_path])
+        .spawn()
+        .map_err(|e| {
+            log_file!("[UPDATE] Failed to launch installer: {}", e);
+            format!("Failed to launch installer: {}", e)
+        })?;
+
+    log_file!("[UPDATE] Installer launched, exiting app...");
+    // Exit the app so the installer can replace files
+    app.exit(0);
+    Ok(())
+}
+
 /// Download and install VM update
 #[tauri::command]
-pub async fn install_vm_update(url: String) -> Result<String, String> {
-    download_vm_update(&url).await
+pub async fn install_vm_update(url: String, version: Option<String>, window: tauri::Window) -> Result<String, String> {
+    download_vm_update(&url, version.as_deref(), Some(window)).await
 }
 
 /// Extract ISO from MSI installation to AppData on first run
@@ -743,6 +1021,101 @@ fn run_command_silent(program: &str, args: &[&str]) -> Result<std::process::Outp
     cmd.output()
 }
 
+/// Create the PhotoboothLinux VM from the bundled ISO
+/// Called automatically on first boot when VirtualBox is installed but no VM exists
+fn create_vm_from_iso(vbox_manage: &str, vm_name: &str, window: &tauri::Window) -> Result<(), String> {
+    use tauri::Emitter;
+
+    // Find the ISO path (already extracted to AppData by Step 1)
+    let iso_path = if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+        let path = PathBuf::from(&local_app_data)
+            .join("Photobooth_IPH")
+            .join("linux-build")
+            .join("photobooth.iso");
+        if path.exists() {
+            path
+        } else {
+            return Err("ISO not found in AppData. Cannot create VM.".to_string());
+        }
+    } else {
+        return Err("Failed to get LOCALAPPDATA".to_string());
+    };
+
+    // Console log path
+    let log_dir = PathBuf::from(std::env::var("LOCALAPPDATA").unwrap())
+        .join("Photobooth_IPH")
+        .join("logs");
+    let _ = std::fs::create_dir_all(&log_dir);
+    let log_path = log_dir.join("vbox-console.log");
+
+    let iso_str = iso_path.to_string_lossy().to_string();
+    let log_str = log_path.to_string_lossy().to_string();
+
+    log_file!(" Creating VM '{}' from ISO: {}", vm_name, iso_str);
+
+    let _ = window.emit("init-progress", serde_json::json!({
+        "step": 3,
+        "total_steps": 6,
+        "message": "Creating virtual machine..."
+    }));
+
+    // Helper to run VBoxManage and check for errors
+    let run_vbox = |args: &[&str]| -> Result<(), String> {
+        let output = run_command_silent(vbox_manage, args)
+            .map_err(|e| format!("Failed to run VBoxManage: {}", e))?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            return Err(format!("VBoxManage {:?} failed: {}", args.first().unwrap_or(&""), stderr));
+        }
+        Ok(())
+    };
+
+    // 1. Create and register the VM
+    run_vbox(&["createvm", "--name", vm_name, "--ostype", "Linux_64", "--register"])?;
+    log_file!(" VM created and registered");
+
+    // 2. Configure VM settings
+    let _ = window.emit("init-progress", serde_json::json!({
+        "step": 3,
+        "total_steps": 6,
+        "message": "Configuring virtual machine..."
+    }));
+
+    run_vbox(&["modifyvm", vm_name, "--memory", "1024", "--cpus", "1",
+        "--graphicscontroller", "none", "--audio-enabled", "off"])?;
+
+    // Network: NAT with port forwarding
+    run_vbox(&["modifyvm", vm_name, "--nic1", "nat"])?;
+    run_vbox(&["modifyvm", vm_name, "--natpf1", "photoboothapi,tcp,,58321,,58321"])?;
+
+    // Storage: SATA controller with ISO attached
+    run_vbox(&["storagectl", vm_name, "--name", "SATA", "--add", "sata",
+        "--controller", "IntelAhci", "--portcount", "2"])?;
+    run_vbox(&["storageattach", vm_name, "--storagectl", "SATA",
+        "--port", "0", "--device", "0", "--type", "dvddrive", "--medium", &iso_str])?;
+
+    // Boot order: DVD only
+    run_vbox(&["modifyvm", vm_name, "--boot1", "dvd", "--boot2", "none",
+        "--boot3", "none", "--boot4", "none"])?;
+
+    // UART console output for logging
+    run_vbox(&["modifyvm", vm_name, "--uart1", "0x3F8", "4"])?;
+    run_vbox(&["modifyvm", vm_name, "--uartmode1", "file", &log_str])?;
+
+    // USB EHCI controller for camera passthrough
+    run_vbox(&["modifyvm", vm_name, "--usb-ehci", "on"])?;
+
+    log_file!(" VM configuration complete");
+
+    let _ = window.emit("init-progress", serde_json::json!({
+        "step": 3,
+        "total_steps": 6,
+        "message": "Virtual machine created successfully"
+    }));
+
+    Ok(())
+}
+
 /// Initialize the app - runs ISO extraction, USB filter setup, and VM boot with progress updates
 /// Includes a timeout and skip option if VM fails to boot
 #[tauri::command]
@@ -756,7 +1129,7 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
     const VBOX_MANAGE: &str = r"C:\Program Files\Oracle\VirtualBox\VBoxManage.exe";
     const DAEMON_URL: &str = "http://localhost:58321/api/health";
     const HEALTH_TIMEOUT_MS: u64 = 2000;
-    const MAX_BOOT_WAIT_SECS: u64 = 30; // Reduced from 90s to 30s for faster startup
+    const MAX_BOOT_WAIT_SECS: u64 = 30;
 
     // Step 1: ISO extraction
     log_file!(" Step 1: ISO extraction");
@@ -790,68 +1163,27 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
         }
     }
 
-    // Step 2: USB filters setup (with timeout to prevent hanging)
-    log_file!(" Step 2: USB filters");
+    // Step 2: Check VirtualBox installation
+    log_file!(" Step 2: VirtualBox check");
     let _ = window.emit("init-progress", serde_json::json!({
         "step": 2,
-        "total_steps": 5,
-        "message": "Setting up USB camera filters..."
-    }));
-
-    // Run USB filter setup with a 5-second timeout
-    let usb_result = tokio::time::timeout(
-        Duration::from_secs(5),
-        ensure_usb_filters()
-    ).await;
-
-    match usb_result {
-        Ok(Ok(count)) => {
-            log_file!(" USB filters OK: {}", count);
-            let _ = window.emit("init-progress", serde_json::json!({
-                "step": 2,
-                "total_steps": 5,
-                "message": format!("Configured {} camera USB filters", count)
-            }));
-        }
-        Ok(Err(e)) => {
-            log_file!(" USB filters error: {}", e);
-            let _ = window.emit("init-progress", serde_json::json!({
-                "step": 2,
-                "total_steps": 5,
-                "message": "USB filters skipped".to_string()
-            }));
-        }
-        Err(_) => {
-            log_file!(" USB filters timeout - skipping");
-            let _ = window.emit("init-progress", serde_json::json!({
-                "step": 2,
-                "total_steps": 5,
-                "message": "USB filters timeout - skipped".to_string()
-            }));
-        }
-    }
-
-    // Step 3: Check VirtualBox installation
-    log_file!(" Step 3: VirtualBox check");
-    let _ = window.emit("init-progress", serde_json::json!({
-        "step": 3,
-        "total_steps": 5,
+        "total_steps": 6,
         "message": "Checking VirtualBox installation..."
     }));
 
     if !std::path::Path::new(VBOX_MANAGE).exists() {
         log_file!(" VirtualBox not found - skipping VM");
         let _ = window.emit("init-progress", serde_json::json!({
-            "step": 3,
-            "total_steps": 5,
+            "step": 2,
+            "total_steps": 6,
             "message": "VirtualBox not found - camera features unavailable"
         }));
-        // Skip VM boot steps, go straight to complete
         let _ = window.emit("init-complete", ());
         return Ok("Initialization complete (VirtualBox not installed - camera features disabled)".to_string());
     }
 
-    // Check if VM exists (with timeout protection)
+    // Step 3: Check if VM exists, auto-create if missing
+    log_file!(" Step 3: VM check");
     log_file!(" Checking if VM exists...");
     let vm_check_result = tokio::time::timeout(
         Duration::from_secs(3),
@@ -871,26 +1203,75 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
     };
 
     if !vm_exists {
-        log_file!(" VM not found - skipping VM boot");
+        log_file!(" VM not found - attempting auto-creation from ISO");
+        match create_vm_from_iso(VBOX_MANAGE, VM_NAME, &window) {
+            Ok(()) => {
+                log_file!(" VM auto-created successfully");
+            }
+            Err(e) => {
+                log_file!(" VM auto-creation failed: {}", e);
+                let _ = window.emit("init-progress", serde_json::json!({
+                    "step": 3,
+                    "total_steps": 6,
+                    "message": format!("Failed to create VM: {}", e)
+                }));
+                let _ = window.emit("init-complete", ());
+                return Ok(format!("Initialization complete (VM creation failed: {})", e));
+            }
+        }
+    } else {
         let _ = window.emit("init-progress", serde_json::json!({
             "step": 3,
-            "total_steps": 5,
-            "message": format!("VM '{}' not found - camera features unavailable", VM_NAME)
+            "total_steps": 6,
+            "message": "VirtualBox and VM found"
         }));
-        let _ = window.emit("init-complete", ());
-        return Ok("Initialization complete (VM not found - run VM setup first)".to_string());
     }
 
-    let _ = window.emit("init-progress", serde_json::json!({
-        "step": 3,
-        "total_steps": 5,
-        "message": "VirtualBox and VM found"
-    }));
-
-    // Step 4: Check VM state and boot/reboot
+    // Step 4: USB filters setup (with timeout to prevent hanging)
+    // Must run after VM exists since filters are attached to the VM
+    log_file!(" Step 4: USB filters");
     let _ = window.emit("init-progress", serde_json::json!({
         "step": 4,
-        "total_steps": 5,
+        "total_steps": 6,
+        "message": "Setting up USB camera filters..."
+    }));
+
+    let usb_result = tokio::time::timeout(
+        Duration::from_secs(5),
+        ensure_usb_filters()
+    ).await;
+
+    match usb_result {
+        Ok(Ok(count)) => {
+            log_file!(" USB filters OK: {}", count);
+            let _ = window.emit("init-progress", serde_json::json!({
+                "step": 4,
+                "total_steps": 6,
+                "message": format!("Configured {} camera USB filters", count)
+            }));
+        }
+        Ok(Err(e)) => {
+            log_file!(" USB filters error: {}", e);
+            let _ = window.emit("init-progress", serde_json::json!({
+                "step": 4,
+                "total_steps": 6,
+                "message": "USB filters skipped".to_string()
+            }));
+        }
+        Err(_) => {
+            log_file!(" USB filters timeout - skipping");
+            let _ = window.emit("init-progress", serde_json::json!({
+                "step": 4,
+                "total_steps": 6,
+                "message": "USB filters timeout - skipped".to_string()
+            }));
+        }
+    }
+
+    // Step 5: Check VM state and boot/reboot
+    let _ = window.emit("init-progress", serde_json::json!({
+        "step": 5,
+        "total_steps": 6,
         "message": "Checking VM state..."
     }));
 
@@ -920,8 +1301,8 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
     if is_running {
         // VM is already running - power it off first
         let _ = window.emit("init-progress", serde_json::json!({
-            "step": 4,
-            "total_steps": 5,
+            "step": 5,
+            "total_steps": 6,
             "message": "VM is running - shutting down..."
         }));
 
@@ -929,29 +1310,29 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
         log_file!(" Powered off running VM");
     } else if is_aborted {
         let _ = window.emit("init-progress", serde_json::json!({
-            "step": 4,
-            "total_steps": 5,
+            "step": 5,
+            "total_steps": 6,
             "message": "VM was aborted - cleaning up..."
         }));
         log_file!(" VM is in aborted state");
     } else if is_powered_off {
         let _ = window.emit("init-progress", serde_json::json!({
-            "step": 4,
-            "total_steps": 5,
+            "step": 5,
+            "total_steps": 6,
             "message": "VM is powered off - starting..."
         }));
     } else {
         let _ = window.emit("init-progress", serde_json::json!({
-            "step": 4,
-            "total_steps": 5,
+            "step": 5,
+            "total_steps": 6,
             "message": format!("VM state: {} - starting...", vm_state)
         }));
     }
 
     // Wait for VM session lock to be released before starting
     let _ = window.emit("init-progress", serde_json::json!({
-        "step": 4,
-        "total_steps": 5,
+        "step": 5,
+        "total_steps": 6,
         "message": "Releasing VM lock..."
     }));
 
@@ -964,16 +1345,16 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
         Ok(false) => {
             log_file!(" VM unlock timeout - will try to start anyway");
             let _ = window.emit("init-progress", serde_json::json!({
-                "step": 4,
-                "total_steps": 5,
+                "step": 5,
+                "total_steps": 6,
                 "message": "VM lock timeout - trying anyway..."
             }));
         }
         Err(e) => {
             log_file!(" VM unlock error: {} - continuing anyway", e);
             let _ = window.emit("init-progress", serde_json::json!({
-                "step": 4,
-                "total_steps": 5,
+                "step": 5,
+                "total_steps": 6,
                 "message": format!("VM check: {} - continuing", e)
             }));
         }
@@ -990,8 +1371,8 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
 
     // Start VM headless with retry logic for lock errors
     let _ = window.emit("init-progress", serde_json::json!({
-        "step": 4,
-        "total_steps": 5,
+        "step": 5,
+        "total_steps": 6,
         "message": "Booting VirtualBox VM..."
     }));
 
@@ -1009,8 +1390,8 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
                 log_file!(" VM start command succeeded");
                 vm_started = true;
                 let _ = window.emit("init-progress", serde_json::json!({
-                    "step": 4,
-                    "total_steps": 5,
+                    "step": 5,
+                    "total_steps": 6,
                     "message": if is_running { "VM rebooted" } else { "VM started" }
                 }));
                 break;
@@ -1043,18 +1424,18 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
     if !vm_started {
         log_file!(" Failed to start VM after retries: {}", start_error);
         let _ = window.emit("init-progress", serde_json::json!({
-            "step": 4,
-            "total_steps": 5,
+            "step": 5,
+            "total_steps": 6,
             "message": format!("VM start failed - camera unavailable")
         }));
         let _ = window.emit("init-complete", ());
         return Ok("Initialization complete (VM start failed - camera features disabled)".to_string());
     }
 
-    // Step 5: Wait for VM daemon to come online
+    // Step 6: Wait for VM daemon to come online
     let _ = window.emit("init-progress", serde_json::json!({
-        "step": 5,
-        "total_steps": 5,
+        "step": 6,
+        "total_steps": 6,
         "message": "Connecting to VM daemon..."
     }));
 
@@ -1076,8 +1457,8 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
         // Update progress every 3 seconds
         if elapsed % 3 == 0 || remaining < 5 {
             let _ = window.emit("init-progress", serde_json::json!({
-                "step": 5,
-                "total_steps": 5,
+                "step": 6,
+                "total_steps": 6,
                 "message": format!("Waiting for VM daemon... {}s remaining", remaining)
             }));
         }
@@ -1101,16 +1482,16 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
 
     if vm_online {
         let _ = window.emit("init-progress", serde_json::json!({
-            "step": 5,
-            "total_steps": 5,
+            "step": 6,
+            "total_steps": 6,
             "message": "VM online - camera features ready"
         }));
     } else {
         let elapsed = start_time.elapsed().as_secs();
         log_file!(" Daemon timeout after {}s. Last error: {}", elapsed, last_error);
         let _ = window.emit("init-progress", serde_json::json!({
-            "step": 5,
-            "total_steps": 5,
+            "step": 6,
+            "total_steps": 6,
             "message": format!("VM timeout ({}s) - camera features unavailable", elapsed)
         }));
     }

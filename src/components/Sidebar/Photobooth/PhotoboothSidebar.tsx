@@ -308,17 +308,21 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
                       toggleSection={toggleSection}
                     />
 
-                    <ImageQuality
-                      isExpanded={imageQualityExpanded}
-                      onToggle={() => setImageQualityExpanded(!imageQualityExpanded)}
-                      cameraConnected={isCameraConnected}
-                    />
+                    {import.meta.env.DEV && (
+                      <>
+                        <ImageQuality
+                          isExpanded={imageQualityExpanded}
+                          onToggle={() => setImageQualityExpanded(!imageQualityExpanded)}
+                          cameraConnected={isCameraConnected}
+                        />
 
-                    <FocusSettings
-                      isExpanded={focusSettingsExpanded}
-                      onToggle={() => setFocusSettingsExpanded(!focusSettingsExpanded)}
-                      cameraConnected={isCameraConnected}
-                    />
+                        <FocusSettings
+                          isExpanded={focusSettingsExpanded}
+                          onToggle={() => setFocusSettingsExpanded(!focusSettingsExpanded)}
+                          cameraConnected={isCameraConnected}
+                        />
+                      </>
+                    )}
                   </>
                 )}
               </div>

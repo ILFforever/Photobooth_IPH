@@ -4,13 +4,20 @@ import { invoke } from "@tauri-apps/api/core";
 
 interface CleanupModalProps {
   show: boolean;
+  onCancel: () => void;
 }
 
-export default function CleanupModal({ show }: CleanupModalProps) {
+export default function CleanupModal({ show, onCancel }: CleanupModalProps) {
+  const [confirmed, setConfirmed] = useState(false);
   const [status, setStatus] = useState("Shutting down VM...");
 
+  // Reset confirmed state when modal is hidden
   useEffect(() => {
-    if (!show) return;
+    if (!show) setConfirmed(false);
+  }, [show]);
+
+  useEffect(() => {
+    if (!show || !confirmed) return;
 
     const cleanup = async () => {
       try {
@@ -39,16 +46,71 @@ export default function CleanupModal({ show }: CleanupModalProps) {
     };
 
     cleanup();
-  }, [show]);
+  }, [show, confirmed]);
 
   if (!show) return null;
 
+  // Confirmation step
+  if (!confirmed) {
+    return (
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="modal-overlay"
+        onClick={onCancel}
+      >
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95, y: 20 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          className="modal-content"
+          style={{
+            maxWidth: '360px',
+            textAlign: 'center',
+            overflow: 'hidden',
+            maxHeight: 'none',
+            padding: '28px 28px 24px',
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <h2 style={{ marginBottom: '6px', fontSize: '16px' }}>Quit Photobooth?</h2>
+          <p style={{
+            color: 'var(--text-secondary)',
+            fontSize: '12px',
+            marginBottom: '20px',
+          }}>
+            Are you sure you want to exit?
+          </p>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={onCancel}
+              className="btn-secondary"
+              style={{ flex: 1 }}
+            >
+              Cancel
+            </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => setConfirmed(true)}
+              className="btn-danger"
+              style={{ flex: 1 }}
+            >
+              Quit
+            </motion.button>
+          </div>
+        </motion.div>
+      </motion.div>
+    );
+  }
+
+  // Cleanup in progress
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       className="modal-overlay"
-      style={{ alignItems: 'flex-start', paddingTop: '15vh' }}
     >
       <motion.div
         initial={{ opacity: 0, scale: 0.95, y: 20 }}

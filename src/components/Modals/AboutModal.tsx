@@ -1,32 +1,19 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-shell";
+import { Download, Loader2 } from "lucide-react";
+import type { VersionStatus } from "../../types/updates";
 
 interface AboutModalProps {
   show: boolean;
   onClose: () => void;
+  versionStatus?: VersionStatus | null;
+  onCheckUpdates?: () => void;
+  onShowUpdate?: (type: 'msi' | 'vm') => void;
 }
 
 type AboutTab = 'features' | 'modes' | 'tech' | 'versions' | 'contact';
-
-interface AppVersionStatus {
-  current_version: string;
-  latest_version: string | null;
-  update_available: boolean;
-}
-
-interface VMVersionStatus {
-  current_version: string;
-  latest_version: string | null;
-  update_available: boolean;
-  iso_exists: boolean;
-  iso_modified_date: string | null;
-}
-
-interface VersionStatus {
-  app: AppVersionStatus;
-  vm: VMVersionStatus;
-}
 
 interface VersionInfo {
   versionStatus: VersionStatus | null;
@@ -40,7 +27,13 @@ interface AppInfo {
   company: string;
 }
 
-export default function AboutModal({ show, onClose }: AboutModalProps) {
+export default function AboutModal({
+  show,
+  onClose,
+  versionStatus: externalVersionStatus,
+  onCheckUpdates: externalCheckUpdates,
+  onShowUpdate
+}: AboutModalProps) {
   const [aboutTab, setAboutTab] = useState<AboutTab>('features');
   const [versions, setVersions] = useState<VersionInfo | null>(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
@@ -51,8 +44,9 @@ export default function AboutModal({ show, onClose }: AboutModalProps) {
       fetchAppInfo();
     }
     if (show && aboutTab === 'versions' && !versions) {
-      fetchVersions();
+      checkForUpdates();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [show, aboutTab]);
 
   const fetchAppInfo = async () => {
@@ -64,48 +58,23 @@ export default function AboutModal({ show, onClose }: AboutModalProps) {
     }
   };
 
-  const fetchVersions = async () => {
+  const checkForUpdates = async () => {
+    setCheckingUpdate(true);
     try {
+      // Use external check function if provided, otherwise call directly
+      if (externalCheckUpdates) {
+        await externalCheckUpdates();
+      }
+
+      // Always refresh version status (both local and server check)
       const [versionStatus, requirements] = await Promise.all([
-        invoke<VersionStatus>('get_version_status'),
+        invoke<VersionStatus>('check_all_updates'),
         invoke<{ passed: boolean; requirements: { virtualbox_version: string | null } }>('get_system_requirements')
       ]);
       setVersions({
         versionStatus,
         virtualboxVersion: requirements.requirements.virtualbox_version
       });
-    } catch (e) {
-      console.error('Failed to fetch versions:', e);
-      setVersions({
-        versionStatus: {
-          app: {
-            current_version: 'unknown',
-            latest_version: null,
-            update_available: false
-          },
-          vm: {
-            current_version: 'unknown',
-            latest_version: null,
-            update_available: false,
-            iso_exists: false,
-            iso_modified_date: null
-          }
-        },
-        virtualboxVersion: null
-      });
-    }
-  };
-
-  const checkForUpdates = async () => {
-    setCheckingUpdate(true);
-    try {
-      const appUpdateUrl = "https://intaniaproductionhouse.com/app-version.json";
-      const vmUpdateUrl = "https://intaniaproductionhouse.com/vm-version.json";
-      const updatedStatus = await invoke<VersionStatus>('check_all_updates', {
-        appUrl: appUpdateUrl,
-        vmUrl: vmUpdateUrl
-      });
-      setVersions(prev => prev ? { ...prev, versionStatus: updatedStatus } : null);
     } catch (e) {
       console.error('Failed to check for updates:', e);
     } finally {
@@ -142,7 +111,7 @@ export default function AboutModal({ show, onClose }: AboutModalProps) {
 
           <div style={{ marginBottom: '1rem', lineHeight: '1.6', color: 'var(--text-secondary)' }}>
             <div style={{ background: 'var(--bg-primary)', padding: '0.5rem', borderRadius: '8px', marginTop: '0.5rem' }}>
-              <div style={{ display: 'flex', gap: '1rem', borderBottom: '1px solid var(--border-color)', marginBottom: '0.5rem', position: 'relative', paddingBottom: '0.25rem', overflowX: 'auto' }}>
+              <div style={{ display: 'flex', gap: '1rem', borderBottom: '1px solid var(--border-color)', marginBottom: '0.5rem', position: 'relative', paddingBottom: '0.25rem' }}>
                 {(['features', 'modes', 'tech', 'versions', 'contact'] as AboutTab[]).map((tab) => (
                   <button
                     key={tab}
@@ -302,30 +271,66 @@ export default function AboutModal({ show, onClose }: AboutModalProps) {
                   >
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                       {/* App Version */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem', padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
                         <span style={{ fontSize: '24px' }}>📦</span>
                         <div style={{ flex: 1 }}>
                           <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Photobooth_IPH App</div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                             <div style={{ fontSize: '16px', fontWeight: '600', color: 'var(--text-primary)' }}>
-                              {versions?.versionStatus?.app.current_version || 'Loading...'}
+                              {(externalVersionStatus || versions?.versionStatus)?.app.current_version || 'Loading...'}
                             </div>
-                            {versions?.versionStatus?.app.update_available && (
+                            {(externalVersionStatus || versions?.versionStatus)?.app.is_dev_build && (
                               <span style={{
                                 padding: '0.25rem 0.5rem',
                                 fontSize: '10px',
-                                background: '#22c55e',
+                                background: '#f59e0b',
                                 color: 'white',
                                 borderRadius: '4px',
                                 fontWeight: '600'
                               }}>
-                                UPDATE
+                                DEV
+                              </span>
+                            )}
+                            {(externalVersionStatus || versions?.versionStatus)?.app.latest_version && (
+                              <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                                → {(externalVersionStatus || versions?.versionStatus)!.app.latest_version}
+                                {(externalVersionStatus || versions?.versionStatus)?.app.file_size && (
+                                  <span> • {Math.round(((externalVersionStatus || versions?.versionStatus)!.app.file_size! / (1024 * 1024)) * 10) / 10} MB</span>
+                                )}
                               </span>
                             )}
                           </div>
-                          {versions?.versionStatus?.app.latest_version && (
-                            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                              Latest: {versions.versionStatus.app.latest_version}
+                          {(externalVersionStatus || versions?.versionStatus)?.app.update_available &&
+                           (externalVersionStatus || versions?.versionStatus)?.app.has_download && onShowUpdate && (
+                            <button
+                              onClick={() => onShowUpdate('msi')}
+                              style={{
+                                marginTop: '0.5rem',
+                                padding: '0.4rem 0.75rem',
+                                fontSize: '11px',
+                                background: '#22c55e',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                                fontWeight: '600',
+                                width: 'fit-content'
+                              }}
+                            >
+                              <Download size={12} style={{ marginRight: '0.25rem', verticalAlign: 'middle' }} />
+                              Update to {(externalVersionStatus || versions?.versionStatus)!.app.latest_version}
+                            </button>
+                          )}
+                          {/* Release notes */}
+                          {(externalVersionStatus || versions?.versionStatus)?.app.release_notes &&
+                           (externalVersionStatus || versions?.versionStatus)!.app.release_notes.length > 0 && (
+                            <div style={{ marginTop: '0.5rem', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                              <div style={{ fontWeight: '500', marginBottom: '0.25rem' }}>What's new:</div>
+                              <ul style={{ paddingLeft: '1rem', margin: 0 }}>
+                                {(externalVersionStatus || versions?.versionStatus)!.app.release_notes.map((note, idx) => (
+                                  <li key={idx}>{note}</li>
+                                ))}
+                              </ul>
                             </div>
                           )}
                         </div>
@@ -339,38 +344,63 @@ export default function AboutModal({ show, onClose }: AboutModalProps) {
                             <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Photobooth VM (photobooth.iso)</div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                               <div style={{ fontSize: '16px', fontWeight: '600', color: 'var(--text-primary)' }}>
-                                {versions?.versionStatus?.vm.current_version || 'Loading...'}
+                                {(externalVersionStatus || versions?.versionStatus)?.vm.current_version || 'Loading...'}
                               </div>
-                              {versions?.versionStatus?.vm.update_available && (
-                                <span style={{
-                                  padding: '0.25rem 0.5rem',
-                                  fontSize: '10px',
-                                  background: '#22c55e',
-                                  color: 'white',
-                                  borderRadius: '4px',
-                                  fontWeight: '600'
-                                }}>
-                                  UPDATE
-                                </span>
+                              {(externalVersionStatus || versions?.versionStatus)?.vm.update_available && (
+                                <>
+                                  <span style={{
+                                    padding: '0.25rem 0.5rem',
+                                    fontSize: '10px',
+                                    background: '#22c55e',
+                                    color: 'white',
+                                    borderRadius: '4px',
+                                    fontWeight: '600'
+                                  }}>
+                                    UPDATE
+                                  </span>
+                                  {(externalVersionStatus || versions?.versionStatus)?.vm.has_download && onShowUpdate && (
+                                    <button
+                                      onClick={() => onShowUpdate('vm')}
+                                      className="about-update-btn"
+                                    >
+                                      Update Now
+                                    </button>
+                                  )}
+                                </>
                               )}
                             </div>
                           </div>
                         </div>
                         <div style={{ display: 'flex', gap: '1rem', fontSize: '11px', color: 'var(--text-secondary)', paddingLeft: '2.25rem' }}>
                           <div>
-                            ISO File: <span style={{ color: versions?.versionStatus?.vm.iso_exists ? '#22c55e' : '#ef4444' }}>
-                              {versions?.versionStatus?.vm.iso_exists ? 'Present' : 'Missing'}
+                            ISO File: <span style={{ color: (externalVersionStatus || versions?.versionStatus)?.vm.iso_exists ? '#22c55e' : '#ef4444' }}>
+                              {(externalVersionStatus || versions?.versionStatus)?.vm.iso_exists ? 'Present' : 'Missing'}
                             </span>
                           </div>
-                          {versions?.versionStatus?.vm.iso_modified_date && (
+                          {(externalVersionStatus || versions?.versionStatus)?.vm.iso_modified_date && (
                             <div>
-                              Modified: <span>{versions.versionStatus.vm.iso_modified_date}</span>
+                              Modified: <span>{(externalVersionStatus || versions?.versionStatus)!.vm.iso_modified_date}</span>
                             </div>
                           )}
                         </div>
-                        {versions?.versionStatus?.vm.latest_version && (
+                        {(externalVersionStatus || versions?.versionStatus)?.vm.latest_version && (
                           <div style={{ marginTop: '0.5rem', fontSize: '11px', color: 'var(--text-secondary)', paddingLeft: '2.25rem' }}>
-                            Latest available: <span style={{ color: 'var(--text-primary)', fontWeight: '500' }}>{versions.versionStatus.vm.latest_version}</span>
+                            Latest available: <span style={{ color: 'var(--text-primary)', fontWeight: '500' }}>{(externalVersionStatus || versions?.versionStatus)!.vm.latest_version}</span>
+                            {(externalVersionStatus || versions?.versionStatus)?.vm.file_size && (
+                              <span> • {Math.round(((externalVersionStatus || versions?.versionStatus)!.vm.file_size! / (1024 * 1024)) * 10) / 10} MB</span>
+                            )}
+                          </div>
+                        )}
+                        {/* Release notes */}
+                        {(externalVersionStatus || versions?.versionStatus)?.vm.release_notes &&
+                         (externalVersionStatus || versions?.versionStatus)!.vm.release_notes.length > 0 && (
+                          <div style={{ marginTop: '0.5rem', fontSize: '11px', color: 'var(--text-secondary)', paddingLeft: '2.25rem' }}>
+                            <div style={{ fontWeight: '500', marginBottom: '0.25rem' }}>What's new:</div>
+                            <ul style={{ paddingLeft: '1rem', margin: 0 }}>
+                              {(externalVersionStatus || versions?.versionStatus)!.vm.release_notes.map((note, idx) => (
+                                <li key={idx}>{note}</li>
+                              ))}
+                            </ul>
                           </div>
                         )}
                       </div>
@@ -405,46 +435,25 @@ export default function AboutModal({ show, onClose }: AboutModalProps) {
                         )}
                       </div>
 
-                      {/* Action Buttons */}
-                      <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button
-                          onClick={fetchVersions}
-                          style={{
-                            flex: 1,
-                            padding: '0.5rem',
-                            fontSize: '12px',
-                            background: 'var(--bg-tertiary)',
-                            color: 'var(--text-primary)',
-                            border: '1px solid var(--border-color)',
-                            borderRadius: '6px',
-                            cursor: 'pointer',
-                            fontWeight: '500',
-                            transition: 'background 0.2s ease'
-                          }}
-                          onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-secondary)'}
-                          onMouseLeave={(e) => e.currentTarget.style.background = 'var(--bg-tertiary)'}
-                        >
-                          Refresh Status
-                        </button>
-                        <button
-                          onClick={checkForUpdates}
-                          disabled={checkingUpdate}
-                          style={{
-                            flex: 1,
-                            padding: '0.5rem',
-                            fontSize: '12px',
-                            background: checkingUpdate ? 'var(--bg-tertiary)' : 'var(--accent-blue)',
-                            color: checkingUpdate ? 'var(--text-secondary)' : 'white',
-                            border: checkingUpdate ? '1px solid var(--border-color)' : '1px solid var(--accent-blue)',
-                            borderRadius: '6px',
-                            cursor: checkingUpdate ? 'not-allowed' : 'pointer',
-                            fontWeight: '500',
-                            transition: 'background 0.2s ease'
-                          }}
-                        >
-                          {checkingUpdate ? 'Checking...' : 'Check for Updates'}
-                        </button>
-                      </div>
+                      {/* Action Button */}
+                      <button
+                        onClick={checkForUpdates}
+                        disabled={checkingUpdate}
+                        className="btn-primary"
+                        style={{ width: '100%' }}
+                      >
+                        {checkingUpdate ? (
+                          <>
+                            <Loader2 size={14} className="spin" />
+                            Checking...
+                          </>
+                        ) : (
+                          <>
+                            <Download size={14} />
+                            Check for Updates
+                          </>
+                        )}
+                      </button>
                     </div>
                   </motion.div>
                 ) : (
@@ -456,10 +465,8 @@ export default function AboutModal({ show, onClose }: AboutModalProps) {
                     transition={{ duration: 0.2 }}
                   >
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                      <a
-                        href="https://github.com/ILFforever"
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <div
+                        onClick={() => open('https://github.com/ILFforever')}
                         style={{
                           display: 'flex',
                           alignItems: 'center',
@@ -469,7 +476,8 @@ export default function AboutModal({ show, onClose }: AboutModalProps) {
                           padding: '0.5rem',
                           borderRadius: '6px',
                           background: 'var(--bg-secondary)',
-                          transition: 'background 0.2s ease'
+                          transition: 'background 0.2s ease',
+                          cursor: 'pointer'
                         }}
                       >
                         <span style={{ fontSize: '16px' }}>🐙</span>
@@ -477,9 +485,9 @@ export default function AboutModal({ show, onClose }: AboutModalProps) {
                           <div style={{ fontSize: '12px', fontWeight: '600' }}>GitHub</div>
                           <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>@ILFforever</div>
                         </div>
-                      </a>
-                      <a
-                        href="mailto:intania.productions@gmail.com"
+                      </div>
+                      <div
+                        onClick={() => open('mailto:hammymukura@gmail.com')}
                         style={{
                           display: 'flex',
                           alignItems: 'center',
@@ -489,15 +497,16 @@ export default function AboutModal({ show, onClose }: AboutModalProps) {
                           padding: '0.5rem',
                           borderRadius: '6px',
                           background: 'var(--bg-secondary)',
-                          transition: 'background 0.2s ease'
+                          transition: 'background 0.2s ease',
+                          cursor: 'pointer'
                         }}
                       >
                         <span style={{ fontSize: '16px' }}>📧</span>
                         <div>
                           <div style={{ fontSize: '12px', fontWeight: '600' }}>Email</div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>intania.productions@gmail.com</div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>hammymukura@gmail.com</div>
                         </div>
-                      </a>
+                      </div>
                       <div style={{ marginTop: '0.5rem', padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: '6px', textAlign: 'center', fontSize: '11px', color: 'var(--text-secondary)' }}>
                         <div style={{ marginBottom: '0.25rem' }}>© 2025 Intania Production House</div>
                         <div>All rights reserved</div>

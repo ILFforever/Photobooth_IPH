@@ -1,7 +1,7 @@
 import { useRef, useMemo, useState, useCallback, useEffect } from "react";
 import { useDrop } from "react-dnd";
 import { motion } from "framer-motion";
-import { Image as ImageIcon } from "lucide-react";
+import { Image as ImageIcon, ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { useCollage } from "../../contexts/CollageContext";
 import { Frame, FrameZone, FrameShape } from "../../types/frame";
@@ -1913,6 +1913,27 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
     }
   }, [localZoom, zoomCenter]);
 
+  // Zoom button handlers
+  const handleZoomIn = useCallback(() => {
+    const newZoom = Math.min(3, localZoom + 0.25);
+    setLocalZoom(newZoom);
+    localZoomRef.current = newZoom;
+    setCanvasZoomRef.current(newZoom);
+  }, [localZoom]);
+
+  const handleZoomOut = useCallback(() => {
+    const newZoom = Math.max(0.5, localZoom - 0.25);
+    setLocalZoom(newZoom);
+    localZoomRef.current = newZoom;
+    setCanvasZoomRef.current(newZoom);
+  }, [localZoom]);
+
+  const handleResetZoom = useCallback(() => {
+    setLocalZoom(1);
+    localZoomRef.current = 1;
+    setCanvasZoomRef.current(1);
+  }, []);
+
   // If no dimensions available, don't render canvas
   if (!width || !height) {
     return (
@@ -1992,6 +2013,36 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
       className="collage-canvas-container"
       style={{ flex: '1', display: 'flex', flexDirection: 'column' }}
     >
+      {/* Floating zoom controls */}
+      {background && (
+        <div className="collage-zoom-controls" onClick={(e) => e.stopPropagation()}>
+          <button
+            className="finalize-zoom-btn"
+            onClick={handleZoomOut}
+            disabled={localZoom <= 0.5}
+            title="Zoom out (Ctrl + Scroll down)"
+          >
+            <ZoomOut size={14} />
+          </button>
+          <span className="finalize-zoom-level">{Math.round(localZoom * 100)}%</span>
+          <button
+            className="finalize-zoom-btn"
+            onClick={handleZoomIn}
+            disabled={localZoom >= 3}
+            title="Zoom in (Ctrl + Scroll up)"
+          >
+            <ZoomIn size={14} />
+          </button>
+          <button
+            className="finalize-zoom-btn"
+            onClick={handleResetZoom}
+            disabled={localZoom === 1}
+            title="Reset zoom"
+          >
+            <RotateCcw size={14} />
+          </button>
+        </div>
+      )}
       {!background ? (
         <div className="canvas-placeholder">
           <div className="placeholder-content">

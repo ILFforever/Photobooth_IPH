@@ -189,6 +189,56 @@
 }
 
 /* Zoom handles - Teenage Engineering style */
+/* Floating zoom controls - top right of canvas workspace */
+.collage-zoom-controls {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 6px;
+}
+
+.collage-zoom-controls .finalize-zoom-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: #252525;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #ccc;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.collage-zoom-controls .finalize-zoom-btn:hover:not(:disabled) {
+  background: #333;
+  border-color: #444;
+  color: #fff;
+}
+
+.collage-zoom-controls .finalize-zoom-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.collage-zoom-controls .finalize-zoom-level {
+  min-width: 42px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 500;
+  color: #999;
+  user-select: none;
+}
+
 .zoom-handle {
   opacity: 0.9;
   background: linear-gradient(145deg, #1a1815 0%, #0a0908 100%);

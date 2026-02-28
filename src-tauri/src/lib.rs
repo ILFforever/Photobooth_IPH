@@ -183,6 +183,7 @@ pub fn run() {
             shutdown_vm,
             exit_app,
             force_exit_app,
+            restart_app,
             // USB Camera
             list_usb_cameras,
             attach_usb_camera,
@@ -209,6 +210,8 @@ pub fn run() {
             check_vm_updates,
             check_all_updates,
             install_vm_update,
+            download_msi_update,
+            launch_msi_installer,
             open_vm_update_website,
             extract_iso_to_appdata,
             // App Initialization
