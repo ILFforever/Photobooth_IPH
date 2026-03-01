@@ -1,3 +1,4 @@
+use crate::usb_camera::CAMERA_MANAGER;
 use crate::vm::types::VmLogsResponse;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
@@ -260,6 +261,9 @@ pub async fn restart_vm() -> Result<String, String> {
     let is_running = vm_info.contains("State:") && vm_info.contains("running");
 
     if is_running {
+        // Detach all USB cameras before powering off to avoid driver issues
+        let _ = CAMERA_MANAGER.detach_all_cameras();
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         // Force power off the VM
         let _ = run_command_silent(VBOX_MANAGE, &["controlvm", VM_NAME, "poweroff"]);
     }
@@ -297,6 +301,10 @@ pub async fn shutdown_vm() -> Result<String, String> {
         return Err("VBoxManage.exe not found. Is VirtualBox installed?".to_string());
     }
 
+    // Detach all USB cameras before powering off to avoid driver issues
+    let _ = CAMERA_MANAGER.detach_all_cameras();
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
     // Skip existence/running checks — just fire poweroff directly.
     // If the VM isn't running or doesn't exist, VBoxManage will return an error
     // which is fine — the end result is the same (VM not running).
@@ -314,6 +322,10 @@ pub async fn shutdown_vm() -> Result<String, String> {
 pub async fn exit_app(app_handle: tauri::AppHandle) -> Result<(), String> {
     const VM_NAME: &str = "PhotoboothLinux";
     const VBOX_MANAGE: &str = r"C:\Program Files\Oracle\VirtualBox\VBoxManage.exe";
+
+    // Detach all USB cameras before powering off to avoid driver issues
+    let _ = CAMERA_MANAGER.detach_all_cameras();
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
     // Attempt to shutdown the VM if it's running (ignore errors)
     if std::path::Path::new(VBOX_MANAGE).exists() {

@@ -433,11 +433,29 @@
 }
 
 .item-delete-btn svg {
-  color: white !important;
-  fill: white !important;
   pointer-events: none;
-  width: 16px;
-  height: 16px;
+}
+
+.item-delete-btn svg,
+.item-delete-btn svg path {
+  fill: white !important;
+  color: white !important;
+}
+
+.delete-icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+}
+
+.delete-icon-wrapper svg {
+  width: 14px;
+  height: 14px;
+}
+
+.delete-icon-wrapper svg path {
+  fill: white !important;
 }
 
 .item-delete-btn:hover {
@@ -445,7 +463,8 @@
   transform: scale(1.05);
 }
 
-.frame-option.delete-mode .item-delete-btn {
+.frame-option.delete-mode .item-delete-btn,
+.frame-option.delete-mode .frame-option-content .item-delete-btn {
   display: flex;
 }
 

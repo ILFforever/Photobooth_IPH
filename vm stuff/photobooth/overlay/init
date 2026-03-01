@@ -1,0 +1,48 @@
+#!/bin/sh
+# Photobooth Linux init script
+# Redirect all output to console
+exec >/dev/console 2>/dev/console
+
+echo "Photobooth Linux starting..."
+
+# Mount essential filesystems
+mount -t proc proc /proc 2>/dev/null
+mount -t sysfs sysfs /sys 2>/dev/null
+mount -t tmpfs tmpfs /tmp 2>/dev/null
+mount -t devtmpfs devtmpfs /dev 2>/dev/null
+mkdir -p /dev/pts
+mount -t devpts devpts /dev/pts 2>/dev/null
+
+# Load kernel modules if needed
+modprobe e1000 2>/dev/null
+
+# Network setup
+echo "Setting up network..."
+ip link set lo up
+ip link set eth0 up 2>/dev/null
+# Try DHCP with busybox udhcpc
+if command -v udhcpc >/dev/null 2>&1; then
+    udhcpc -i eth0 -s /usr/share/udhcpc/default.script -q 2>/dev/null &
+else
+    # Manual fallback - VirtualBox NAT default
+    ip addr add 10.0.2.15/24 dev eth0 2>/dev/null
+    ip route add default via 10.0.2.2 2>/dev/null
+fi
+
+sleep 2
+
+echo "Network configured:"
+ip addr show eth0 2>/dev/null
+
+echo "Files in /opt/photobooth:"
+ls -la /opt/photobooth/
+
+export LD_LIBRARY_PATH=/usr/lib:/lib
+
+echo "Starting camera daemon..."
+/opt/photobooth/camera-daemon 2>&1 &
+DAEMON_PID=$!
+echo "Daemon started with PID: ${DAEMON_PID}"
+
+# Keep shell alive
+exec /bin/sh

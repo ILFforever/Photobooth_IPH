@@ -6,7 +6,7 @@ set -e
 
 export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 BUILDROOT="$HOME/buildroot"
-PROJECT_ROOT="/mnt/d/Photobooth_IPH"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LINUX_BUILD="$PROJECT_ROOT/linux-build"
 
 echo "=== Packaging Rootfs and Rebuilding ISO ==="
@@ -76,7 +76,7 @@ cat > "$ISODIR/boot/grub/grub.cfg" <<'GRUBEOF'
 set default=0
 set timeout=0
 menuentry "Photobooth Linux" {
-    linux /vmlinuz console=ttyS0,115200 quiet loglevel=3 mitigations=off lpj=8293824
+    linux /vmlinuz console=ttyS0,115200 quiet loglevel=3 mitigations=off lpj=8293824 init=/init
     initrd /initrd.xz
 }
 GRUBEOF

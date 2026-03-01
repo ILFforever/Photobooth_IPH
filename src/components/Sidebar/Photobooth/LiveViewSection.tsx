@@ -32,10 +32,12 @@ export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSec
   const sliderRef = useRef<HTMLDivElement>(null);
   const sliderVRef = useRef<HTMLDivElement>(null);
 
-  // Load HDMI devices when switching to HDMI mode
+  // Load HDMI devices when switching to HDMI mode and poll for changes
   useEffect(() => {
     if (captureMethod === 'hdmi') {
       hdmi.loadDevices();
+      const interval = setInterval(() => hdmi.loadDevices(), 1500);
+      return () => clearInterval(interval);
     }
   }, [captureMethod]);
 

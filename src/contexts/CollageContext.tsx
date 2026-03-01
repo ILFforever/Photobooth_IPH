@@ -6,6 +6,9 @@ import { applyZoneClipPath } from '../utils/canvasShapeClip';
 import { Background } from '../types/background';
 import { OverlayLayer, LayerPosition, DEFAULT_OVERLAY_TRANSFORM } from '../types/overlay';
 
+// Panel type for FloatingFrameSelector
+export type FloatingPanelType = "frame" | "canvas" | "background" | null;
+
 export interface CanvasSize {
   width: number;
   height: number;
@@ -100,6 +103,10 @@ interface CollageContextType {
   // Frame creator state
   isFrameCreatorSaving: boolean;
   setIsFrameCreatorSaving: (saving: boolean) => void;
+
+  // FloatingFrameSelector panel state
+  openFloatingPanel: FloatingPanelType;
+  setOpenFloatingPanel: (panel: FloatingPanelType) => void;
 }
 
 const CollageContext = createContext<CollageContextType | undefined>(undefined);
@@ -139,6 +146,9 @@ export function CollageProvider({ children }: { children: ReactNode }) {
 
   // Frame creator state
   const [isFrameCreatorSaving, setIsFrameCreatorSaving] = useState(false);
+
+  // FloatingFrameSelector panel state
+  const [openFloatingPanel, setOpenFloatingPanel] = useState<FloatingPanelType>(null);
 
   // Load backgrounds and settings on mount
   useEffect(() => {
@@ -630,6 +640,8 @@ export function CollageProvider({ children }: { children: ReactNode }) {
         isFrameCreatorSaving,
         setIsFrameCreatorSaving,
         exportCanvasAsPNG,
+        openFloatingPanel,
+        setOpenFloatingPanel,
       }}
     >
       {children}

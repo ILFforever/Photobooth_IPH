@@ -16,37 +16,47 @@ export function LayersSidebar() {
     toggleOverlayVisibility,
     moveOverlayLayer,
     addOverlay,
+    setOpenFloatingPanel,
   } = useCollage();
 
   const [showImportModal, setShowImportModal] = useState(false);
 
-  // Keyboard shortcuts for overlay management
+  const handleAddOverlaysClick = () => {
+    setOpenFloatingPanel(null);
+    setShowImportModal(true);
+  };
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Only handle if an overlay is selected
       if (!selectedOverlayId) return;
 
-      // Delete key - remove selected overlay
+      const target = e.target as HTMLElement;
+      const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable;
+
+      if (e.key === 'Escape') {
+        if (isInput) {
+          (target as HTMLInputElement).blur();
+        } else {
+          setSelectedOverlayId(null);
+        }
+        return;
+      }
+
+      if (isInput) return;
+
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
         deleteOverlay(selectedOverlayId);
       }
 
-      // Ctrl+D - duplicate
       if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
         e.preventDefault();
         duplicateOverlay(selectedOverlayId);
       }
 
-      // Ctrl+H - toggle visibility
       if ((e.ctrlKey || e.metaKey) && e.key === 'h') {
         e.preventDefault();
         toggleOverlayVisibility(selectedOverlayId);
-      }
-
-      // Escape - deselect
-      if (e.key === 'Escape') {
-        setSelectedOverlayId(null);
       }
     };
 
@@ -54,7 +64,6 @@ export function LayersSidebar() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedOverlayId, deleteOverlay, duplicateOverlay, toggleOverlayVisibility, setSelectedOverlayId]);
 
-  // Split overlays by position
   const belowOverlays = overlays
     .filter(o => o.position === 'below-frames')
     .sort((a, b) => a.layerOrder - b.layerOrder);
@@ -69,19 +78,18 @@ export function LayersSidebar() {
       <div className="layers-header">
         <h3>Layers</h3>
         <button
-          className="import-overlays-btn"
-          onClick={() => setShowImportModal(true)}
+          className="layers-add-btn"
+          onClick={handleAddOverlaysClick}
           title="Import overlay images"
         >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M8 3v10M3 8h10" strokeLinecap="round" strokeLinejoin="round"/>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M7 2v10M2 7h10" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
           Add Overlays
         </button>
       </div>
 
       <div className="layers-content">
-        {/* Above Frames Section */}
         <LayerSection
           title="Above Frames"
           position="above-frames"
@@ -94,10 +102,8 @@ export function LayersSidebar() {
           onMoveLayer={moveOverlayLayer}
         />
 
-        {/* Divider between sections */}
         <div className="layers-divider" />
 
-        {/* Below Frames Section */}
         <LayerSection
           title="Below Frames"
           position="below-frames"
@@ -110,21 +116,19 @@ export function LayersSidebar() {
           onMoveLayer={moveOverlayLayer}
         />
 
-        {/* Selected overlay controls */}
         {selectedOverlay && (
           <OverlayPropertiesPanel overlay={selectedOverlay} />
         )}
 
-        {/* Keyboard shortcuts hint */}
-        <div className="layers-shortcuts-hint">
+        <div className="frame-shortcuts-hint layers-shortcuts">
           <p>Shortcuts:</p>
-          <p>Delete - Remove layer</p>
+          <p>Del - Remove layer</p>
           <p>Ctrl+D - Duplicate</p>
           <p>Ctrl+H - Toggle visibility</p>
+          <p>Esc - Deselect layer</p>
         </div>
       </div>
 
-      {/* Import modal */}
       <ImportOverlaysModal
         isOpen={showImportModal}
         onClose={() => setShowImportModal(false)}

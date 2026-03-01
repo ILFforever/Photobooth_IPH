@@ -62,16 +62,8 @@ export function useHdmiCapture(): HdmiCaptureState {
     }
 
     frameCountRef.current = 0;
-    console.log('[useHdmiCapture] Starting event listener for hdmi-frame');
 
     const unlisten = await listen<string>('hdmi-frame', (event) => {
-      frameCountRef.current++;
-      if (frameCountRef.current === 1) {
-        console.log('[useHdmiCapture] ✓ First frame received via event, b64 length:', event.payload.length);
-      } else if (frameCountRef.current % 100 === 0) {
-        //console.log('[useHdmiCapture] Frames received:', frameCountRef.current);
-      }
-
       const blob = base64ToBlob(event.payload, 'image/jpeg');
       const url = URL.createObjectURL(blob);
 
@@ -89,7 +81,6 @@ export function useHdmiCapture(): HdmiCaptureState {
 
   const stopListening = useCallback(() => {
     if (unlistenRef.current) {
-      console.log('[useHdmiCapture] Stopping event listener');
       unlistenRef.current();
       unlistenRef.current = null;
     }
@@ -100,28 +91,37 @@ export function useHdmiCapture(): HdmiCaptureState {
     setFrameUrl(null);
   }, []);
 
+  const prevDeviceNamesRef = useRef<string>('');
+
   const loadDevices = useCallback(async () => {
-    console.log('[useHdmiCapture] loadDevices called');
-    setIsLoadingDevices(true);
-    setError(null);
+    const isFirstLoad = prevDeviceNamesRef.current === '';
+    if (isFirstLoad) {
+      setIsLoadingDevices(true);
+    }
     try {
       const result = await invoke<CaptureDevice[]>('list_capture_devices');
-      console.log('[useHdmiCapture] loadDevices result:', result);
-      setDevices(result);
+      const namesKey = result.map(d => d.name).join('\0');
+      if (namesKey !== prevDeviceNamesRef.current) {
+        prevDeviceNamesRef.current = namesKey;
+        setDevices(result);
+        setError(null);
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      console.error('[useHdmiCapture] loadDevices error:', msg);
       setError(`Failed to list devices: ${msg}`);
-      setDevices([]);
+      if (prevDeviceNamesRef.current !== '') {
+        prevDeviceNamesRef.current = '';
+        setDevices([]);
+      }
     } finally {
-      setIsLoadingDevices(false);
+      if (isFirstLoad) {
+        setIsLoadingDevices(false);
+      }
     }
   }, []);
 
   const startCapture = useCallback(async (deviceName: string) => {
-    console.log('[useHdmiCapture] startCapture called for:', deviceName);
     if (capturingRef.current) {
-      console.log('[useHdmiCapture] Already capturing, stopping first...');
       try {
         await invoke('stop_hdmi_capture');
       } catch { /* ignore */ }
@@ -136,13 +136,10 @@ export function useHdmiCapture(): HdmiCaptureState {
       // Start event listener BEFORE starting capture so we don't miss frames
       await startListening();
 
-      console.log('[useHdmiCapture] Invoking start_hdmi_capture with deviceName:', deviceName);
       await invoke('start_hdmi_capture', { deviceName });
-      console.log('[useHdmiCapture] ✓ Capture started');
       setSelectedDeviceState(deviceName);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      console.error('[useHdmiCapture] startCapture error:', msg);
       setError(`Capture failed: ${msg}`);
       setIsCapturing(false);
       stopListening();
@@ -151,7 +148,6 @@ export function useHdmiCapture(): HdmiCaptureState {
   }, [startListening, stopListening]);
 
   const stopCapture = useCallback(async () => {
-    console.log('[useHdmiCapture] stopCapture called, wasCapturing:', capturingRef.current);
     stopListening();
     try {
       await invoke('stop_hdmi_capture');
@@ -161,7 +157,6 @@ export function useHdmiCapture(): HdmiCaptureState {
   }, [stopListening]);
 
   const setSelectedDevice = useCallback((deviceName: string) => {
-    console.log('[useHdmiCapture] setSelectedDevice:', deviceName);
     setSelectedDeviceState(deviceName);
   }, []);
 

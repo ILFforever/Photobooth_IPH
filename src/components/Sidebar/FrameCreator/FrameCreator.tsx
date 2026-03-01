@@ -16,7 +16,13 @@ import {
   mdiDiamondStone,
   mdiHeartOutline,
   mdiPlus,
-  mdiSquareOutline
+  mdiSquareOutline,
+  mdiLock,
+  mdiLockOpenVariant,
+  mdiMagnet,
+  mdiMagnetOn,
+  mdiEyeOutline,
+  mdiEyeClosed
 } from '@mdi/js';
 
 // Drag and drop imports
@@ -139,16 +145,7 @@ function ZoneItem({
             }}
             title={isLocked ? 'Unlock zone' : 'Lock zone'}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              {isLocked ? (
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-              ) : (
-                <>
-                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                </>
-              )}
-            </svg>
+            <Icon path={isLocked ? mdiLock : mdiLockOpenVariant} size={0.6} />
           </button>
           <button
             className="zone-item-delete"
@@ -168,58 +165,64 @@ function ZoneItem({
 
       {/* Zone Settings Dropdown - Only visible when selected */}
       {isSelected && (
-        <div className="zone-settings-dropdown">
-          <div className="control-row">
-            <label>X:</label>
-            <input
-              type="number"
-              value={zone.x}
-              onChange={(e) => {
-                const event = new CustomEvent('zoneUpdate', {
-                  detail: { index, updates: { x: Number(e.target.value) } }
-                });
-                window.dispatchEvent(event);
-              }}
-            />
-            <label>Y:</label>
-            <input
-              type="number"
-              value={zone.y}
-              onChange={(e) => {
-                const event = new CustomEvent('zoneUpdate', {
-                  detail: { index, updates: { y: Number(e.target.value) } }
-                });
-                window.dispatchEvent(event);
-              }}
-            />
-          </div>
-          <div className="control-row">
-            <label>Width:</label>
-            <input
-              type="number"
-              value={zone.width}
-              onChange={(e) => {
-                const event = new CustomEvent('zoneUpdate', {
-                  detail: { index, updates: { width: Number(e.target.value) } }
-                });
-                window.dispatchEvent(event);
-              }}
-            />
-            <label>Height:</label>
-            <input
-              type="number"
-              value={zone.height}
-              onChange={(e) => {
-                const event = new CustomEvent('zoneUpdate', {
-                  detail: { index, updates: { height: Number(e.target.value) } }
-                });
-                window.dispatchEvent(event);
-              }}
-            />
+        <div className="zone-props-panel">
+          <div className="zone-props-grid">
+            <div className="zone-prop-field">
+              <label>X</label>
+              <input
+                type="number"
+                value={zone.x}
+                onChange={(e) => {
+                  const event = new CustomEvent('zoneUpdate', {
+                    detail: { index, updates: { x: Number(e.target.value) } }
+                  });
+                  window.dispatchEvent(event);
+                }}
+              />
+            </div>
+            <div className="zone-prop-field">
+              <label>Y</label>
+              <input
+                type="number"
+                value={zone.y}
+                onChange={(e) => {
+                  const event = new CustomEvent('zoneUpdate', {
+                    detail: { index, updates: { y: Number(e.target.value) } }
+                  });
+                  window.dispatchEvent(event);
+                }}
+              />
+            </div>
+            <div className="zone-prop-field">
+              <label>Width</label>
+              <input
+                type="number"
+                value={zone.width}
+                onChange={(e) => {
+                  const event = new CustomEvent('zoneUpdate', {
+                    detail: { index, updates: { width: Number(e.target.value) } }
+                  });
+                  window.dispatchEvent(event);
+                }}
+              />
+            </div>
+            <div className="zone-prop-field">
+              <label>Height</label>
+              <input
+                type="number"
+                value={zone.height}
+                onChange={(e) => {
+                  const event = new CustomEvent('zoneUpdate', {
+                    detail: { index, updates: { height: Number(e.target.value) } }
+                  });
+                  window.dispatchEvent(event);
+                }}
+              />
+            </div>
           </div>
           {zone.shape === 'rounded_rect' && (
-            <div className="control-row control-row-full">
-              <label>Roundness:</label>
+            <div className="zone-prop-roundness">
+              <label>Radius</label>
               <input
                 type="range"
                 min="0"
@@ -232,11 +235,8 @@ function ZoneItem({
                   });
                   window.dispatchEvent(event);
                 }}
-                style={{ flex: 1 }}
               />
-              <span style={{ minWidth: '40px', textAlign: 'right' }}>
-                {zone.borderRadius || 12}px
-              </span>
+              <span className="zone-prop-roundness-value">{zone.borderRadius || 12}</span>
             </div>
           )}
         </div>
@@ -550,8 +550,7 @@ function FrameCreator() {
       ...(selectedShape === 'rounded_rect' ? { borderRadius: 12 } : {}),
     };
     const updatedZones = [...zones, newZone];
-    setZones(updatedZones);
-    setSelectedZoneIndex(zones.length);
+    const newZoneIndex = zones.length;
 
     // Update the blank frame to show zones on the canvas
     if (currentFrame?.id === 'system-blank') {
@@ -560,6 +559,11 @@ function FrameCreator() {
         zones: updatedZones,
       });
     }
+
+    // Set selected zone after frame update to prevent useEffect from resetting it
+    setTimeout(() => {
+      setSelectedZoneIndex(newZoneIndex);
+    }, 0);
   };
 
   // Show save dialog
@@ -747,31 +751,14 @@ function FrameCreator() {
             onClick={() => setSnapEnabled(!snapEnabled)}
             title={snapEnabled ? 'Snapping enabled' : 'Snapping disabled'}
           >
-            <span style={{
-              fontSize: '12px',
-              fontWeight: '700',
-              color: 'inherit',
-              opacity: snapEnabled ? 1 : 0.5,
-            }}>S</span>
+            <Icon path={snapEnabled ? mdiMagnetOn : mdiMagnet} size={0.8} />
           </button>
           <button
             className={`overlay-toggle-btn ${showAllOverlays ? 'active' : ''}`}
             onClick={() => setShowAllOverlays(!showAllOverlays)}
             title={showAllOverlays ? 'Hide overlays' : 'Show overlays'}
           >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
-              {showAllOverlays ? (
-                <>
-                  <path d="M1 8s3-5 7-5 7 5 7 5-3 5-7 5-7-5-7-5z" strokeLinecap="round" strokeLinejoin="round"/>
-                  <circle cx="8" cy="8" r="2" strokeLinecap="round" strokeLinejoin="round"/>
-                </>
-              ) : (
-                <>
-                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M1 1l22 22" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" strokeLinecap="round" strokeLinejoin="round"/>
-                </>
-              )}
-            </svg>
+            <Icon path={showAllOverlays ? mdiEyeOutline : mdiEyeClosed} size={0.8} />
           </button>
         </div>
       </div>
@@ -779,7 +766,7 @@ function FrameCreator() {
       <div className="frame-creator-content">
         {/* Shape Selection */}
         <div className="shape-selector">
-          <h4>Zone Shape (*Some are untested*)</h4>
+          <h4>Zone Shape</h4>
           <div className="shape-buttons">
             {(['rectangle', 'rounded_rect', 'circle', 'ellipse', 'pill', 'triangle', 'pentagon', 'hexagon', 'octagon', 'star', 'diamond', 'heart', 'cross'] as FrameShape[]).map((shape) => {
               const getShapeStyle = () => {

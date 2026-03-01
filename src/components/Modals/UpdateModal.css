@@ -261,15 +261,15 @@
   font-size: 13px;
   font-weight: 600;
   color: white;
-  background: #000000;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--accent-green);
+  border: none;
   border-radius: 8px;
   cursor: pointer;
   transition: background 0.2s ease;
 }
 
 .update-card-install-btn:hover {
-  background: #1a1a1a;
+  background: #1eb81e;
 }
 
 /* Error state */

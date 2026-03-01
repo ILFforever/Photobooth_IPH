@@ -362,7 +362,7 @@ impl CameraManager {
 }
 
 // Global singleton
-static CAMERA_MANAGER: once_cell::sync::Lazy<CameraManager> =
+pub static CAMERA_MANAGER: once_cell::sync::Lazy<CameraManager> =
     once_cell::sync::Lazy::new(CameraManager::new);
 
 // Tauri commands

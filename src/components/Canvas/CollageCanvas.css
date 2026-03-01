@@ -11,6 +11,12 @@
   flex: 1;
   overflow: auto;
   background: var(--bg-primary);
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+
+.collage-canvas-container::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
 }
 
 .collage-canvas {
@@ -189,12 +195,12 @@
 }
 
 /* Zoom handles - Teenage Engineering style */
-/* Floating zoom controls - top right of canvas workspace */
+/* Floating zoom controls - top right of canvas workspace, fixed to viewport */
 .collage-zoom-controls {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  z-index: 100;
+  position: fixed;
+  top: 50px;
+  right: 10px;
+  z-index: 1000;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -202,6 +208,14 @@
   background: #1a1a1a;
   border: 1px solid #333;
   border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+/* Hide zoom controls when any high-z-index modal is open */
+body:has(.custom-set-dialog-overlay) .collage-zoom-controls,
+body:has([role="dialog"]) .collage-zoom-controls,
+body:has(.modal-overlay) .collage-zoom-controls {
+  display: none !important;
 }
 
 .collage-zoom-controls .finalize-zoom-btn {

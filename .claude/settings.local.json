@@ -79,7 +79,11 @@
       "Bash(taskkill //F //IM photobooth-iph.exe)",
       "Bash(magick IPH.png -gravity center -background transparent -extent 239x239 IPH_square.png)",
       "Bash(magick IPH_square.png -resize 1024x1024 IPH_1024.png)",
-      "Bash(npx sharp-cli \"src/assets/images/IPH.png\" --resize 239 239 --fit contain --background transparent --output \"src/assets/images/IPH_square.png\")"
+      "Bash(npx sharp-cli \"src/assets/images/IPH.png\" --resize 239 239 --fit contain --background transparent --output \"src/assets/images/IPH_square.png\")",
+      "Bash(\"C:/Program Files/Oracle/VirtualBox/VBoxManage.exe\" sharedfolder remove global --name \"vm\")",
+      "Bash(\"C:/Program Files/Oracle/VirtualBox/VBoxManage.exe\" startvm \"PhotoboothLinux\" --type headless)",
+      "Bash(\"C:/Program Files/Oracle/VirtualBox/VBoxManage.exe\" controlvm \"PhotoboothLinux\" poweroff)",
+      "Bash(\"C:/Program Files/Oracle/VirtualBox/VBoxManage.exe\" showvminfo \"PhotoboothLinux\")"
     ],
     "additionalDirectories": [
       "d:\\Photobooth_IPH",

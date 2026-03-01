@@ -258,11 +258,21 @@ pub fn get_vm_version_status() -> VMVersionStatus {
 fn get_possible_iso_paths() -> Vec<std::path::PathBuf> {
     let mut paths = Vec::new();
 
+    // First check AppData (where updates are downloaded and ISO is extracted to)
+    if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+        paths.push(
+            std::path::PathBuf::from(local_app_data)
+                .join("Photobooth_IPH")
+                .join("linux-build")
+                .join("photobooth.iso"),
+        );
+    }
+
     if let Ok(exe_path) = std::env::current_exe() {
         let mut exe_dir = exe_path;
         exe_dir.pop();
 
-        // First check _up_/linux-build (MSI extraction point - Program Files)
+        // Then check _up_/linux-build (MSI extraction point - Program Files)
         paths.push(exe_dir.join("_up_").join("linux-build").join("photobooth.iso"));
 
         // Then check linux-build next to exe (dev mode)
@@ -306,11 +316,19 @@ pub async fn download_vm_update(url: &str, version: Option<&str>, window: Option
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
-    // Get the destination path (_up_/linux-build for MSI installs)
-    let mut iso_path = std::env::current_exe().unwrap_or_default();
-    iso_path.pop(); // Remove exe name
-    iso_path.push("_up_");
-    iso_path.push("linux-build");
+    // Get the destination path (AppData for production installs)
+    let iso_path = if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+        std::path::PathBuf::from(local_app_data)
+            .join("Photobooth_IPH")
+            .join("linux-build")
+    } else {
+        // Fallback to _up_/linux-build next to exe
+        let mut p = std::env::current_exe().unwrap_or_default();
+        p.pop();
+        p.push("_up_");
+        p.push("linux-build");
+        p
+    };
 
     // Ensure directory exists
     std::fs::create_dir_all(&iso_path)
@@ -1071,6 +1089,22 @@ fn create_vm_from_iso(vbox_manage: &str, vm_name: &str, window: &tauri::Window) 
     };
 
     // 1. Create and register the VM
+    // First, clean up any leftover .vbox settings file from a previously deleted VM
+    if let Ok(home) = std::env::var("USERPROFILE") {
+        let vbox_vm_dir = PathBuf::from(&home)
+            .join("VirtualBox VMs")
+            .join(vm_name);
+        if vbox_vm_dir.exists() {
+            log_file!(" Found leftover VM directory at {:?} - removing it", vbox_vm_dir);
+            // Try to unregister first in case it's partially registered
+            let _ = run_command_silent(vbox_manage, &["unregistervm", vm_name]);
+            // Remove the leftover directory
+            if let Err(e) = std::fs::remove_dir_all(&vbox_vm_dir) {
+                log_file!(" Warning: Failed to remove leftover VM directory: {}", e);
+            }
+        }
+    }
+
     run_vbox(&["createvm", "--name", vm_name, "--ostype", "Linux_64", "--register"])?;
     log_file!(" VM created and registered");
 
@@ -1102,8 +1136,11 @@ fn create_vm_from_iso(vbox_manage: &str, vm_name: &str, window: &tauri::Window) 
     run_vbox(&["modifyvm", vm_name, "--uart1", "0x3F8", "4"])?;
     run_vbox(&["modifyvm", vm_name, "--uartmode1", "file", &log_str])?;
 
-    // USB EHCI controller for camera passthrough
+    // USB controllers for camera passthrough (all three needed for any USB port type)
+    run_vbox(&["modifyvm", vm_name, "--usb-ohci", "on"])?;
     run_vbox(&["modifyvm", vm_name, "--usb-ehci", "on"])?;
+    run_vbox(&["modifyvm", vm_name, "--usb-xhci", "on"])?;
+
 
     log_file!(" VM configuration complete");
 

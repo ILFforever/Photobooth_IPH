@@ -44,9 +44,9 @@
 }
 
 .overlay-toggle-btn.active {
-  background: rgba(59, 130, 246, 0.2);
-  border-color: var(--accent-blue, #3b82f6);
-  color: var(--accent-blue, #3b82f6);
+  background: #000000;
+  border-color: #ffffff;
+  color: #ffffff;
 }
 
 .overlay-toggle-btn svg {
@@ -236,122 +236,146 @@
   border-radius: 1px;
 }
 
-/* Zone Settings Dropdown */
-.zone-settings-dropdown {
+/* Zone Properties Panel */
+.zone-props-panel {
   padding: 8px;
-  background: rgba(0, 0, 0, 0.25);
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  animation: expandDropdown 0.2s ease-out;
+  background: rgba(0, 0, 0, 0.35);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  animation: propsExpand 0.15s ease-out;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-@keyframes expandDropdown {
+@keyframes propsExpand {
   from {
     opacity: 0;
-    max-height: 0;
+    transform: translateY(-4px);
   }
   to {
     opacity: 1;
-    max-height: 500px;
+    transform: translateY(0);
   }
 }
 
-.zone-settings-dropdown .control-row {
+.zone-props-grid {
   display: grid;
-  grid-template-columns: 50px 1fr 50px 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: 6px;
-  margin-bottom: 6px;
-  align-items: center;
 }
 
-.zone-settings-dropdown .control-row-full {
+.zone-prop-field {
   display: flex;
-  gap: 8px;
-  align-items: center;
+  flex-direction: column;
+  gap: 2px;
 }
 
-.zone-settings-dropdown .control-row:last-child {
-  margin-bottom: 0;
+.zone-prop-field label {
+  font-size: 9px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.35);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding-left: 2px;
 }
 
-.zone-settings-dropdown label {
-  font-size: 10px;
-  color: rgba(255, 255, 255, 0.6);
-  font-weight: 500;
-}
-
-.zone-settings-dropdown input[type="number"] {
+.zone-prop-field input[type="number"] {
   width: 100%;
-  background: var(--bg-secondary, rgba(0, 0, 0, 0.3));
-  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.15));
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 4px;
-  padding: 4px 6px;
-  color: white;
+  padding: 5px 8px;
+  color: rgba(255, 255, 255, 0.85);
   font-size: 11px;
-  transition: all 0.2s ease;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-weight: 500;
+  font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+  transition: all 0.15s ease;
+  box-sizing: border-box;
 }
 
-.zone-settings-dropdown input[type="number"]:hover {
-  border-color: rgba(255, 255, 255, 0.25);
-  background: var(--bg-secondary, rgba(0, 0, 0, 0.4));
+.zone-prop-field input[type="number"]:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.15);
 }
 
-.zone-settings-dropdown input[type="number"]:focus {
+.zone-prop-field input[type="number"]:focus {
   outline: none;
-  border-color: var(--accent-blue);
-  background: var(--bg-secondary, rgba(0, 0, 0, 0.5));
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+  background: rgba(0, 0, 0, 0.4);
+  border-color: var(--accent-blue, #3b82f6);
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.25);
+  color: white;
 }
 
-.zone-settings-dropdown input[type="number"]::-webkit-inner-spin-button,
-.zone-settings-dropdown input[type="number"]::-webkit-outer-spin-button {
+.zone-prop-field input[type="number"]::-webkit-inner-spin-button,
+.zone-prop-field input[type="number"]::-webkit-outer-spin-button {
   -webkit-appearance: none;
   margin: 0;
   display: none;
 }
 
-.zone-settings-dropdown input[type="number"] {
+.zone-prop-field input[type="number"] {
   -moz-appearance: textfield;
 }
 
-.zone-settings-dropdown input[type="range"] {
+/* Roundness slider */
+.zone-prop-roundness {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.zone-prop-roundness label {
+  font-size: 9px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.35);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.zone-prop-roundness input[type="range"] {
   -webkit-appearance: none;
   appearance: none;
-  background: var(--bg-secondary, rgba(255, 255, 255, 0.1));
+  flex: 1;
+  background: rgba(255, 255, 255, 0.08);
   border-radius: 2px;
-  height: 4px;
+  height: 3px;
   outline: none;
 }
 
-.zone-settings-dropdown input[type="range"]::-webkit-slider-thumb {
+.zone-prop-roundness input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
   background: var(--accent-blue, #3b82f6);
   border-radius: 50%;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.15s;
 }
 
-.zone-settings-dropdown input[type="range"]::-webkit-slider-thumb:hover {
-  transform: scale(1.15);
+.zone-prop-roundness input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
 }
 
-.zone-settings-dropdown input[type="range"]::-moz-range-thumb {
-  width: 12px;
-  height: 12px;
+.zone-prop-roundness input[type="range"]::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
   background: var(--accent-blue, #3b82f6);
   border-radius: 50%;
   cursor: pointer;
   border: none;
-  transition: all 0.2s;
+  transition: all 0.15s;
 }
 
-.zone-settings-dropdown input[type="range"]::-moz-range-thumb:hover {
-  transform: scale(1.15);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+.zone-prop-roundness-value {
+  font-size: 10px;
+  font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+  color: rgba(255, 255, 255, 0.5);
+  min-width: 20px;
+  text-align: right;
 }
 
 .zone-item-info {

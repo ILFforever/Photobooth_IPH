@@ -5,7 +5,7 @@ set -e
 
 export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 BUILDROOT="$HOME/buildroot"
-PROJECT_ROOT="/mnt/d/Photobooth_IPH"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 echo "Rebuilding gphoto2-wrapper and gphoto2-controller..."
 echo "  Buildroot: $BUILDROOT"

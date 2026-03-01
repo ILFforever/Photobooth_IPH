@@ -361,8 +361,18 @@ export default function AboutModal({
                                   {(externalVersionStatus || versions?.versionStatus)?.vm.has_download && onShowUpdate && (
                                     <button
                                       onClick={() => onShowUpdate('vm')}
-                                      className="about-update-btn"
+                                      style={{
+                                        padding: '0.4rem 0.75rem',
+                                        fontSize: '11px',
+                                        background: '#22c55e',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        cursor: 'pointer',
+                                        fontWeight: '600',
+                                      }}
                                     >
+                                      <Download size={12} style={{ marginRight: '0.25rem', verticalAlign: 'middle' }} />
                                       Update Now
                                     </button>
                                   )}

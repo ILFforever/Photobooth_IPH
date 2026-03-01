@@ -1,18 +1,47 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { save } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { useCollage } from '../../../contexts/CollageContext';
 import { useToast } from '../../../contexts/ToastContext';
 import Icon from '@mdi/react';
-import { mdiFileExportOutline } from '@mdi/js';
+import { mdiFileExportOutline, mdiImageOutline, mdiLayers, mdiCheckCircle, mdiAlertCircle } from '@mdi/js';
 import './ExportSidebar.css';
 
 export function ExportSidebar() {
-  const { exportCanvasAsPNG, currentFrame, canvasSize } = useCollage();
+  const {
+    exportCanvasAsPNG,
+    currentFrame,
+    canvasSize,
+    background,
+    backgrounds,
+    overlays,
+    placedImages,
+  } = useCollage();
   const { showToast } = useToast();
   const [isExporting, setIsExporting] = useState(false);
 
   const canExport = !!currentFrame && !!canvasSize;
+
+  // Calculate additional export info
+  const exportInfo = useMemo(() => {
+    const backgroundObj = backgrounds.find(bg => bg.value === background);
+    const bgName = backgroundObj?.name || (background?.startsWith('#') ? background : 'Custom');
+    const visibleOverlays = overlays.filter(o => o.visible).length;
+    const filledZones = placedImages.size;
+    const totalZones = currentFrame?.zones.length || 0;
+
+    // Estimate file size (rough calculation)
+    const pixels = (canvasSize?.width || 0) * (canvasSize?.height || 0);
+    const estimatedSizeMB = pixels * 4 / (1024 * 1024); // 4 bytes per pixel (RGBA)
+
+    return {
+      bgName,
+      visibleOverlays,
+      filledZones,
+      totalZones,
+      estimatedSizeMB: estimatedSizeMB.toFixed(1)
+    };
+  }, [background, backgrounds, overlays, placedImages, currentFrame, canvasSize]);
 
   const handleExport = async () => {
     if (!canExport || isExporting) return;
@@ -55,16 +84,50 @@ export function ExportSidebar() {
         {canExport ? (
           <>
             <div className="export-info">
+              {/* Canvas Dimensions */}
               <div className="export-info-row">
                 <span className="export-info-label">Canvas</span>
                 <span className="export-info-value">{canvasSize!.width} × {canvasSize!.height}</span>
               </div>
+
+              {/* Frame Name */}
               {currentFrame?.name && (
                 <div className="export-info-row">
                   <span className="export-info-label">Frame</span>
                   <span className="export-info-value">{currentFrame.name}</span>
                 </div>
               )}
+
+              {/* Background Info */}
+              <div className="export-info-row">
+                <span className="export-info-label">Background</span>
+                <span className="export-info-value">{exportInfo.bgName}</span>
+              </div>
+
+              {/* Image Zones */}
+              <div className="export-info-row">
+                <span className="export-info-label">Images</span>
+                <span className="export-info-value">
+                  {exportInfo.filledZones} / {exportInfo.totalZones}
+                  {exportInfo.filledZones === exportInfo.totalZones && exportInfo.totalZones > 0 && (
+                    <Icon path={mdiCheckCircle} size={0.7} className="export-check-icon" />
+                  )}
+                </span>
+              </div>
+
+              {/* Overlays */}
+              {exportInfo.visibleOverlays > 0 && (
+                <div className="export-info-row">
+                  <span className="export-info-label">Overlays</span>
+                  <span className="export-info-value">{exportInfo.visibleOverlays} layer{exportInfo.visibleOverlays !== 1 ? 's' : ''}</span>
+                </div>
+              )}
+
+              {/* Estimated File Size */}
+              <div className="export-info-row">
+                <span className="export-info-label">Est. Size</span>
+                <span className="export-info-value">~{exportInfo.estimatedSizeMB} MB</span>
+              </div>
             </div>
             <button
               className="export-button"

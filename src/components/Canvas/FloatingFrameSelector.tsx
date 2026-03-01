@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { createPortal } from "react-dom";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { useDrop } from "react-dnd";
-import { useCollage, CANVAS_SIZES, CanvasSize } from "../../contexts/CollageContext";
+import { useCollage, CANVAS_SIZES, CanvasSize, FloatingPanelType } from "../../contexts/CollageContext";
 import { Frame } from "../../types/frame";
 import { Background } from "../../types/background";
 import CustomCanvasDialog from "./CustomCanvasDialog";
@@ -23,19 +23,17 @@ import {
   mdiPlus
 } from "@mdi/js";
 
-type PanelType = "frame" | "canvas" | "background" | null;
-
 // Droppable Background Pill Component
 function BackgroundPillButton({
   currentBackgroundName,
   isActive,
-  openPanel,
+  openFloatingPanel,
   onClick,
   onDrop
 }: {
   currentBackgroundName: string;
   isActive: boolean;
-  openPanel: PanelType;
+  openFloatingPanel: FloatingPanelType;
   onClick: () => void;
   onDrop: (item: { path: string; thumbnail: string; dimensions?: { width: number; height: number } }) => void;
 }) {
@@ -76,7 +74,7 @@ function BackgroundPillButton({
           {currentBackgroundName || "Background"}
         </span>
         <span className="pill-indicator">
-          {openPanel === "background" ? <Icon path={mdiChevronDown} size={0.7} /> : <Icon path={mdiChevronUp} size={0.7} />}
+          {openFloatingPanel === "background" ? <Icon path={mdiChevronDown} size={0.7} /> : <Icon path={mdiChevronUp} size={0.7} />}
         </span>
       </motion.button>
       {isOver && canDrop && (
@@ -119,8 +117,9 @@ const FloatingFrameSelector = () => {
     backgroundDimensions,
     setBackgroundDimensions,
     setSelectedCustomSetName,
+    openFloatingPanel,
+    setOpenFloatingPanel,
   } = useCollage();
-  const [openPanel, setOpenPanel] = useState<PanelType>(null);
   const [frames, setFrames] = useState<Frame[]>([]);
   const [loading, setLoading] = useState(false);
   const [importingBg, setImportingBg] = useState(false);
@@ -136,10 +135,10 @@ const FloatingFrameSelector = () => {
 
   // Close frame panel when entering frame creator mode
   useEffect(() => {
-    if (isFrameDisabled && openPanel === 'frame') {
-      setOpenPanel(null);
+    if (isFrameDisabled && openFloatingPanel === 'frame') {
+      setOpenFloatingPanel(null);
     }
-  }, [isFrameDisabled, openPanel]);
+  }, [isFrameDisabled, openFloatingPanel]);
 
   // Auto-match canvas when background changes and auto mode is enabled
   useEffect(() => {
@@ -234,35 +233,35 @@ const FloatingFrameSelector = () => {
     }
   }, [activeSidebarTab]);
 
-  const panelOrder: PanelType[] = ["frame", "background", "canvas"];
+  const panelOrder: NonNullable<FloatingPanelType>[] = ["frame", "background", "canvas"];
 
   const handleToggleFrame = () => {
-    if (openPanel) {
+    if (openFloatingPanel) {
       setDirection(
-        panelOrder.indexOf("frame") > panelOrder.indexOf(openPanel) ? 1 : -1
+        panelOrder.indexOf("frame") > panelOrder.indexOf(openFloatingPanel) ? 1 : -1
       );
     }
-    setOpenPanel(openPanel === "frame" ? null : "frame");
+    setOpenFloatingPanel(openFloatingPanel === "frame" ? null : "frame");
   };
 
   const handleToggleCanvas = () => {
-    if (openPanel) {
+    if (openFloatingPanel) {
       setDirection(
-        panelOrder.indexOf("canvas") > panelOrder.indexOf(openPanel) ? 1 : -1
+        panelOrder.indexOf("canvas") > panelOrder.indexOf(openFloatingPanel) ? 1 : -1
       );
     }
-    setOpenPanel(openPanel === "canvas" ? null : "canvas");
+    setOpenFloatingPanel(openFloatingPanel === "canvas" ? null : "canvas");
   };
 
   const handleToggleBackground = () => {
-    if (openPanel) {
+    if (openFloatingPanel) {
       setDirection(
-        panelOrder.indexOf("background") > panelOrder.indexOf(openPanel)
+        panelOrder.indexOf("background") > panelOrder.indexOf(openFloatingPanel)
           ? 1
           : -1
       );
     }
-    setOpenPanel(openPanel === "background" ? null : "background");
+    setOpenFloatingPanel(openFloatingPanel === "background" ? null : "background");
   };
 
   const getCurrentBackground = () => {
@@ -647,7 +646,7 @@ const FloatingFrameSelector = () => {
           whileTap={isFrameDisabled ? {} : { scale: 0.95 }}
           onClick={isFrameDisabled ? undefined : handleToggleFrame}
           className={`frame-pill-button ${
-            openPanel === "frame" ? "active" : ""
+            openFloatingPanel === "frame" ? "active" : ""
           } ${isFrameDisabled ? "disabled" : ""}`}
           disabled={isFrameDisabled}
         >
@@ -656,7 +655,7 @@ const FloatingFrameSelector = () => {
             {isFrameDisabled ? "Frame (Disabled)" : (currentFrame ? currentFrame.name : "Select Frame")}
           </span>
           <span className="pill-indicator">
-            {isFrameDisabled ? <Icon path={mdiLockOutline} size={0.7} /> : (openPanel === "frame" ? <Icon path={mdiChevronDown} size={0.7} /> : <Icon path={mdiChevronUp} size={0.7} />)}
+            {isFrameDisabled ? <Icon path={mdiLockOutline} size={0.7} /> : (openFloatingPanel === "frame" ? <Icon path={mdiChevronDown} size={0.7} /> : <Icon path={mdiChevronUp} size={0.7} />)}
           </span>
         </motion.button>
 
@@ -666,8 +665,8 @@ const FloatingFrameSelector = () => {
         {/* Background Selector Button - Droppable */}
         <BackgroundPillButton
           currentBackgroundName={getCurrentBackground()?.name || "Background"}
-          isActive={openPanel === "background"}
-          openPanel={openPanel}
+          isActive={openFloatingPanel === "background"}
+          openFloatingPanel={openFloatingPanel}
           onClick={handleToggleBackground}
           onDrop={handleDropImageOnBackground}
         />
@@ -681,7 +680,7 @@ const FloatingFrameSelector = () => {
           whileTap={{ scale: 0.95 }}
           onClick={handleToggleCanvas}
           className={`frame-pill-button ${
-            openPanel === "canvas" ? "active" : ""
+            openFloatingPanel === "canvas" ? "active" : ""
           }`}
         >
           <span className="pill-icon"><Icon path={mdiRuler} size={0.9} /></span>
@@ -694,14 +693,14 @@ const FloatingFrameSelector = () => {
             }
           </span>
           <span className="pill-indicator">
-            {openPanel === "canvas" ? <Icon path={mdiChevronDown} size={0.7} /> : <Icon path={mdiChevronUp} size={0.7} />}
+            {openFloatingPanel === "canvas" ? <Icon path={mdiChevronDown} size={0.7} /> : <Icon path={mdiChevronUp} size={0.7} />}
           </span>
         </motion.button>
       </div>
 
       {/* Single Panel Container with sliding content */}
       <AnimatePresence>
-        {openPanel && (
+        {openFloatingPanel && (
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -716,13 +715,13 @@ const FloatingFrameSelector = () => {
           >
             <div className="panel-header">
               <h3>
-                {openPanel === "frame" && "Frame Templates"}
-                {openPanel === "canvas" && "Canvas Size"}
-                {openPanel === "background" && "Backgrounds"}
+                {openFloatingPanel === "frame" && "Frame Templates"}
+                {openFloatingPanel === "canvas" && "Canvas Size"}
+                {openFloatingPanel === "background" && "Backgrounds"}
               </h3>
               <div className="panel-header-actions">
                 {/* Auto-match toggle - always show for canvas panel */}
-                {openPanel === "canvas" && (
+                {openFloatingPanel === "canvas" && (
                   <>
                     <button
                       onClick={() => {
@@ -779,20 +778,20 @@ const FloatingFrameSelector = () => {
                   </>
                 )}
                 {/* Delete mode toggle button - for frame, background, and canvas panels */}
-                {(openPanel === "frame" || openPanel === "background" || openPanel === "canvas") && (
+                {(openFloatingPanel === "frame" || openFloatingPanel === "background" || openFloatingPanel === "canvas") && (
                   <button
                     onClick={() => {
-                      setDeleteMode(deleteMode === openPanel ? null : openPanel);
+                      setDeleteMode(deleteMode === openFloatingPanel ? null : openFloatingPanel);
                     }}
-                    className={`delete-toggle-btn is-delete-mode ${deleteMode === openPanel ? 'active' : ''}`}
-                    title={deleteMode === openPanel ? "Exit delete mode" : "Enter delete mode"}
+                    className={`delete-toggle-btn is-delete-mode ${deleteMode === openFloatingPanel ? 'active' : ''}`}
+                    title={deleteMode === openFloatingPanel ? "Exit delete mode" : "Enter delete mode"}
                   >
                     <Icon path={mdiDeleteOutline} size={0.9} />
                   </button>
                 )}
                 <button
                   onClick={() => {
-                    setOpenPanel(null);
+                    setOpenFloatingPanel(null);
                     setDeleteMode(null);
                   }}
                   className="close-btn"
@@ -804,7 +803,7 @@ const FloatingFrameSelector = () => {
 
             <div className="frame-list">
               <AnimatePresence mode="wait">
-                {openPanel === "frame" && (
+                {openFloatingPanel === "frame" && (
                   <motion.div
                     key="frame-content"
                     custom={direction}
@@ -847,7 +846,6 @@ const FloatingFrameSelector = () => {
                                 style={{
                                   border: '2px dashed rgba(255, 255, 255, 0.25)',
                                   overflow: 'visible',
-                                  paddingBottom: '10px',
                                   display: 'flex',
                                   alignItems: 'center',
                                   justifyContent: 'center',
@@ -920,7 +918,11 @@ const FloatingFrameSelector = () => {
                                     className="item-delete-btn"
                                     title="Delete frame"
                                   >
-                                    <Icon path={mdiDeleteOutline} size={0.8} />
+                                    <span style={{color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+  <svg style={{width: '14px', height: '14px', fill: 'white'}} viewBox="0 0 24 24">
+    <path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z" />
+  </svg>
+</span>
                                   </button>
                                 )}
                               </div>
@@ -936,7 +938,7 @@ const FloatingFrameSelector = () => {
                   </motion.div>
                 )}
 
-                {openPanel === "canvas" && (
+                {openFloatingPanel === "canvas" && (
                   <motion.div
                     key="canvas-content"
                     custom={direction}
@@ -1006,7 +1008,6 @@ const FloatingFrameSelector = () => {
                             style={{
                               border: '2px dashed rgba(255, 255, 255, 0.25)',
                               overflow: 'visible',
-                              paddingBottom: '10px',
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
@@ -1070,7 +1071,11 @@ const FloatingFrameSelector = () => {
                               className="item-delete-btn"
                               title="Delete custom canvas"
                             >
-                                <Icon path={mdiDeleteOutline} size={0.8} />
+                                <span style={{color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+  <svg style={{width: '14px', height: '14px', fill: 'white'}} viewBox="0 0 24 24">
+    <path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z" />
+  </svg>
+</span>
                               </button>
                           )}
                         </div>
@@ -1118,7 +1123,7 @@ const FloatingFrameSelector = () => {
                   </motion.div>
                 )}
 
-                {openPanel === "background" && (
+                {openFloatingPanel === "background" && (
                   <motion.div
                     key="background-content"
                     custom={direction}
@@ -1160,8 +1165,7 @@ const FloatingFrameSelector = () => {
                                 border: '2px dashed rgba(255, 255, 255, 0.25)',
                                 background: 'rgba(0, 0, 0, 0.15)',
                                 boxShadow: 'inset 0 1px 3px rgba(0, 0, 0, 0.2)',
-                                overflow: 'visible',
-                                paddingBottom: '10px'
+                                overflow: 'visible'
                               }}
                             >
                               <Icon path={mdiPlus} size={1.2} />
@@ -1273,7 +1277,11 @@ const FloatingFrameSelector = () => {
                                   className="item-delete-btn"
                                   title="Delete background"
                                 >
-                                  <Icon path={mdiDeleteOutline} size={0.8} />
+                                  <span style={{color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+  <svg style={{width: '14px', height: '14px', fill: 'white'}} viewBox="0 0 24 24">
+    <path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z" />
+  </svg>
+</span>
                                 </button>
                               )}
                             </div>

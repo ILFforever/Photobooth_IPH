@@ -2147,7 +2147,7 @@ int main(int argc, char *argv[]) {
 
     install_signal_handlers();
 
-    log_ts("controller: ===== gphoto2-controller v2.2 (Canon fast path) =====\n");
+    log_ts("controller: ===== gphoto2-controller v1.2 =====\n");
 
     /* Create status pipe */
     mkfifo(STATUS_PIPE, 0666);
@@ -2803,10 +2803,12 @@ int main(int argc, char *argv[]) {
                                      (camera_open_end.tv_nsec - cycle_start.tv_nsec) / 1000000;
 
                 /* List all available widgets once (for debugging widget names) */
+                /* Commented out - debug only, causes extra gp_camera_get_config USB round-trip
                 if (!g_widgets_listed) {
                     list_all_widgets(camera, context);
                     g_widgets_listed = 1;
                 }
+                */
 
                 // Periodically reset old failed file entries (allows retry after timeout)
                 reset_old_failed_files();

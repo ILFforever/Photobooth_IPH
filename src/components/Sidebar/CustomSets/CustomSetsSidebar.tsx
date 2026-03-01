@@ -322,7 +322,7 @@ export function CustomSetsSidebar() {
           onClick={() => setShowCreateDialog(true)}
           disabled={!currentFrame || !canvasSize || !background}
         >
-          + Save Current Setup
+          Save Current Setup
         </button>
 
         {loading ? (
