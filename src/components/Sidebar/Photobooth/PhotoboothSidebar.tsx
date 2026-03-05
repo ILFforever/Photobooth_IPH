@@ -23,6 +23,7 @@ import type { ConnectionState } from "../../../types/connection";
 import {
   EditTabContent,
   VmLogsModal,
+  LedInfoModal,
   CustomSetsSection,
   WorkingFolderSection,
   NamingSchemeSection,
@@ -33,6 +34,7 @@ import {
   QrTabContent,
   GifTabContent,
   GifSettingsSection,
+  ConnectionInfoSection,
 } from "./components";
 import "./PhotoboothSidebar.css";
 
@@ -43,13 +45,16 @@ interface PhotoboothSidebarProps {
 }
 
 type PhotoboothTab = 'camera' | 'photobooth' | 'print' | 'qr' | 'gif' | 'edit';
-type CollapsibleSection = 'camera' | 'liveview' | 'folder' | 'photobooth' | 'frame' | 'session' | 'naming' | 'qr' | 'gif';
+type CollapsibleSection = 'camera' | 'liveview' | 'connection' | 'polling' | 'folder' | 'photobooth' | 'frame' | 'session' | 'naming' | 'qr' | 'gif';
 type SettingType = 'shutter' | 'aperture' | 'iso' | 'ev' | 'wb' | 'metering' | 'folder' | 'mode' | null;
 
 export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
   const {
     isCameraConnected,
     connectionState,
+    isConnecting,
+    isDownloading,
+    setDownloading,
     reconnect,
     disconnect,
   } = useCamera();
@@ -91,6 +96,8 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
   const [expandedSections, setExpandedSections] = useState<Record<CollapsibleSection, boolean>>({
     camera: false,
     liveview: false,
+    connection: false,
+    polling: false,
     folder: false,
     photobooth: false,
     frame: false,
@@ -101,9 +108,12 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
   });
   const [activeSetting, setActiveSetting] = useState<SettingType>(null);
   const [hasSelectedCamera, setHasSelectedCamera] = useState(false);
+  const [cameraInfo, setCameraInfo] = useState<{ id: string; manufacturer: string; model: string; port: string; usb_version?: string; serial_number?: string; firmware?: string } | null>(null);
+  const [lensInfo, setLensInfo] = useState<string | null>(null);
   const [imageQualityExpanded, setImageQualityExpanded] = useState(false);
   const [focusSettingsExpanded, setFocusSettingsExpanded] = useState(false);
   const [showQrInfoModal, setShowQrInfoModal] = useState(false);
+  const [showLedInfoModal, setShowLedInfoModal] = useState(false);
 
   // Google Drive folder state
   const [isLoadingDriveFolder, setIsLoadingDriveFolder] = useState(false);
@@ -168,9 +178,17 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
     setActiveSetting(prev => prev === setting ? null : setting);
   };
 
-  const handleConnectionChange = useCallback((isConnected: boolean, hasSelected: boolean) => {
-    console.log('[PhotoboothSidebar] Connection change:', isConnected, hasSelected);
+  const handleConnectionChange = useCallback((isConnected: boolean, hasSelected: boolean, camera?: { id: string; manufacturer: string; model: string; port: string; usb_version?: string; serial_number?: string; firmware?: string }, lens?: string | null) => {
+    console.log('[PhotoboothSidebar] Connection change:', isConnected, hasSelected, camera, lens);
     setHasSelectedCamera(hasSelected);
+    if (camera) {
+      setCameraInfo(camera);
+    } else if (!isConnected) {
+      setCameraInfo(null);
+    }
+    if (lens !== undefined) {
+      setLensInfo(lens);
+    }
   }, []);
 
   const handleBrowseFolder = async () => {
@@ -209,6 +227,32 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
     setShowQrInfoModal(true);
   };
 
+  // Compute LED state:
+  // - offline: VM is offline (solid red)
+  // - idle: VM online, no camera connected (solid green)
+  // - connecting: trying to connect to camera (solid yellow)
+  // - camera-connected: camera connected and running (pulsing green)
+  // - downloading: downloading photo from camera (fast pulsing blue)
+  const getLedState = (): 'offline' | 'idle' | 'connecting' | 'camera-connected' | 'downloading' => {
+    if (!isVmOnline) return 'offline';
+    if (isDownloading) return 'downloading';
+    if (isConnecting) return 'connecting';
+    if (isCameraConnected) return 'camera-connected';
+    return 'idle';
+  };
+
+  const ledState = getLedState();
+
+  const getLedTitle = () => {
+    switch (ledState) {
+      case 'offline': return 'Linux VM is offline (click for logs)';
+      case 'idle': return 'Linux VM is online - No camera connected (click for logs)';
+      case 'connecting': return 'Connecting to camera... (click for logs)';
+      case 'camera-connected': return 'Camera connected and running (click for logs)';
+      case 'downloading': return 'Downloading photo... (click for logs)';
+    }
+  };
+
   return (
     <>
       <div className="photobooth-sidebar">
@@ -216,8 +260,8 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
           <div className="sidebar-title-row">
             <h2 className="sidebar-title">Control Center</h2>
             <div
-              className={`vm-status-led ${isVmOnline ? 'online' : 'offline'}`}
-              title={`Linux VM is ${isVmOnline ? 'online (click for logs)' : 'offline (click for logs)'}`}
+              className={`vm-status-led ${ledState}`}
+              title={getLedTitle()}
               onClick={vmLogs.handleOpenVmLogs}
             >
               <div className="vm-status-led-inner" />
@@ -323,6 +367,13 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
                         />
                       </>
                     )}
+
+                    <ConnectionInfoSection
+                      expandedSections={expandedSections}
+                      toggleSection={toggleSection}
+                      selectedCamera={cameraInfo}
+                      lensInfo={lensInfo}
+                    />
                   </>
                 )}
               </div>
@@ -458,6 +509,15 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
         onClose={() => vmLogs.setShowVmLogs(false)}
         onRefresh={vmLogs.fetchVmLogs}
         onRestart={vmLogs.handleRestartVm}
+        onShowLedInfo={() => {
+          vmLogs.setShowVmLogs(false);
+          setShowLedInfoModal(true);
+        }}
+      />
+
+      <LedInfoModal
+        show={showLedInfoModal}
+        onClose={() => setShowLedInfoModal(false)}
       />
 
       <div className="restart-vm-confirm-modal">

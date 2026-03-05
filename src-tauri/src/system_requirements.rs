@@ -1160,6 +1160,15 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
     use tauri::Emitter;
     use tokio::time::{sleep, Duration};
 
+    // Clear the init log at the start of each boot
+    if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+        let log_path = std::path::PathBuf::from(&local_app_data)
+            .join("Photobooth_IPH")
+            .join("logs")
+            .join("init.log");
+        let _ = std::fs::write(&log_path, "");
+    }
+
     log_file!("=== STARTING INITIALIZATION ===");
 
     const VM_NAME: &str = "PhotoboothLinux";
@@ -1244,6 +1253,62 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
         match create_vm_from_iso(VBOX_MANAGE, VM_NAME, &window) {
             Ok(()) => {
                 log_file!(" VM auto-created successfully");
+            }
+            Err(e) if e.contains("already exists") || e.contains("VBOX_E_FILE_ERROR") => {
+                // VM file exists on disk but isn't registered - find and delete it
+                log_file!(" VM file exists but not registered - attempting to delete and recreate");
+
+                let mut deleted = false;
+                let possible_locations = vec![
+                    PathBuf::from("D:\\VirtualBox").join(VM_NAME),
+                    PathBuf::from(std::env::var("USERPROFILE").unwrap_or_default())
+                        .join("VirtualBox VMs")
+                        .join(VM_NAME),
+                ];
+
+                for vm_dir in &possible_locations {
+                    if vm_dir.exists() {
+                        log_file!(" Found existing VM at {:?} - deleting", vm_dir);
+                        match std::fs::remove_dir_all(vm_dir) {
+                            Ok(()) => {
+                                log_file!(" Deleted old VM directory");
+                                deleted = true;
+                                break;
+                            }
+                            Err(err) => {
+                                log_file!(" Failed to delete: {}", err);
+                            }
+                        }
+                    }
+                }
+
+                if deleted {
+                    // Try creating again after deletion
+                    match create_vm_from_iso(VBOX_MANAGE, VM_NAME, &window) {
+                        Ok(()) => {
+                            log_file!(" VM created successfully after cleanup");
+                        }
+                        Err(retry_err) => {
+                            log_file!(" VM creation still failed after cleanup: {}", retry_err);
+                            let _ = window.emit("init-progress", serde_json::json!({
+                                "step": 3,
+                                "total_steps": 6,
+                                "message": format!("Failed to create VM: {}", retry_err)
+                            }));
+                            let _ = window.emit("init-complete", ());
+                            return Ok(format!("Initialization complete (VM creation failed: {})", retry_err));
+                        }
+                    }
+                } else {
+                    log_file!(" Could not find VM directory to delete");
+                    let _ = window.emit("init-progress", serde_json::json!({
+                        "step": 3,
+                        "total_steps": 6,
+                        "message": "VM exists at unknown location - cannot auto-delete"
+                    }));
+                    let _ = window.emit("init-complete", ());
+                    return Ok("Initialization complete (VM exists at unknown path - manually delete)".to_string());
+                }
             }
             Err(e) => {
                 log_file!(" VM auto-creation failed: {}", e);

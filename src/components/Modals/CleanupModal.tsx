@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useCamera } from "../../contexts/CameraContext";
 
 interface CleanupModalProps {
   show: boolean;
@@ -10,16 +11,44 @@ interface CleanupModalProps {
 export default function CleanupModal({ show, onCancel }: CleanupModalProps) {
   const [confirmed, setConfirmed] = useState(false);
   const [status, setStatus] = useState("Shutting down VM...");
+  const { disconnect } = useCamera();
 
   // Reset confirmed state when modal is hidden
   useEffect(() => {
     if (!show) setConfirmed(false);
   }, [show]);
 
+  // Handle keyboard shortcuts (Enter=confirm, Esc=cancel)
+  useEffect(() => {
+    if (!show || confirmed) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        setConfirmed(true);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        onCancel();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [show, confirmed, onCancel]);
+
   useEffect(() => {
     if (!show || !confirmed) return;
 
     const cleanup = async () => {
+      try {
+        setStatus("Disconnecting camera...");
+        disconnect();
+        // Brief pause to let disconnect complete
+        await new Promise(r => setTimeout(r, 500));
+      } catch {
+        // Ignore disconnect errors
+      }
+
       try {
         setStatus("Shutting down VM...");
         await invoke('shutdown_vm');
@@ -46,7 +75,7 @@ export default function CleanupModal({ show, onCancel }: CleanupModalProps) {
     };
 
     cleanup();
-  }, [show, confirmed]);
+  }, [show, confirmed, disconnect]);
 
   if (!show) return null;
 

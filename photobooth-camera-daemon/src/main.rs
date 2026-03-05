@@ -327,6 +327,10 @@ struct CameraInfo {
     port: String,
     #[serde(default)]
     usb_version: String,
+    #[serde(default)]
+    serial_number: String,
+    #[serde(default)]
+    firmware: String,
 }
 
 #[derive(Serialize)]
@@ -558,18 +562,28 @@ async fn start_controller_process(shared_state: &SharedState) {
 
                                     // Parse and cache the status for /api/camera/status endpoint
                                     if let Ok(status_json) = serde_json::from_str::<serde_json::Value>(&trimmed) {
-                                        // Check for camera_connected event with full camera info
-                                        if let Some(camera_info_array) = status_json.get("camera_connected").and_then(|v| v.as_array()) {
-                                            println!("[status-pipe] Camera connected event, caching camera info");
-                                            // Parse camera info and cache it
-                                            let mut cameras_vec = Vec::new();
-                                            for cam in camera_info_array {
-                                                if let Ok(cam_info) = serde_json::from_value::<CameraInfo>(cam.clone()) {
-                                                    cameras_vec.push(cam_info);
-                                                }
-                                            }
-                                            if !cameras_vec.is_empty() {
-                                                *cached_cameras.lock().await = cameras_vec;
+                                        // Check for camera_connected event with camera info
+                                        if status_json.get("type").and_then(|v| v.as_str()) == Some("camera_connected") {
+                                            let cam_id = status_json.get("camera_id").and_then(|v| v.as_str()).unwrap_or("0").to_string();
+                                            let manufacturer = status_json.get("manufacturer").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                            let model = status_json.get("model").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                            let port = status_json.get("port").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                            let usb_version = status_json.get("usb_version").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                            let serial_number = status_json.get("serial_number").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                            let firmware = status_json.get("firmware").and_then(|v| v.as_str()).unwrap_or("").to_string();
+
+                                            if !manufacturer.is_empty() && !model.is_empty() {
+                                                let cam_info = CameraInfo {
+                                                    id: cam_id,
+                                                    manufacturer,
+                                                    model,
+                                                    port,
+                                                    usb_version,
+                                                    serial_number,
+                                                    firmware,
+                                                };
+                                                println!("[status-pipe] Camera connected event, caching camera info: {} {}", cam_info.manufacturer, cam_info.model);
+                                                *cached_cameras.lock().await = vec![cam_info];
                                             }
                                         }
 
@@ -916,6 +930,46 @@ async fn handle_request(
                 Err(e) => Some(make_api_response(serde_json::json!({
                     "success": false,
                     "error": format!("Failed to switch camera: {}", e)
+                })))
+            }
+        }
+
+        (&Method::POST, "/api/controller/disconnect") => {
+            // Send DISCONNECT command to controller - stops polling, camera stays detected in cache
+            match send_controller_command("DISCONNECT").await {
+                Ok(_) => Some(make_api_response(serde_json::json!({
+                    "success": true,
+                    "message": "Polling stopped"
+                }))),
+                Err(e) => Some(make_api_response(serde_json::json!({
+                    "success": false,
+                    "error": format!("Failed to stop polling: {}", e)
+                })))
+            }
+        }
+
+        (&Method::POST, "/api/controller/pause-polling") => {
+            match send_controller_command("PAUSE_POLLING").await {
+                Ok(_) => Some(make_api_response(serde_json::json!({
+                    "success": true,
+                    "message": "Polling paused"
+                }))),
+                Err(e) => Some(make_api_response(serde_json::json!({
+                    "success": false,
+                    "error": format!("Failed to pause polling: {}", e)
+                })))
+            }
+        }
+
+        (&Method::POST, "/api/controller/resume-polling") => {
+            match send_controller_command("RESUME_POLLING").await {
+                Ok(_) => Some(make_api_response(serde_json::json!({
+                    "success": true,
+                    "message": "Polling resumed"
+                }))),
+                Err(e) => Some(make_api_response(serde_json::json!({
+                    "success": false,
+                    "error": format!("Failed to resume polling: {}", e)
                 })))
             }
         }

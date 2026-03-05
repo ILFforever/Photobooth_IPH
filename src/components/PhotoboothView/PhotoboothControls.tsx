@@ -317,6 +317,7 @@ interface PhotoboothControlsProps {
   onPause: () => void;
   onStopIfActive: () => void;
   onCaptureNow: () => void;
+  onCaptureStart?: () => void;  // Called when capture is initiated
   onShowNoCameraWarning: () => void;
   onShowNoWorkingFolderWarning: () => void;
 

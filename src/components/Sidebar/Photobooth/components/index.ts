@@ -1,5 +1,6 @@
 export { EditTabContent } from './EditTabContent';
 export { VmLogsModal } from './VmLogsModal';
+export { LedInfoModal } from './LedInfoModal';
 export { CustomSetsSection } from './CustomSetsSection';
 export { WorkingFolderSection } from './WorkingFolderSection';
 export { NamingSchemeSection } from './NamingSchemeSection';
@@ -10,3 +11,4 @@ export { PrintTabContent } from './PrintTabContent';
 export { QrTabContent } from './QrTabContent';
 export { GifTabContent } from './GifTabContent';
 export { GifSettingsSection } from './GifSettingsSection';
+export { ConnectionInfoSection } from './ConnectionInfoSection';

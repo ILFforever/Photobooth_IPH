@@ -438,7 +438,7 @@ export function LiveViewSection({ expandedSections, toggleSection }: LiveViewSec
                   <h4 className="method-info-title">USB C (PTP Streaming)</h4>
                 </div>
                 <p className="method-info-description">
-                  Direct USB connection using continuous PTP streaming via libgphoto2 daemon at 15 FPS.
+                  Direct USB connection using continuous PTP streaming via libgphoto2 daemon at 25 FPS.
                 </p>
                 <ul className="method-info-features">
                   <li className="feature-pro">✓ Only USB cable needed - no capture card</li>

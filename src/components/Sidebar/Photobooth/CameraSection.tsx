@@ -1,6 +1,5 @@
 import { ChevronDown, ChevronRight, ChevronUp, Camera, RefreshCw, Plug } from "lucide-react";
 import Icon from '@mdi/react';
-import * as Slider from "@radix-ui/react-slider";
 import {
   mdiCameraMeteringMatrix,
   mdiCameraMeteringPartial,
@@ -47,6 +46,8 @@ interface CameraInfo {
   model: string;
   port: string;
   usb_version?: string;
+  serial_number?: string;
+  firmware?: string;
 }
 
 // SVG Icons for Metering Modes
@@ -130,7 +131,7 @@ interface CameraSectionProps {
   onCameraOptionsLoaded?: (options: { iso: string[]; aperture: string[]; shutterspeed: string[]; whitebalance: string[]; ev?: string[] }, skipStatusApply?: boolean, initialConfigValues?: { shutter?: string; aperture?: string; iso?: string; ev?: string; wb?: string; metering?: string; battery?: string }) => void;
   pendingSettings?: Record<string, string>;
   /** Callback when camera selection/connection state changes */
-  onConnectionChange?: (isConnected: boolean, hasSelectedCamera: boolean) => void;
+  onConnectionChange?: (isConnected: boolean, hasSelectedCamera: boolean, camera?: CameraInfo, lens?: string | null) => void;
   /** Callback when initial config values are loaded (for setting dial positions) */
   onConfigValuesLoaded?: (values: { shutter?: string; aperture?: string; iso?: string; ev?: string; wb?: string; metering?: string; battery?: string }) => void;
 }
@@ -205,9 +206,9 @@ export function CameraSection({
 
   // Fetch available cameras on mount and poll every 5s when not connected
   useEffect(() => {
-    fetchCameras();
+    fetchCameras(true);
     if (!isConnected) {
-      const interval = setInterval(fetchCameras, 5000);
+      const interval = setInterval(() => fetchCameras(false), 5000);
       return () => clearInterval(interval);
     }
   }, [isConnected]);
@@ -222,8 +223,8 @@ export function CameraSection({
 
   // Notify parent of connection state changes
   useEffect(() => {
-    onConnectionChange?.(isConnected, selectedCamera !== null);
-  }, [isConnected, selectedCamera, onConnectionChange]);
+    onConnectionChange?.(isConnected, selectedCamera !== null, selectedCamera ?? undefined, lensInfo);
+  }, [isConnected, selectedCamera, lensInfo, onConnectionChange]);
 
   // Reset local state when context disconnects (e.g. from ConnectionLostModal "Disconnect" button)
   useEffect(() => {
@@ -236,8 +237,11 @@ export function CameraSection({
     }
   }, [connectionState, isConnected]);
 
-  const fetchCameras = async () => {
-    setIsLoadingCameras(true);
+  const fetchCameras = async (showLoading = false) => {
+    if (showLoading) {
+      setIsLoadingCameras(true);
+    }
+    const startTime = Date.now();
     try {
       const response = await fetch(`${API_BASE}/api/cameras`);
       if (response.ok) {
@@ -247,7 +251,11 @@ export function CameraSection({
     } catch (error) {
       console.error('Error fetching cameras:', error);
     } finally {
-      setIsLoadingCameras(false);
+      if (showLoading) {
+        const elapsed = Date.now() - startTime;
+        const remaining = Math.max(0, 500 - elapsed);
+        setTimeout(() => setIsLoadingCameras(false), remaining);
+      }
     }
   };
 
@@ -394,17 +402,15 @@ export function CameraSection({
     setSelectedCamera(null);
     setIsConnected(false);
     setCameraStatus(null);
-    // Trigger disconnect in context
     disconnect();
-    // Mark HTTP camera connection as false
     setCameraHttpConnected(false);
+    onSetActiveSetting(null);
   };
 
   const getCameraDisplayName = (camera: CameraInfo) => {
     return `${camera.manufacturer} ${camera.model}`.trim();
   };
 
-  // Clean up lens name from format "LX202A,AF 27/1.2 XF      ,88H887AD" to "AF 27/1.2 XF"
   const cleanLensName = (rawLensName: string): string => {
     // Lens name format: CODE,MODEL,SERIAL - extract the middle part
     const parts = rawLensName.split(',');
@@ -639,9 +645,7 @@ export function CameraSection({
                 >
                   <Camera size={16} />
                   <span className="connect-camera-text">
-                    {isLoadingCameras
-                      ? 'Detecting cameras...'
-                      : availableCameras.length === 0
+                    {availableCameras.length === 0
                       ? 'No cameras found'
                       : 'Select Camera'}
                   </span>
@@ -649,7 +653,7 @@ export function CameraSection({
                 </button>
                 <button
                   className="refresh-cameras-btn"
-                  onClick={fetchCameras}
+                  onClick={() => fetchCameras(true)}
                   disabled={isLoadingCameras}
                   title="Refresh camera list"
                 >
@@ -725,7 +729,7 @@ export function CameraSection({
               >
                 <span className="setting-label">SHUTTER</span>
                 <span className="setting-value">
-                  {displayShutter === -1 ? '---' : shutterSpeeds[displayShutter]} {activeSetting === 'shutter' && isSettingAdjustable(shootingMode, 'shutter', cameraBrand) && <ChevronUp size={12} className="setting-chevron" />}
+                  {shutterValue === -1 ? '---' : shutterSpeeds[shutterValue]} {activeSetting === 'shutter' && isSettingAdjustable(shootingMode, 'shutter', cameraBrand) && <ChevronUp size={12} className="setting-chevron" />}
                 </span>
                 {pendingSettings?.['shutter'] && <span className="pending-indicator" />}
               </div>
@@ -781,103 +785,19 @@ export function CameraSection({
           )}
 
           {/* Setting Control Panel */}
-          {activeSetting === 'shutter' && (
-            <div className="setting-control-panel">
-              <div className="setting-control-header">
-                <span className="setting-control-title">SHUTTER SPEED</span>
-                <button
-                  className="setting-control-close"
-                  onClick={() => onSetActiveSetting(null)}
-                >
-                  <ChevronDown size={14} />
-                </button>
-              </div>
-              <div className="shutter-dial-container">
-                <div className="shutter-dial-viewport">
-                  {/* Fixed indicator in center */}
-                  <div className="shutter-indicator-fixed">
-                    <div className="shutter-indicator-triangle" />
-                  </div>
-
-                  {/* Tick marks overlay - moves with slider */}
-                  <div
-                    className="shutter-ticks-container"
-                    style={{
-                      transform: `translateX(${50 - (displayShutter / (shutterSpeeds.length - 1)) * 100}%)`
-                    }}
-                  >
-                    {shutterSpeeds.map((_, index) => {
-                      const position = (index / (shutterSpeeds.length - 1)) * 100;
-                      const isActive = Math.abs(index - displayShutter) < 0.5;
-
-                      return (
-                        <div
-                          key={index}
-                          className={`shutter-tick ${isActive ? 'shutter-tick-active' : ''}`}
-                          style={{ left: `${position}%` }}
-                        />
-                      );
-                    })}
-                  </div>
-
-                  {/* Radix Slider (invisible interaction layer) */}
-                  <Slider.Root
-                    className="shutter-slider-root"
-                    value={[displayShutter === -1 ? 0 : displayShutter]}
-                    onValueChange={(value) => {
-                      if (shutterValue !== -1 && isSettingAdjustable(shootingMode, 'shutter', cameraBrand)) {
-                        setShutterPreview(value[0]); // Only update preview, no API call
-                      }
-                    }}
-                    onValueCommit={(value) => {
-                      if (shutterValue !== -1 && isSettingAdjustable(shootingMode, 'shutter', cameraBrand)) {
-                        setShutterPreview(null); // Clear preview
-                        onSetShutterValue(value[0]); // Send API and set pending
-                      }
-                    }}
-                    min={0}
-                    max={shutterSpeeds.length - 1}
-                    step={1}
-                    inverted={true}
-                    disabled={shutterValue === -1 || !isSettingAdjustable(shootingMode, 'shutter', cameraBrand)}
-                  >
-                    <Slider.Track className="shutter-slider-track">
-                      <Slider.Range className="shutter-slider-range" />
-                    </Slider.Track>
-                    <Slider.Thumb className="shutter-slider-thumb" />
-                  </Slider.Root>
-                </div>
-              </div>
-              <div className="shutter-dial-controls">
-                <button
-                  className="shutter-dial-arrow"
-                  onClick={() => {
-                    const newValue = Math.max(0, shutterValue - 1);
-                    setShutterPreview(null);
-                    onSetShutterValue(newValue);
-                  }}
-                  disabled={shutterValue <= 0 || !isSettingAdjustable(shootingMode, 'shutter', cameraBrand)}
-                >
-                  <ChevronDown size={16} style={{ transform: 'rotate(90deg)' }} />
-                </button>
-                <div className="shutter-dial-label">{displayShutter === -1 ? '---' : shutterSpeeds[displayShutter]}</div>
-                <button
-                  className="shutter-dial-arrow"
-                  onClick={() => {
-                    const newValue = Math.min(shutterSpeeds.length - 1, shutterValue + 1);
-                    setShutterPreview(null);
-                    onSetShutterValue(newValue);
-                  }}
-                  disabled={shutterValue === shutterSpeeds.length - 1 || !isSettingAdjustable(shootingMode, 'shutter', cameraBrand)}
-                >
-                  <ChevronDown size={16} style={{ transform: 'rotate(-90deg)' }} />
-                </button>
-              </div>
-              <div className="shutter-dial-hints">
-                <span className="shutter-hint-slow">Slow</span>
-                <span className="shutter-hint-fast">Fast</span>
-              </div>
-            </div>
+          {activeSetting === 'shutter' && createDialControl(
+            'SHUTTER SPEED',
+            shutterSpeeds,
+            shutterValue,
+            onSetShutterValue,
+            'Fast',
+            'Slow',
+            true,
+            undefined,
+            shutterValue === -1 || !isSettingAdjustable(shootingMode, 'shutter', cameraBrand),
+            undefined,
+            shutterPreview,
+            setShutterPreview
           )}
 
           {activeSetting === 'aperture' && createDialControl(

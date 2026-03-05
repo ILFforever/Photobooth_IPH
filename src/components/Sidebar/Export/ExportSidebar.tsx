@@ -30,9 +30,10 @@ export function ExportSidebar() {
     const filledZones = placedImages.size;
     const totalZones = currentFrame?.zones.length || 0;
 
-    // Estimate file size (rough calculation)
+    // Estimate file size (PNG compression typically achieves ~35-45% of raw size)
     const pixels = (canvasSize?.width || 0) * (canvasSize?.height || 0);
-    const estimatedSizeMB = pixels * 4 / (1024 * 1024); // 4 bytes per pixel (RGBA)
+    const rawSizeMB = pixels * 4 / (1024 * 1024); // 4 bytes per pixel (RGBA)
+    const estimatedSizeMB = rawSizeMB * 0.4; // PNG compression factor (~40% of raw)
 
     return {
       bgName,

@@ -70,6 +70,19 @@ export function useCameraSettings(propsShutterSpeeds?: string[]) {
   const lastCameraStatusRef = useRef<CameraStatus | null>(null);
   const isInitializingFromConfigRef = useRef(false);
 
+  // Lock settings from WS updates for a few seconds after user interaction
+  const lockedSettingsRef = useRef<Record<string, number>>({});
+  const lockSetting = (setting: string, durationMs: number = 3000) => {
+    lockedSettingsRef.current[setting] = Date.now() + durationMs;
+  };
+  const isSettingLocked = (setting: string): boolean => {
+    const until = lockedSettingsRef.current[setting];
+    if (!until) return false;
+    if (Date.now() < until) return true;
+    delete lockedSettingsRef.current[setting];
+    return false;
+  };
+
   // Send camera setting to API
   const sendCameraSetting = async (setting: string, value: string) => {
     try {
@@ -115,16 +128,19 @@ export function useCameraSettings(propsShutterSpeeds?: string[]) {
 
   // Wrapper setters
   const handleSetShutterValue = (value: number) => {
+    lockSetting('shutter');
     setShutterValue(value);
     debouncedSetSetting('shutter', 'shutterspeed', shutterSpeeds[value]);
   };
 
   const handleSetApertureIndex = (value: number) => {
+    lockSetting('aperture');
     setApertureIndex(value);
     debouncedSetSetting('aperture', 'f-number', apertureOptions[value]);
   };
 
   const handleSetIsoIndex = (value: number) => {
+    lockSetting('iso');
     setIsoIndex(value);
     const displayValue = isoOptions[value];
     const cameraValue = cameraSettingsService.convertIsoToCamera(displayValue);
@@ -132,15 +148,18 @@ export function useCameraSettings(propsShutterSpeeds?: string[]) {
   };
 
   const handleSetEvIndex = (value: number) => {
+    lockSetting('ev');
     setEvIndex(value);
   };
 
   const handleSetWbValue = (value: string) => {
+    lockSetting('wb');
     setWbValue(value);
     debouncedSetSetting('wb', 'whitebalance', value);
   };
 
   const handleSetMeteringValue = (value: string) => {
+    lockSetting('metering');
     setMeteringValue(value);
     const meteringSetting = cameraSettingsService.getMeteringSettingName();
     if (cameraSettingsService.getBrand().id === 'fuji') {
@@ -188,7 +207,7 @@ export function useCameraSettings(propsShutterSpeeds?: string[]) {
     console.log('[useCameraSettings] WebSocket status received:', data);
     const opts = optionsRef.current;
 
-    if (data.iso && opts.isoOptions.length > 0) {
+    if (data.iso && opts.isoOptions.length > 0 && !isSettingLocked('iso')) {
       const displayIso = cameraSettingsService.convertIsoToDisplay(data.iso);
       const idx = opts.isoOptions.findIndex(opt => opt === displayIso);
       if (idx !== -1) {
@@ -196,33 +215,33 @@ export function useCameraSettings(propsShutterSpeeds?: string[]) {
         setIsoIndex(idx);
       }
     }
-    if (data.aperture && opts.apertureOptions.length > 0) {
+    if (data.aperture && opts.apertureOptions.length > 0 && !isSettingLocked('aperture')) {
       const idx = opts.apertureOptions.findIndex(opt => opt === data.aperture);
       if (idx !== -1) {
         confirmSettingValue('aperture', data.aperture!);
         setApertureIndex(idx);
       }
     }
-    if (data.shutter && opts.shutterSpeeds.length > 0) {
+    if (data.shutter && opts.shutterSpeeds.length > 0 && !isSettingLocked('shutter')) {
       const idx = opts.shutterSpeeds.findIndex(opt => opt === data.shutter);
       if (idx !== -1) {
         confirmSettingValue('shutter', data.shutter!);
         setShutterValue(idx);
       }
     }
-    if (data.ev && opts.evOptions.length > 0) {
+    if (data.ev && opts.evOptions.length > 0 && !isSettingLocked('ev')) {
       const idx = cameraSettingsService.mapEvToIndex(data.ev, opts.evOptions);
       if (idx !== -1) {
         confirmSettingValue('ev', opts.evOptions[idx]);
         setEvIndex(idx);
       }
     }
-    if (data.wb) {
+    if (data.wb && !isSettingLocked('wb')) {
       const displayWb = cameraSettingsService.convertWhiteBalanceToDisplay(data.wb);
       confirmSettingValue('wb', displayWb);
       setWbValue(displayWb);
     }
-    if (data.metering) {
+    if (data.metering && !isSettingLocked('metering')) {
       const displayMetering = cameraSettingsService.convertMeteringToDisplay(data.metering);
       setMeteringValue(displayMetering);
     }

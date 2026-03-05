@@ -1,17 +1,17 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Image as ImageIcon, ExternalLink, Camera, Grid3x3, Layers, AlertTriangle, X, Plus, FolderOpen
+  Image as ImageIcon, ExternalLink, Camera, Grid3x3, Layers, Plus, FolderOpen
 } from "lucide-react";
 import { usePhotoboothSettings, type PhotoboothSessionInfo } from "../../contexts/PhotoboothSettingsContext";
 import { usePhotoboothSequence } from "../../hooks/usePhotoboothSequence";
 import { useCamera } from "../../contexts/CameraContext";
 import { useLiveView } from "../../contexts/LiveViewContext";
-import { useCollage } from "../../contexts/CollageContext";
 import { usePhotobooth } from "../../contexts/PhotoboothContext";
 import { useToast } from "../../contexts/ToastContext";
 import { useUploadQueue } from "../../contexts/UploadQueueContext";
 import { useAuth } from "../../contexts/AuthContext";
+import { useCustomSets } from "../../hooks/useCustomSets";
 import { getDriveAuthState, areUploadsEnabled } from "../../utils/driveAuthState";
 import { PhotoboothControls } from "./PhotoboothControls";
 import DisplayContent from "./DisplayContent";
@@ -95,21 +95,20 @@ export default function PhotoboothWorkspace() {
     qrUploadEnabled,
     qrUploadAllImages
   } = usePhotoboothSettings();
-  const { captureError, clearCaptureError, isCameraConnected, hasEverConnected, isConnecting, addPhotoDownloadedListener, removePhotoDownloadedListener } = useCamera();
+  const { captureError, clearCaptureError, isCameraConnected, hasEverConnected, isConnecting, setDownloading, addPhotoDownloadedListener, removePhotoDownloadedListener } = useCamera();
   const { stream: liveViewStream, hdmi, ptp } = useLiveView();
   const { showToast } = useToast();
-  const { selectedCustomSetName } = useCollage();
   const { photoboothFrame, finalizeViewMode, setFinalizeViewMode, setFinalizeEditingZoneId, placedImages } = usePhotobooth();
   const { enqueuePhotos } = useUploadQueue();
   const { account, rootFolder } = useAuth();
+  const { customSets, selectedCustomSetId } = useCustomSets();
+
+  // Get the selected set name from the custom sets
+  const selectedSetName = customSets.find(s => s.id === selectedCustomSetId)?.name ?? null;
 
   // Local view mode synced with context
   const viewMode = finalizeViewMode;
 
-  // Debug: Log when selectedCustomSetName changes
-  useEffect(() => {
-    console.log('[PhotoboothWorkspace] selectedCustomSetName changed to:', selectedCustomSetName);
-  }, [selectedCustomSetName]);
 
   const [selectedSetId, setSelectedSetId] = useState<string | null>(null);
   const [expandedSets, setExpandedSets] = useState<Set<string>>(new Set());
@@ -141,6 +140,14 @@ export default function PhotoboothWorkspace() {
     }, 50); // Small delay
     return () => clearTimeout(timer);
   }, [displayMode, updateSliderPosition]);
+
+  // Show toast when capture error occurs
+  useEffect(() => {
+    if (captureError) {
+      showToast('Capture Error', 'error', 5000, captureError);
+      clearCaptureError();
+    }
+  }, [captureError, showToast, clearCaptureError]);
 
   // Capture preview state for guest display
   const [showCapturePreview, setShowCapturePreview] = useState(false);
@@ -216,6 +223,7 @@ export default function PhotoboothWorkspace() {
       // Called when entering waitingForPreview state
       console.log('[PhotoboothWorkspace] Entering waitingForPreview state');
     },
+    onCaptureStart: () => setDownloading(true),
   });
 
   // Add photos to set when photosTaken changes (happens during capture phase)
@@ -945,43 +953,6 @@ export default function PhotoboothWorkspace() {
 
   return (
     <div className="photobooth-workspace">
-      {/* Capture Error Modal */}
-      <AnimatePresence>
-        {captureError && (
-          <motion.div
-            className="capture-error-overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={clearCaptureError}
-          >
-            <motion.div
-              className="capture-error-modal"
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="capture-error-header">
-                <AlertTriangle size={24} className="capture-error-icon" />
-                <span>Capture Error</span>
-                <button className="capture-error-close" onClick={clearCaptureError}>
-                  <X size={18} />
-                </button>
-              </div>
-              <div className="capture-error-body">
-                <p>{captureError}</p>
-              </div>
-              <div className="capture-error-footer">
-                <button className="capture-error-btn" onClick={clearCaptureError}>
-                  Dismiss
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       <div className="photobooth-slide-container">
         <AnimatePresence mode="sync">
           {viewMode === 'capture' ? (
@@ -1089,7 +1060,7 @@ export default function PhotoboothWorkspace() {
             selectedPhotos={selectedPhotos}
             setName={currentSession?.name ?? ptbSession?.name ?? null}
             workingFolder={workingFolder}
-            frameName={selectedCustomSetName ?? null}
+            frameName={selectedSetName}
             requiredPhotos={requiredPhotos}
             onPhotoSelect={togglePhotoSelection}
             onNextSession={handleNextSession}
@@ -1117,6 +1088,7 @@ export default function PhotoboothWorkspace() {
             onPause={sequence.togglePause}
             onStopIfActive={sequence.stopIfActive}
             onCaptureNow={sequence.captureNow}
+            onCaptureStart={() => setDownloading(true)}
             onShowNoCameraWarning={handleShowNoCameraWarning}
             onShowNoWorkingFolderWarning={handleShowNoWorkingFolderWarning}
             getScrambledDigit={getScrambledDigit}

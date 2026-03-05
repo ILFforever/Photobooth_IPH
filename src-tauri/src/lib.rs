@@ -145,6 +145,8 @@ pub fn run() {
             load_ptb_workspace,
             save_ptb_workspace,
             save_delay_settings,
+            save_photobooth_settings,
+            save_gif_settings,
             create_photobooth_session,
             delete_photobooth_session,
             delete_session_photo,

@@ -1,4 +1,5 @@
-import { X, AlertCircle, RefreshCw, RotateCw } from 'lucide-react';
+import { X, AlertCircle, RefreshCw, RotateCw, HelpCircle } from 'lucide-react';
+import { useEffect, useRef } from 'react';
 import type { VmLogEntry } from '../../../../hooks/useVmLogs';
 
 interface VmLogsModalProps {
@@ -11,6 +12,7 @@ interface VmLogsModalProps {
   onClose: () => void;
   onRefresh: () => void;
   onRestart: () => void;
+  onShowLedInfo?: () => void;
 }
 
 export function VmLogsModal({
@@ -23,7 +25,17 @@ export function VmLogsModal({
   onClose,
   onRefresh,
   onRestart,
+  onShowLedInfo,
 }: VmLogsModalProps) {
+  const logsContentRef = useRef<HTMLDivElement>(null);
+
+  // Scroll to bottom when modal opens or logs update
+  useEffect(() => {
+    if (show && logsContentRef.current) {
+      logsContentRef.current.scrollTop = logsContentRef.current.scrollHeight;
+    }
+  }, [show, vmLogs]);
+
   if (!show) return null;
 
   return (
@@ -49,7 +61,7 @@ export function VmLogsModal({
           ) : vmLogs.length === 0 ? (
             <div className="vm-logs-empty">No logs available</div>
           ) : (
-            <div className="vm-logs-content">
+            <div className="vm-logs-content" ref={logsContentRef}>
               {vmLogs.map((log, index) => (
                 <div key={index} className="vm-logs-entry">
                   {log.timestamp && <span className="vm-logs-timestamp">{log.timestamp}</span>}
@@ -64,6 +76,16 @@ export function VmLogsModal({
             {isVmOnline ? 'Connected' : 'Disconnected'} • {vmLogs.length} entries
           </span>
           <div className="vm-logs-footer-buttons">
+            {onShowLedInfo && (
+              <button
+                className="vm-logs-led-info-btn"
+                onClick={onShowLedInfo}
+                title="LED Status Guide"
+              >
+                <HelpCircle size={14} />
+                LED Guide
+              </button>
+            )}
             <button
               className={`vm-logs-restart-btn ${isRestartingVm ? 'spinning' : ''}`}
               onClick={onRestart}

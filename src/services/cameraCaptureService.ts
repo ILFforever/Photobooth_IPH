@@ -15,8 +15,9 @@ export interface FetchPhotoResponse {
 /**
  * Trigger a camera capture via the daemon
  */
-export async function triggerCapture(): Promise<CaptureResponse> {
+export async function triggerCapture(onCaptureStart?: () => void): Promise<CaptureResponse> {
   console.log('[CameraCapture] Sending capture request to', `${API_BASE}/api/capture`);
+  onCaptureStart?.(); // Call callback when capture request is sent
   try {
     const response = await fetch(`${API_BASE}/api/capture`, {
       method: 'POST',

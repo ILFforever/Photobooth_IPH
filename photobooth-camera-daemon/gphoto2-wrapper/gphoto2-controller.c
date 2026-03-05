@@ -212,6 +212,114 @@ static const char *detect_usb_version(const char *port) {
     return usb_buf;
 }
 
+/* Detect camera USB port by scanning sysfs for camera-like devices.
+ * Returns 1 if a camera is found, and fills port_out with "usb:BBB,DDD" format.
+ * No gphoto2 needed — purely reads sysfs. */
+static int detect_camera_usb_port(char *port_out, size_t port_out_size) {
+    DIR *dir = opendir("/sys/bus/usb/devices");
+    if (!dir) return 0;
+
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_name[0] == '.') continue;
+        if (strncmp(entry->d_name, "usb", 3) == 0) continue; /* Skip root hubs */
+
+        /* Check if this device has a product name matching a camera */
+        char product_path[300];
+        snprintf(product_path, sizeof(product_path), "/sys/bus/usb/devices/%s/product", entry->d_name);
+
+        FILE *pf = fopen(product_path, "r");
+        if (!pf) continue;
+
+        char product[128] = "";
+        int is_camera = 0;
+        if (fgets(product, sizeof(product), pf)) {
+            char *nl = strchr(product, '\n');
+            if (nl) *nl = '\0';
+
+            if (strstr(product, "Camera") || strstr(product, "FUJIFILM") ||
+                strstr(product, "Canon") || strstr(product, "NIKON") ||
+                strstr(product, "Sony") || strstr(product, "X-") ||
+                strstr(product, "PTP")) {
+                is_camera = 1;
+            }
+        }
+        fclose(pf);
+        if (!is_camera) continue;
+
+        /* Read bus and device numbers */
+        char busnum_path[300], devnum_path[300];
+        snprintf(busnum_path, sizeof(busnum_path), "/sys/bus/usb/devices/%s/busnum", entry->d_name);
+        snprintf(devnum_path, sizeof(devnum_path), "/sys/bus/usb/devices/%s/devnum", entry->d_name);
+
+        FILE *bf = fopen(busnum_path, "r");
+        FILE *df = fopen(devnum_path, "r");
+        if (!bf || !df) {
+            if (bf) fclose(bf);
+            if (df) fclose(df);
+            continue;
+        }
+
+        int bus = -1, dev = -1;
+        fscanf(bf, "%d", &bus);
+        fscanf(df, "%d", &dev);
+        fclose(bf);
+        fclose(df);
+
+        if (bus > 0 && dev > 0) {
+            snprintf(port_out, port_out_size, "usb:%03d,%03d", bus, dev);
+            closedir(dir);
+            return 1;
+        }
+    }
+    closedir(dir);
+    return 0;
+}
+
+/* Lightweight USB presence check - no gphoto2 needed, just reads sysfs.
+ * Returns 1 if the device at the given port (e.g. "usb:003,005") is still present. */
+static int check_usb_device_present(const char *port) {
+    int bus_num = 0, device_num = 0;
+    if (!port || !port[0]) return 0;
+    if (sscanf(port, "usb:%d,%d", &bus_num, &device_num) != 2) {
+        return 1;  /* Can't determine presence - assume still connected */
+    }
+
+    DIR *dir = opendir("/sys/bus/usb/devices");
+    if (!dir) return 0;
+
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_name[0] == '.') continue;
+        if (strncmp(entry->d_name, "usb", 3) == 0) continue;
+
+        char busnum_path[300], devnum_path[300];
+        snprintf(busnum_path, sizeof(busnum_path), "/sys/bus/usb/devices/%s/busnum", entry->d_name);
+        snprintf(devnum_path, sizeof(devnum_path), "/sys/bus/usb/devices/%s/devnum", entry->d_name);
+
+        FILE *bf = fopen(busnum_path, "r");
+        FILE *df = fopen(devnum_path, "r");
+        if (!bf || !df) {
+            if (bf) fclose(bf);
+            if (df) fclose(df);
+            continue;
+        }
+
+        int bus = -1, dev = -1;
+        fscanf(bf, "%d", &bus);
+        fscanf(df, "%d", &dev);
+        fclose(bf);
+        fclose(df);
+
+        if (bus == bus_num && dev == device_num) {
+            closedir(dir);
+            return 1;
+        }
+    }
+    closedir(dir);
+    return 0;
+}
+
 #define CMD_PIPE "/tmp/camera_cmd"
 #define STATUS_PIPE "/tmp/camera_status"
 #define STREAM_PIPE "/tmp/camera_stream"
@@ -224,7 +332,7 @@ static const char *detect_usb_version(const char *port) {
 #define CAMERA_SWITCH_GRACE_SEC 5  // Grace period after camera switch before reporting disconnect
 #define MAX_DOWNLOAD_RETRIES 3     // Max download attempts before skipping a file
 #define FAILED_FILE_RESET_SEC 300  // Reset failed files after 5 minutes
-#define STREAM_TARGET_FPS 15       // Target FPS for continuous streaming
+#define STREAM_TARGET_FPS 25       // Target FPS for continuous streaming
 
 // Track files that have failed to download
 #define MAX_FAILED_FILES 50
@@ -248,6 +356,7 @@ static CameraBrand g_last_logged_brand = BRAND_UNKNOWN;  // Track last logged br
 // Streaming state
 static volatile sig_atomic_t g_streaming_active = 0;  // Flag for continuous streaming
 static volatile sig_atomic_t g_streaming_paused = 0;  // Flag for pause during operations
+static volatile sig_atomic_t g_streaming_was_active_before_polling_pause = 0;  // Track if streaming was active before polling pause
 static time_t g_last_status_time = 0;  // Track when status was last sent during streaming
 
 // Persistent detection cache - only auto-detect once per camera connection
@@ -425,6 +534,11 @@ static void ensure_storage_space(unsigned long long file_size_estimate) {
     }
 }
 
+/* Forward declarations for camera connection event functions */
+static void send_camera_connecting_event(int camera_index);
+static void send_camera_connected_event(Camera *camera, GPContext *context, int camera_index);
+static char *get_single_config_value(Camera *camera, GPContext *context, const char *setting_name);
+
 static Camera* open_camera(int camera_index, int *ret_out) {
     return open_camera_with_timeout(camera_index, ret_out, 0);  // 0 = no timeout (use default)
 }
@@ -542,10 +656,15 @@ static Camera* open_camera_with_timeout(int camera_index, int *ret_out, int time
     gp_list_get_name(list, camera_index, &model_name);
     gp_list_get_value(list, camera_index, &port_name);
 
-    /* Save port name for potential USB reset */
+    /* Save port name for potential USB reset - only if it has full bus:dev numbers.
+     * gphoto2 often returns just "usb:" on first detection; the sysfs fallback
+     * in main() handles that case, so we silently skip incomplete ports here. */
     if (port_name) {
-        strncpy(g_last_camera_port, port_name, sizeof(g_last_camera_port) - 1);
-        g_last_camera_port[sizeof(g_last_camera_port) - 1] = '\0';
+        int tmp_bus = 0, tmp_dev = 0;
+        if (sscanf(port_name, "usb:%d,%d", &tmp_bus, &tmp_dev) == 2) {
+            strncpy(g_last_camera_port, port_name, sizeof(g_last_camera_port) - 1);
+            g_last_camera_port[sizeof(g_last_camera_port) - 1] = '\0';
+        }
     }
 
     /* Get abilities for the model */
@@ -671,8 +790,11 @@ error:
 }
 
 /* Send camera_connected event to daemon for caching */
-static void send_camera_connected_event(Camera *camera, GPContext *context) {
+static void send_camera_connected_event(Camera *camera, GPContext *context, int camera_index) {
     if (g_status_fd < 0 || !camera) return;
+
+    /* Send camera_connecting event before fetching lens/fields info */
+    send_camera_connecting_event(camera_index);
 
     CameraText summary;
     char manufacturer[128] = "";
@@ -742,16 +864,45 @@ static void send_camera_connected_event(Camera *camera, GPContext *context) {
     }
     if (strlen(manufacturer) > 0 && strlen(model) > 0) {
         const char *usb_version = detect_usb_version(port);
-        char event[512];
+
+        // Fetch serial number and firmware version (one-time, not polled)
+        const BrandWidgets *widgets = get_widgets_for_brand(g_current_brand);
+        char *serial = get_single_config_value(camera, context, widgets->serial);
+        char *deviceversion = get_single_config_value(camera, context, widgets->deviceversion);
+
+        char event[1024];
         snprintf(event, sizeof(event),
-                "{\"camera_connected\":[{\"id\":\"0\",\"manufacturer\":\"%s\",\"model\":\"%s\",\"port\":\"%s\",\"usb_version\":\"%s\"}]}\n",
-                manufacturer, model, port, usb_version);
+                "{\"type\":\"camera_connected\",\"camera_id\":\"%d\",\"manufacturer\":\"%s\",\"model\":\"%s\",\"port\":\"%s\",\"usb_version\":\"%s\",\"serial_number\":\"%s\",\"firmware\":\"%s\"}\n",
+                camera_index, manufacturer, model, port, usb_version,
+                serial ? serial : "",
+                deviceversion ? deviceversion : "");
         ssize_t written = write(g_status_fd, event, strlen(event));
         if (written > 0) {
-            log_ts("controller: Sent camera_connected event: %s %s at %s (USB: %s)\n", manufacturer, model, port, usb_version);
+            log_ts("controller: Sent camera_connected event: %s %s at %s (USB: %s, Serial: %s, FW: %s)\n",
+                    manufacturer, model, port, usb_version,
+                    serial ? serial : "N/A",
+                    deviceversion ? deviceversion : "N/A");
         }
+
+        if (serial) free(serial);
+        if (deviceversion) free(deviceversion);
     }
 }
+
+/* Send camera_connecting event when connection attempt starts */
+static void send_camera_connecting_event(int camera_index) {
+    if (g_status_fd < 0) return;
+
+    char event[128];
+    snprintf(event, sizeof(event),
+            "{\"type\":\"camera_connecting\",\"camera_id\":\"%d\"}\n",
+            camera_index);
+    ssize_t written = write(g_status_fd, event, strlen(event));
+    if (written > 0) {
+        log_ts("controller: Sent camera_connecting event for camera %d\n", camera_index);
+    }
+}
+
 
 /* Extract number from filename like DSCF0042.JPG */
 static int extract_file_number(const char *filename) {
@@ -2196,7 +2347,20 @@ int main(int argc, char *argv[]) {
     }
 
     /* Send camera_connected event with full camera info to daemon for caching */
-    send_camera_connected_event(camera, context);
+    send_camera_connected_event(camera, context, 0);
+
+    /* If gphoto2 returned an incomplete port (just "usb:" without bus/dev numbers),
+     * detect the port from sysfs so disconnect detection works immediately
+     * without needing a SWITCH_CAMERA command first. */
+    if (g_last_camera_port[0] == '\0') {
+        char detected_port[128];
+        if (detect_camera_usb_port(detected_port, sizeof(detected_port))) {
+            strncpy(g_last_camera_port, detected_port, sizeof(g_last_camera_port) - 1);
+            g_last_camera_port[sizeof(g_last_camera_port) - 1] = '\0';
+        } else {
+            log_ts("controller: Warning - could not detect camera USB port from sysfs, disconnect detection may not work\n");
+        }
+    }
 
     /* Get initial file number before releasing */
     {
@@ -2217,6 +2381,8 @@ int main(int argc, char *argv[]) {
     char cmd_buffer[256];
     ssize_t cmd_len;
     int consecutive_open_failures = 0;
+    int switch_received = 0;  /* Only start polling after first SWITCH_CAMERA command */
+    int needs_connected_event = 0;  /* Send camera_connected after first successful open */
 
     while (g_running) {
         /* Check for command (non-blocking read on persistent fd).
@@ -2253,6 +2419,7 @@ int main(int argc, char *argv[]) {
                     log_ts("controller: Closing stream pipe for capture (forcing client reconnect)...\n");
                     g_streaming_paused = 0;  // Clear pause flag
                     g_streaming_active = 0;  // Mark as inactive
+                    g_streaming_was_active_before_polling_pause = 0;  /* Clear polling pause tracking */
 
                     // Close stream pipe - this will send EOF to HTTP clients
                     if (g_stream_fd >= 0) {
@@ -2295,7 +2462,7 @@ int main(int argc, char *argv[]) {
                     log_ts("controller: Camera reconnected during CAPTURE command - resetting state\n");
                     consecutive_open_failures = 0;
                     mode = MODE_CAPTURE;  /* Ensure mode is correct */
-                    send_camera_connected_event(camera, context);
+                    send_camera_connected_event(camera, context, g_cached_camera_index);
                 } else if (camera) {
                     consecutive_open_failures = 0;
                 }
@@ -2439,7 +2606,7 @@ int main(int argc, char *argv[]) {
                 if (camera) {
                     if (was_disconnected) {
                         log_ts("controller: Camera reconnected during LIVEVIEW_START - resetting state\n");
-                        send_camera_connected_event(camera, context);
+                        send_camera_connected_event(camera, context, g_cached_camera_index);
                     }
                     consecutive_open_failures = 0;
                     mode = MODE_LIVEVIEW;
@@ -2512,7 +2679,7 @@ int main(int argc, char *argv[]) {
 
                     if (camera && was_disconnected) {
                         log_ts("controller: Camera reconnected during LIVEVIEW_STREAM_START - resetting state\n");
-                        send_camera_connected_event(camera, context);
+                        send_camera_connected_event(camera, context, g_cached_camera_index);
                     }
                 }
 
@@ -2552,6 +2719,7 @@ int main(int argc, char *argv[]) {
 
                 g_streaming_active = 0;
                 g_streaming_paused = 0;
+                g_streaming_was_active_before_polling_pause = 0;  /* Clear the polling pause tracking flag */
 
                 /* Close stream pipe */
                 if (g_stream_fd >= 0) {
@@ -2580,6 +2748,8 @@ int main(int argc, char *argv[]) {
             } else if (strncmp(cmd_line, "SWITCH_CAMERA ", 14) == 0) {
                 int new_index = atoi(cmd_line + 14);
                 log_ts("controller: Switching to camera %d (was %d)\n", new_index, camera_index);
+                switch_received = 1;
+                needs_connected_event = 1;
 
                 /* Close current camera if open */
                 if (camera) {
@@ -2615,6 +2785,122 @@ int main(int argc, char *argv[]) {
                     if (written < 0) {
                         log_ts("controller: Failed to write camera_switched: %s\n", strerror(errno));
                     }
+                }
+
+            } else if (strcmp(cmd_line, "DISCONNECT") == 0) {
+                log_ts("controller: DISCONNECT command - stopping polling (camera stays detected)\n");
+                switch_received = 0;
+
+                /* Notify daemon */
+                if (g_status_fd >= 0) {
+                    const char *msg = "{\"type\":\"polling_stopped\"}\n";
+                    write(g_status_fd, msg, strlen(msg));
+                }
+
+            } else if (strcmp(cmd_line, "PAUSE_POLLING") == 0) {
+                log_ts("controller: PAUSE_POLLING command - pausing camera polling\n");
+                switch_received = 0;
+
+                /* If streaming is active, stop it to free the camera for physical button use */
+                if (g_streaming_active) {
+                    log_ts("controller: PAUSE_POLLING - stopping PTP stream to free camera for physical controls\n");
+                    g_streaming_was_active_before_polling_pause = 1;
+                    g_streaming_active = 0;
+                    g_streaming_paused = 0;
+
+                    /* Close stream pipe */
+                    if (g_stream_fd >= 0) {
+                        close(g_stream_fd);
+                        g_stream_fd = -1;
+                    }
+
+                    /* Exit live view mode and release camera */
+                    if (camera && live_view_active) {
+                        gp_camera_exit(camera, context);
+                        live_view_active = 0;
+                        mode = MODE_IDLE;
+                    }
+
+                    /* Send idle status to indicate stream has stopped */
+                    if (g_status_fd >= 0) {
+                        const char *status_msg = "{\"mode\":\"idle\"}\n";
+                        write(g_status_fd, status_msg, strlen(status_msg));
+                    }
+                } else {
+                    g_streaming_was_active_before_polling_pause = 0;
+                }
+
+                /* Close camera if held open during idle polling */
+                if (camera && mode == MODE_IDLE && !live_view_active && !g_streaming_active) {
+                    gp_camera_exit(camera, context);
+                    gp_camera_free(camera);
+                    camera = NULL;
+                }
+
+                if (g_status_fd >= 0) {
+                    const char *msg = "{\"type\":\"polling_paused\"}\n";
+                    write(g_status_fd, msg, strlen(msg));
+                }
+
+            } else if (strcmp(cmd_line, "RESUME_POLLING") == 0) {
+                log_ts("controller: RESUME_POLLING command - resuming camera polling\n");
+                switch_received = 1;
+
+                /* If streaming was active before pause, restart it */
+                if (g_streaming_was_active_before_polling_pause) {
+                    log_ts("controller: RESUME_POLLING - restarting PTP stream\n");
+                    g_streaming_was_active_before_polling_pause = 0;
+
+                    /* Open camera if needed */
+                    if (!camera) {
+                        int lv_attempts = 0;
+                        while (!camera && lv_attempts < 3 && g_running) {
+                            camera = open_camera(camera_index, &ret);
+                            if (camera) {
+                                consecutive_open_failures = 0;
+                                log_ts("controller: RESUME_POLLING - camera opened for streaming\n");
+                            } else {
+                                lv_attempts++;
+                                log_ts("controller: RESUME_POLLING - failed to open camera (attempt %d/3): %s\n",
+                                       lv_attempts, gp_result_as_string(ret));
+                                if (lv_attempts < 3) {
+                                    usleep(OPEN_RETRY_DELAY_MS * 1000);
+                                }
+                            }
+                        }
+                    }
+
+                    if (camera) {
+                        /* Reset stream state */
+                        mode = MODE_LIVEVIEW;
+                        live_view_active = 1;
+                        g_streaming_active = 1;
+                        g_streaming_paused = 0;
+                        g_last_status_time = time(NULL);
+
+                        /* Close old stream pipe to force client reconnect */
+                        if (g_stream_fd >= 0) {
+                            close(g_stream_fd);
+                            g_stream_fd = -1;
+                        }
+
+                        /* Give HTTP clients time to reconnect */
+                        usleep(200000);  // 200ms
+
+                        /* Send streaming status */
+                        if (g_status_fd >= 0) {
+                            const char *status_msg = "{\"mode\":\"liveview_streaming\"}\n";
+                            write(g_status_fd, status_msg, strlen(status_msg));
+                        }
+                        log_ts("controller: RESUME_POLLING - PTP stream restarted\n");
+                    } else {
+                        log_ts("controller: RESUME_POLLING - failed to restart streaming, camera unavailable\n");
+                    }
+                }
+
+                if (g_status_fd >= 0) {
+                    const char *msg = "{\"type\":\"polling_resumed\"}\n";
+                    write(g_status_fd, msg, strlen(msg));
                 }
 
             } else if (strcmp(cmd_line, "CONFIG") == 0) {
@@ -2748,7 +3034,7 @@ int main(int argc, char *argv[]) {
          * For polling, use minimal retries (2) with short delay - fail fast to detect disconnect.
          * Each attempt has a strict timeout to prevent hanging on unresponsive cameras.
          */
-        if (mode == MODE_IDLE && !live_view_active && !g_streaming_active) {
+        if (mode == MODE_IDLE && !live_view_active && !g_streaming_active && switch_received) {
             struct timespec cycle_start, camera_open_end, camera_close_start, camera_close_end;
             clock_gettime(CLOCK_MONOTONIC, &cycle_start);
 
@@ -2784,6 +3070,7 @@ int main(int argc, char *argv[]) {
                     live_view_active = 0;
                     g_streaming_active = 0;
                     g_streaming_paused = 0;
+                    g_streaming_was_active_before_polling_pause = 0;  /* Clear polling pause tracking */
 
                     /* Reset file tracking */
                     last_file_number = 0;
@@ -2795,7 +3082,11 @@ int main(int argc, char *argv[]) {
                     g_last_camera_switch = 0;
 
                     /* Send camera_connected event with fresh camera info */
-                    send_camera_connected_event(camera, context);
+                    send_camera_connected_event(camera, context, camera_index);
+                } else if (needs_connected_event) {
+                    /* First successful open after SWITCH_CAMERA - broadcast camera info */
+                    send_camera_connected_event(camera, context, camera_index);
+                    needs_connected_event = 0;
                 }
 
                 clock_gettime(CLOCK_MONOTONIC, &camera_open_end);
@@ -3054,6 +3345,7 @@ int main(int argc, char *argv[]) {
                     /* Stop streaming */
                     g_streaming_active = 0;
                     g_streaming_paused = 0;
+                    g_streaming_was_active_before_polling_pause = 0;  /* Clear polling pause tracking */
                     if (g_stream_fd >= 0) {
                         close(g_stream_fd);
                         g_stream_fd = -1;
@@ -3123,9 +3415,68 @@ int main(int argc, char *argv[]) {
                     poll(&pfd, 1, 500);  // 500ms
                 }
             } else {
-                /* Not streaming - always poll at fixed interval (no backoff).
+                /* Not streaming - poll at fixed interval or idle wait.
                  * Uses poll() on the command pipe so CONFIG/SETCONFIG are responsive. */
                 int poll_timeout_ms = 1500;
+
+                /* Lightweight USB presence check when polling is paused.
+                 * No gphoto2 calls — just checks if the USB device still exists in sysfs. */
+                if (!switch_received && g_last_camera_port[0] != '\0') {
+                    /* Have a known port — check if camera is still physically present */
+                    if (!check_usb_device_present(g_last_camera_port)) {
+                        log_ts("controller: USB device gone (port %s) - camera unplugged while polling paused\n",
+                                g_last_camera_port);
+                        g_last_camera_port[0] = '\0';
+                        g_detection_valid = 0;
+                        g_current_brand = BRAND_UNKNOWN;
+                        g_last_logged_brand = BRAND_UNKNOWN;
+                        consecutive_open_failures = 1;
+
+                        if (g_status_fd >= 0) {
+                            const char *msg = "{\"type\":\"camera_disconnected\",\"reason\":\"usb_unplugged\"}\n";
+                            write(g_status_fd, msg, strlen(msg));
+                        }
+                    }
+                } else if (!switch_received && g_last_camera_port[0] == '\0') {
+                    /* No known port (after disconnect or startup without port detection).
+                     * Scan sysfs for a camera device — if one appears, try to reconnect. */
+                    char detected_port[128];
+                    if (detect_camera_usb_port(detected_port, sizeof(detected_port))) {
+                        log_ts("controller: Camera USB device detected at %s - attempting reconnection\n", detected_port);
+
+                        /* Invalidate cache so open_camera does fresh detection */
+                        g_detection_valid = 0;
+                        g_cached_camera_index = -1;
+
+                        Camera *reconnect_cam = open_camera(camera_index, &ret);
+                        if (reconnect_cam) {
+                            log_ts("controller: ============================================\n");
+                            log_ts("controller: Camera RECONNECTED via USB scan\n");
+                            log_ts("controller: ============================================\n");
+
+                            /* Save the port */
+                            strncpy(g_last_camera_port, detected_port, sizeof(g_last_camera_port) - 1);
+                            g_last_camera_port[sizeof(g_last_camera_port) - 1] = '\0';
+
+                            /* Reset state */
+                            consecutive_open_failures = 0;
+                            last_file_number = 0;
+                            g_widgets_listed = 0;
+                            g_last_camera_switch = 0;
+
+                            /* Send camera_connected event */
+                            send_camera_connected_event(reconnect_cam, context, camera_index);
+
+                            /* Release camera until SWITCH_CAMERA activates polling */
+                            gp_camera_exit(reconnect_cam, context);
+                            gp_camera_free(reconnect_cam);
+                            reconnect_cam = NULL;
+                        } else {
+                            log_ts("controller: USB device found but gphoto2 open failed: %s\n",
+                                    gp_result_as_string(ret));
+                        }
+                    }
+                }
 
                 struct pollfd pfd = { .fd = cmd_fd, .events = POLLIN };
                 poll(&pfd, 1, poll_timeout_ms);

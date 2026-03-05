@@ -121,9 +121,6 @@ interface PhotoboothSettingsContextType {
   deleteDriveFolderForSession: (sessionId: string, folderId: string | null, sessionName: string) => Promise<void>;
   // Photo management
   deleteSessionPhoto: (sessionId: string, filename: string) => Promise<void>;
-  // Session settings management
-  updateSessionQrSetting: (sessionId: string, qrUploadAllImages: boolean) => Promise<void>;
-  updateSessionNamingScheme: (sessionId: string, photoNamingScheme: string) => Promise<void>;
   // Last generated media
   lastGeneratedMedia: LastGeneratedMedia | null;
   setLastGif: (gif: { filePath: string; fileName: string; fileSize: number; photoCount: number }) => void;
@@ -137,8 +134,8 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
   const { showToast } = useToast();
   const { account, rootFolder } = useAuth();
   const [autoCount, setAutoCount] = useState(3);
-  const [timerDelay, setTimerDelay] = useState(5);
-  const [delayBetweenPhotos, setDelayBetweenPhotos] = useState(2);
+  const [timerDelay, setTimerDelay] = useState(3);
+  const [delayBetweenPhotos, setDelayBetweenPhotos] = useState(3);
   const [photoReviewTime, setPhotoReviewTime] = useState(3);
   const [workingFolder, setWorkingFolder] = useState<string | null>(null);
   const [photoNamingScheme, setPhotoNamingScheme] = useState('IPH_{number}');
@@ -182,6 +179,48 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
       saveDelaySettings();
     }
   }, [autoCount, timerDelay, delayBetweenPhotos, photoReviewTime, workingFolder, delaySettingsLoaded]);
+
+  // Save photobooth settings (QR upload, photo naming) to .ptb file when they change
+  useEffect(() => {
+    if (workingFolder && delaySettingsLoaded) {
+      const savePhotoboothSettings = async () => {
+        try {
+          await invoke('save_photobooth_settings', {
+            folderPath: workingFolder,
+            photoboothSettings: {
+              qrUploadEnabled,
+              qrUploadAllImages,
+              photoNamingScheme,
+            },
+          });
+        } catch (error) {
+          console.error('Failed to save photobooth settings:', error);
+        }
+      };
+      savePhotoboothSettings();
+    }
+  }, [qrUploadEnabled, qrUploadAllImages, photoNamingScheme, workingFolder, delaySettingsLoaded]);
+
+  // Save GIF settings to .ptb file when they change
+  useEffect(() => {
+    if (workingFolder && delaySettingsLoaded) {
+      const saveGifSettings = async () => {
+        try {
+          await invoke('save_gif_settings', {
+            folderPath: workingFolder,
+            gifSettings: {
+              autoGifEnabled,
+              autoGifFormat,
+              autoGifPhotoSource,
+            },
+          });
+        } catch (error) {
+          console.error('Failed to save GIF settings:', error);
+        }
+      };
+      saveGifSettings();
+    }
+  }, [autoGifEnabled, autoGifFormat, autoGifPhotoSource, workingFolder, delaySettingsLoaded]);
 
   // Helper function to create Drive folder for a session with validation and alerts
   const createDriveFolderForSession = useCallback(async (
@@ -274,8 +313,8 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
         const { autoCount: ac, timerDelay: td, delayBetweenPhotos: dbp, photoReviewTime: prt } = workspace.delaySettings;
         const newSettings = {
           autoCount: ac ?? 3,
-          timerDelay: td ?? 5,
-          delayBetweenPhotos: dbp ?? 2,
+          timerDelay: td ?? 3,
+          delayBetweenPhotos: dbp ?? 3,
           photoReviewTime: prt ?? 3,
         };
         setAutoCount(newSettings.autoCount);
@@ -296,6 +335,22 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
       } else {
         // No delay settings in workspace, set defaults
         setDelaySettingsLoaded(false);
+      }
+
+      // Load photobooth settings (QR upload, photo naming) from workspace
+      if (workspace.photoboothSettings) {
+        const { qrUploadEnabled, qrUploadAllImages, photoNamingScheme } = workspace.photoboothSettings;
+        setQrUploadEnabled(qrUploadEnabled ?? true);
+        setQrUploadAllImages(qrUploadAllImages ?? false);
+        setPhotoNamingScheme(photoNamingScheme ?? 'IPH_{number}');
+      }
+
+      // Load GIF settings from workspace
+      if (workspace.gifSettings) {
+        const { autoGifEnabled, autoGifFormat, autoGifPhotoSource } = workspace.gifSettings;
+        setAutoGifEnabled(autoGifEnabled ?? false);
+        setAutoGifFormat(autoGifFormat ?? 'both');
+        setAutoGifPhotoSource(autoGifPhotoSource ?? 'collage');
       }
 
       // If no sessions exist, create one automatically
@@ -722,115 +777,6 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
     }
   }, [workingFolder, currentSession, showToast, sessions]);
 
-  // Load QR and naming scheme settings from current session
-  useEffect(() => {
-    if (currentSession) {
-      // Load QR upload settings from session
-      if (currentSession.qrUploadEnabled !== undefined) {
-        setQrUploadEnabled(currentSession.qrUploadEnabled);
-      }
-      if (currentSession.qrUploadAllImages !== undefined) {
-        setQrUploadAllImages(currentSession.qrUploadAllImages);
-      }
-      // Load photo naming scheme from session
-      if (currentSession.photoNamingScheme !== undefined) {
-        setPhotoNamingScheme(currentSession.photoNamingScheme);
-      }
-    }
-  }, [currentSession]); // Only depend on currentSession, not the setters
-
-  // Update QR setting for a session
-  const updateSessionQrSetting = useCallback(async (
-    sessionId: string,
-    qrUploadAllImagesValue: boolean,
-    qrUploadEnabledValue?: boolean
-  ) => {
-    if (!workingFolder) {
-      throw new Error('Working folder must be set first');
-    }
-
-    await invoke('update_session_qr_setting', {
-      folderPath: workingFolder,
-      sessionId,
-      qrUploadAllImages: qrUploadAllImagesValue,
-      qrUploadEnabled: qrUploadEnabledValue,
-    });
-
-    // Update the session in the local state
-    const updates: Partial<PhotoboothSessionInfo> = { qrUploadAllImages: qrUploadAllImagesValue };
-    if (qrUploadEnabledValue !== undefined) {
-      updates.qrUploadEnabled = qrUploadEnabledValue;
-    }
-    setSessions(prev => prev.map(s =>
-      s.id === sessionId
-        ? { ...s, ...updates }
-        : s
-    ));
-
-    // Update current session if it matches
-    if (currentSession?.id === sessionId) {
-      setCurrentSession(prev => prev ? { ...prev, ...updates } : null);
-    }
-  }, [workingFolder, currentSession]);
-
-  // Update naming scheme for a session
-  const updateSessionNamingScheme = useCallback(async (
-    sessionId: string,
-    photoNamingSchemeValue: string
-  ) => {
-    if (!workingFolder) {
-      throw new Error('Working folder must be set first');
-    }
-
-    await invoke('update_session_naming_scheme', {
-      folderPath: workingFolder,
-      sessionId,
-      photoNamingScheme: photoNamingSchemeValue,
-    });
-
-    // Update the session in the local state
-    setSessions(prev => prev.map(s =>
-      s.id === sessionId
-        ? { ...s, photoNamingScheme: photoNamingSchemeValue }
-        : s
-    ));
-
-    // Update current session if it matches
-    if (currentSession?.id === sessionId) {
-      setCurrentSession(prev => prev ? { ...prev, photoNamingScheme: photoNamingSchemeValue } : null);
-    }
-  }, [workingFolder, currentSession]);
-
-  // Wrapper for setQrUploadEnabled that saves to current session
-  const handleSetQrUploadEnabled = useCallback((value: boolean) => {
-    setQrUploadEnabled(value);
-    if (currentSession && workingFolder) {
-      updateSessionQrSetting(currentSession.id, qrUploadAllImages, value).catch(err => {
-        console.error('Failed to save QR enabled setting to session:', err);
-      });
-    }
-  }, [currentSession, workingFolder, qrUploadAllImages, updateSessionQrSetting]);
-
-  // Wrapper for setQrUploadAllImages that saves to current session
-  const handleSetQrUploadAllImages = useCallback((value: boolean) => {
-    setQrUploadAllImages(value);
-    if (currentSession && workingFolder) {
-      updateSessionQrSetting(currentSession.id, value).catch(err => {
-        console.error('Failed to save QR setting to session:', err);
-      });
-    }
-  }, [currentSession, workingFolder, updateSessionQrSetting]);
-
-  // Wrapper for setPhotoNamingScheme that saves to current session
-  const handleSetPhotoNamingScheme = useCallback((scheme: string) => {
-    setPhotoNamingScheme(scheme);
-    if (currentSession && workingFolder) {
-      updateSessionNamingScheme(currentSession.id, scheme).catch(err => {
-        console.error('Failed to save naming scheme to session:', err);
-      });
-    }
-  }, [currentSession, workingFolder, updateSessionNamingScheme]);
-
   // Refresh sessions when working folder changes
   useEffect(() => {
     if (workingFolder) {
@@ -880,11 +826,11 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
         workingFolder,
         setWorkingFolder,
         photoNamingScheme,
-        setPhotoNamingScheme: handleSetPhotoNamingScheme,
+        setPhotoNamingScheme,
         qrUploadEnabled,
-        setQrUploadEnabled: handleSetQrUploadEnabled,
+        setQrUploadEnabled,
         qrUploadAllImages,
-        setQrUploadAllImages: handleSetQrUploadAllImages,
+        setQrUploadAllImages,
         autoGifEnabled,
         setAutoGifEnabled,
         autoGifFormat,
@@ -909,8 +855,6 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
         createDriveFolderForSession,
         deleteDriveFolderForSession,
         deleteSessionPhoto,
-        updateSessionQrSetting,
-        updateSessionNamingScheme,
         lastGeneratedMedia,
         setLastGif,
         setLastVideo,

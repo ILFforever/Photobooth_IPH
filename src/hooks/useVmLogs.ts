@@ -41,7 +41,7 @@ export function useVmLogs() {
 
     try {
       const response = await invoke<{ logs: string[]; lineCount: number }>('get_vm_logs', {
-        lines: 100,
+        lines: 1000,
       });
 
       setVmLogs(parseLogs(response.logs));

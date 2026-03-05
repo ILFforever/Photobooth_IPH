@@ -1,5 +1,5 @@
 use crate::photobooth_sessions::types::{
-    DelaySettings, DriveUploadedImage, GoogleDriveMetadata, PhotoboothSessionInfo, PhotoExifData, PtbPhoto,
+    DelaySettings, DriveUploadedImage, GifSettings, GoogleDriveMetadata, PhotoboothSessionInfo, PhotoboothSettings, PhotoExifData, PtbPhoto,
     PtbSessionData, PtbWorkspace,
 };
 use crate::working_folder::commands::generate_cached_thumbnail_high_res;
@@ -136,6 +136,8 @@ async fn load_ptb_workspace_internal(folder_path: String) -> Result<(PtbWorkspac
             current_session_id: existing_sessions.first().map(|s| s.id.clone()),
             sessions: existing_sessions,
             delay_settings: DelaySettings::default(),
+            photobooth_settings: PhotoboothSettings::default(),
+            gif_settings: GifSettings::default(),
         };
 
         // Save the new workspace to disk
@@ -191,6 +193,36 @@ pub async fn save_delay_settings(
     let (mut workspace, _) = load_ptb_workspace_internal(folder_path.clone()).await?;
 
     workspace.delay_settings = delay_settings;
+    workspace.last_used_at = chrono::Utc::now().to_rfc3339();
+
+    save_ptb_workspace(folder_path, workspace).await?;
+    Ok(())
+}
+
+/// Save photobooth settings (QR upload, photo naming) to the .ptb workspace file
+#[tauri::command]
+pub async fn save_photobooth_settings(
+    folder_path: String,
+    photobooth_settings: PhotoboothSettings,
+) -> Result<(), String> {
+    let (mut workspace, _) = load_ptb_workspace_internal(folder_path.clone()).await?;
+
+    workspace.photobooth_settings = photobooth_settings;
+    workspace.last_used_at = chrono::Utc::now().to_rfc3339();
+
+    save_ptb_workspace(folder_path, workspace).await?;
+    Ok(())
+}
+
+/// Save GIF settings to the .ptb workspace file
+#[tauri::command]
+pub async fn save_gif_settings(
+    folder_path: String,
+    gif_settings: GifSettings,
+) -> Result<(), String> {
+    let (mut workspace, _) = load_ptb_workspace_internal(folder_path.clone()).await?;
+
+    workspace.gif_settings = gif_settings;
     workspace.last_used_at = chrono::Utc::now().to_rfc3339();
 
     save_ptb_workspace(folder_path, workspace).await?;

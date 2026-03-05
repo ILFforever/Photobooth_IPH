@@ -74,13 +74,62 @@ fn default_photo_naming_scheme() -> String {
 }
 
 /// Delay settings for photobooth operations
-#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct DelaySettings {
     pub auto_count: u32,
     pub timer_delay: u32,
     pub delay_between_photos: u32,
     pub photo_review_time: u32,
+}
+
+impl Default for DelaySettings {
+    fn default() -> Self {
+        Self {
+            auto_count: 3,
+            timer_delay: 3,
+            delay_between_photos: 3,
+            photo_review_time: 3,
+        }
+    }
+}
+
+/// Photobooth settings for QR upload and photo naming
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct PhotoboothSettings {
+    pub qr_upload_enabled: bool,
+    pub qr_upload_all_images: bool,
+    pub photo_naming_scheme: String,
+}
+
+impl Default for PhotoboothSettings {
+    fn default() -> Self {
+        Self {
+            qr_upload_enabled: true,
+            qr_upload_all_images: false,
+            photo_naming_scheme: "IPH_{number}".to_string(),
+        }
+    }
+}
+
+/// Auto GIF settings
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct GifSettings {
+    pub auto_gif_enabled: bool,
+    pub auto_gif_format: String, // "gif" | "both" | "video"
+    pub auto_gif_photo_source: String, // "collage" | "all"
+}
+
+impl Default for GifSettings {
+    fn default() -> Self {
+        Self {
+            auto_gif_enabled: false,
+            auto_gif_format: "both".to_string(),
+            auto_gif_photo_source: "collage".to_string(),
+        }
+    }
 }
 
 /// Root .ptb file structure - stored at working folder root
@@ -94,6 +143,10 @@ pub struct PtbWorkspace {
     pub sessions: Vec<PtbSessionData>,
     #[serde(default)]
     pub delay_settings: DelaySettings,
+    #[serde(default)]
+    pub photobooth_settings: PhotoboothSettings,
+    #[serde(default)]
+    pub gif_settings: GifSettings,
 }
 
 /// EXIF metadata for a photo

@@ -15,6 +15,8 @@ static const BrandWidgets fuji_widgets = {
     .metering = "exposuremetermode",
     .mode = "expprogram",
     .battery = "d36b",
+    .serial = "serialnumber",
+    .deviceversion = "deviceversion",
 };
 
 /* Canon widgets: use simple names, not dotted paths.
@@ -29,6 +31,8 @@ static const BrandWidgets canon_widgets = {
     .metering = "meteringmode",  // Under capturesettings
     .mode = "autoexposuremode",  // Under capturesettings
     .battery = "5001",           // Under other (PTP property)
+    .serial = "serialnumber",
+    .deviceversion = "deviceversion",
 };
 
 static const BrandWidgets generic_widgets = {
@@ -41,6 +45,8 @@ static const BrandWidgets generic_widgets = {
     .metering = "meteringmode",
     .mode = "expprogram",
     .battery = "batterylevel",
+    .serial = "serialnumber",
+    .deviceversion = "deviceversion",
 };
 
 /* Detect camera brand from a string (model name or manufacturer) */

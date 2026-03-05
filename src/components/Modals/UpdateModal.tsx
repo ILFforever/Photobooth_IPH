@@ -221,7 +221,7 @@ export default function UpdateModal({
             )}
 
             {/* VM Update Card */}
-            {(updateType === 'vm' || isBoth) && (
+            {updateType === 'vm' && (
               <UpdateCard
                 type="vm"
                 data={vmData}

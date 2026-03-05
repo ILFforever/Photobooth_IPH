@@ -36,7 +36,15 @@ export interface CameraSwitchedEvent {
   camera_index: number;
 }
 
-type EventType = 'status' | 'photo_downloaded' | 'capture_error' | 'camera_disconnected' | 'camera_switched' | 'connected' | 'disconnected';
+export interface PollingPausedEvent {
+  type: 'polling_paused';
+}
+
+export interface PollingResumedEvent {
+  type: 'polling_resumed';
+}
+
+type EventType = 'status' | 'photo_downloaded' | 'capture_error' | 'camera_disconnected' | 'camera_switched' | 'camera_connecting' | 'camera_connect_failed' | 'camera_connected' | 'connected' | 'disconnected' | 'polling_paused' | 'polling_resumed';
 type Listener = (data: any) => void;
 
 const WS_URL = 'ws://localhost:58321/ws';
@@ -46,9 +54,10 @@ class CameraWebSocketManager {
 
   private ws: WebSocket | null = null;
   private listeners: Map<EventType, Set<Listener>> = new Map();
+  private intentionalDisconnect: boolean = false; // Track intentional disconnects across all windows
 
   private constructor() {
-    for (const event of ['status', 'photo_downloaded', 'capture_error', 'camera_disconnected', 'camera_switched', 'connected', 'disconnected'] as EventType[]) {
+    for (const event of ['status', 'photo_downloaded', 'capture_error', 'camera_disconnected', 'camera_switched', 'camera_connecting', 'camera_connect_failed', 'camera_connected', 'connected', 'disconnected', 'polling_paused', 'polling_resumed'] as EventType[]) {
       this.listeners.set(event, new Set());
     }
   }
@@ -65,14 +74,29 @@ class CameraWebSocketManager {
   }
 
   disconnect(): void {
+    this.intentionalDisconnect = true;
     if (this.ws) {
-      this.ws.onclose = null; // Prevent emitting 'disconnected' on intentional close
       this.ws.onopen = null;
       this.ws.onmessage = null;
       this.ws.onerror = null;
+      this.ws.onclose = null;
       this.ws.close();
       this.ws = null;
     }
+    this.emit('disconnected', { intentional: true });
+    setTimeout(() => {
+      this.intentionalDisconnect = false;
+    }, 2000);
+  }
+
+  // Check if this is an intentional disconnect (used by camera_disconnected handler)
+  isIntentionalDisconnect(): boolean {
+    return this.intentionalDisconnect;
+  }
+
+  // Clear the intentional flag (called when connecting)
+  clearIntentionalFlag(): void {
+    this.intentionalDisconnect = false;
   }
 
   on(event: EventType, callback: Listener): void {
@@ -99,16 +123,12 @@ class CameraWebSocketManager {
       if (state === WebSocket.OPEN || state === WebSocket.CONNECTING) {
         return;
       }
-      // CLOSING or CLOSED — detach handlers so the old onclose
-      // doesn't interfere with our new connection
       this.ws.onopen = null;
       this.ws.onmessage = null;
       this.ws.onerror = null;
       this.ws.onclose = null;
       this.ws = null;
     }
-
-    console.log('[WS Manager] Connecting...');
 
     let ws: WebSocket;
     try {
@@ -120,7 +140,6 @@ class CameraWebSocketManager {
     }
 
     ws.onopen = () => {
-      console.log('[WS Manager] Connected');
       this.emit('connected');
     };
 
@@ -128,9 +147,6 @@ class CameraWebSocketManager {
       const rawData = event.data as string;
 
       if (!rawData || !rawData.trim().startsWith('{')) {
-        if (rawData && rawData.trim().length > 0) {
-          console.debug('[WS Manager] Ignoring non-JSON message:', rawData.substring(0, 50));
-        }
         return;
       }
 
@@ -143,22 +159,30 @@ class CameraWebSocketManager {
           const data = JSON.parse(msg);
 
           if (data.type === 'photo_downloaded') {
-            console.log('[WS Manager::onmessage] photo_downloaded event received:', data);
             this.emit('photo_downloaded', data as PhotoDownloadedEvent);
           } else if (data.type === 'capture_error') {
             console.error('[WS Manager] Capture error:', data.error);
             this.emit('capture_error', data as CaptureErrorEvent);
           } else if (data.type === 'camera_disconnected') {
-            console.warn('[WS Manager] Camera disconnected');
             this.emit('camera_disconnected', data as CameraDisconnectedEvent);
           } else if (data.type === 'camera_switched') {
-            console.log('[WS Manager] Camera switched to index:', data.camera_index);
             this.emit('camera_switched', data as CameraSwitchedEvent);
+          } else if (data.type === 'camera_connecting') {
+            this.emit('camera_connecting', data);
+          } else if (data.type === 'camera_connect_failed') {
+            console.error('[WS Manager] Camera connect failed:', data.error);
+            this.emit('camera_connect_failed', data);
+          } else if (data.type === 'camera_connected') {
+            this.emit('camera_connected', data);
+          } else if (data.type === 'polling_paused') {
+            this.emit('polling_paused', data as PollingPausedEvent);
+          } else if (data.type === 'polling_resumed') {
+            this.emit('polling_resumed', data as PollingResumedEvent);
           } else {
             this.emit('status', data as CameraStatus);
           }
         } catch (error) {
-          console.warn('[WS Manager] Error parsing message:', error, 'Raw:', msg.substring(0, 100));
+          // Silently ignore parsing errors for malformed messages
         }
       }
     };
@@ -168,11 +192,9 @@ class CameraWebSocketManager {
     };
 
     ws.onclose = () => {
-      console.log('[WS Manager] Disconnected');
       if (this.ws === ws) {
         this.ws = null;
-        this.emit('disconnected');
-        // No auto-reconnect — UI will show a modal for the user
+        this.emit('disconnected', { intentional: false });
       }
     };
 

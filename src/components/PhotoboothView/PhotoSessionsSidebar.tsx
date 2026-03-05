@@ -8,6 +8,7 @@ import { usePhotoboothSettings } from "../../contexts/PhotoboothSettingsContext"
 import { useUploadQueue } from "../../contexts/UploadQueueContext";
 import { UploadQueueStatus } from "./UploadQueueStatus";
 import { UploadStatus } from "../../types/uploadQueue";
+import CameraWebSocketManager from "../../services/cameraWebSocket";
 
 interface PhotoExifData {
   filename: string;
@@ -304,14 +305,13 @@ export default function PhotoSessionsSidebar({
     });
   };
 
-  // Show toast when camera disconnects (only if it was connected before)
   useEffect(() => {
-    if (hasEverConnected && !isCameraConnected && !isConnecting) {
+    const isIntentionalDisconnect = CameraWebSocketManager.getInstance().isIntentionalDisconnect();
+    if (hasEverConnected && !isCameraConnected && !isConnecting && !isIntentionalDisconnect) {
       showToast('Camera Disconnected', 'error', 10000, 'Attempting to reconnect...');
     }
   }, [isCameraConnected, isConnecting, hasEverConnected, showToast]);
 
-  // Show toast when connecting
   useEffect(() => {
     if (isConnecting) {
       showToast('Connecting to Camera', 'info', 3000, 'Please wait...');

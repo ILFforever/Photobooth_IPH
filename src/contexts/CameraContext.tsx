@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, useRef, useCallback, type ReactNode } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import CameraWebSocketManager, { type CameraStatus, type CaptureErrorEvent, type PhotoDownloadedEvent } from '../services/cameraWebSocket';
 import type { ConnectionState } from '../types/connection';
 import { getConnectionStateText } from '../types/connection';
@@ -37,6 +38,10 @@ interface CameraContextType {
   captureError: string | null;
   /** Clear the capture error */
   clearCaptureError: () => void;
+  /** Whether a photo is currently being downloaded from the camera */
+  isDownloading: boolean;
+  /** Set the downloading state (call when capture starts) */
+  setDownloading: (downloading: boolean) => void;
   /** Register a callback for raw status updates (for settings sync) */
   addStatusListener: (cb: (status: CameraStatus) => void) => void;
   /** Unregister a status callback */
@@ -45,6 +50,16 @@ interface CameraContextType {
   addPhotoDownloadedListener: (cb: (event: PhotoDownloadedEvent) => void) => void;
   /** Unregister a photo_downloaded callback */
   removePhotoDownloadedListener: (cb: (event: PhotoDownloadedEvent) => void) => void;
+  /** Camera serial number (from camera_connected event) */
+  serialNumber: string | null;
+  /** Camera firmware version (from camera_connected event) */
+  firmware: string | null;
+  /** Whether camera polling is paused */
+  isPollingPaused: boolean;
+  /** Pause camera polling */
+  pausePolling: () => Promise<void>;
+  /** Resume camera polling */
+  resumePolling: () => Promise<void>;
 }
 
 const CameraContext = createContext<CameraContextType | null>(null);
@@ -59,6 +74,10 @@ export function CameraProvider({ children }: { children: ReactNode }) {
   const [hasEverConnected, setHasEverConnected] = useState(false); // Track if camera ever connected this session
   const [isConnecting, setIsConnecting] = useState(false); // Track when camera is being connected
   const [captureError, setCaptureError] = useState<string | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false); // Track when photo is being downloaded
+  const [serialNumber, setSerialNumber] = useState<string | null>(null);
+  const [firmware, setFirmware] = useState<string | null>(null);
+  const [isPollingPaused, setIsPollingPaused] = useState(false); // Track if camera polling is paused
 
   // Track WebSocket connection separately for internal logic
   const [isWsConnected, setIsWsConnected] = useState(false);
@@ -96,6 +115,8 @@ export function CameraProvider({ children }: { children: ReactNode }) {
   // Count consecutive empty status messages (to avoid false disconnects during capture)
   const emptyStatusCountRef = useRef(0);
   const DISCONNECT_THRESHOLD = 3; // Require 3 consecutive empty statuses before marking disconnected (~4.5 seconds)
+  // Timeout for download state - auto-clear after 5 seconds if no photo_downloaded event
+  const downloadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const addStatusListener = useCallback((cb: (status: CameraStatus) => void) => {
     statusListenersRef.current.add(cb);
@@ -123,8 +144,8 @@ export function CameraProvider({ children }: { children: ReactNode }) {
       hasHttpConnectedRef.current = true;
       if (cameraId) selectedCameraIdRef.current = cameraId;
       setIsCameraConnected(true);
+      setIsConnecting(false);
       setHasEverConnected(true);
-      console.log('[CameraContext] Camera connected via HTTP API, cameraId:', cameraId);
     } else if (!connected) {
       hasHttpConnectedRef.current = false;
       selectedCameraIdRef.current = null;
@@ -133,6 +154,7 @@ export function CameraProvider({ children }: { children: ReactNode }) {
 
   // Connect function - initiates connection to the control center
   const connect = useCallback(() => {
+    CameraWebSocketManager.getInstance().clearIntentionalFlag(); // Clear flag when connecting
     const current = connectionStateRef.current;
     if (current === 'NC' || current === 'Reconnecting') {
       updateConnectionState('Connecting');
@@ -148,20 +170,53 @@ export function CameraProvider({ children }: { children: ReactNode }) {
     // Re-register the camera with the daemon so it resumes polling
     const cameraId = selectedCameraIdRef.current;
     if (cameraId) {
-      console.log('[CameraContext] Re-registering camera after reconnect:', cameraId);
       fetch(`http://localhost:58321/api/controller/switch?camera=${cameraId}`, { method: 'POST' })
-        .then(() => console.log('[CameraContext] Camera re-registered successfully'))
         .catch((err) => console.warn('[CameraContext] Failed to re-register camera:', err));
     }
   }, [updateConnectionState]);
 
-  // Disconnect function - user-initiated disconnect
   const disconnect = useCallback(() => {
-    connectionStateRef.current = 'NC'; // sync ref immediately
+    connectionStateRef.current = 'NC';
     setConnectionState('NC');
     hasReceivedStatusRef.current = false;
     selectedCameraIdRef.current = null;
+    wasCameraConnectedRef.current = false;
+    hasHttpConnectedRef.current = false;
+    setIsCameraConnected(false);
+    setIsDownloading(false);
+    setIsConnecting(false);
+    setIsPollingPaused(false);
+    if (downloadTimeoutRef.current) {
+      clearTimeout(downloadTimeoutRef.current);
+      downloadTimeoutRef.current = null;
+    }
+    fetch('http://localhost:58321/api/controller/disconnect', { method: 'POST' })
+      .catch(err => console.warn('[CameraContext] Failed to send disconnect to controller:', err));
     CameraWebSocketManager.getInstance().disconnect();
+  }, []);
+
+  // Pause camera polling
+  const pausePolling = useCallback(async () => {
+    try {
+      const response = await fetch('http://localhost:58321/api/controller/pause-polling', { method: 'POST' });
+      if (!response.ok) {
+        console.warn('[CameraContext] Failed to pause polling');
+      }
+    } catch (err) {
+      console.warn('[CameraContext] Failed to send pause polling command:', err);
+    }
+  }, []);
+
+  // Resume camera polling
+  const resumePolling = useCallback(async () => {
+    try {
+      const response = await fetch('http://localhost:58321/api/controller/resume-polling', { method: 'POST' });
+      if (!response.ok) {
+        console.warn('[CameraContext] Failed to resume polling');
+      }
+    } catch (err) {
+      console.warn('[CameraContext] Failed to send resume polling command:', err);
+    }
   }, []);
 
   useEffect(() => {
@@ -173,15 +228,8 @@ export function CameraProvider({ children }: { children: ReactNode }) {
       setLastStatus(data);
       hasReceivedStatusRef.current = true;
 
-      // Debug logging
-      //console.log('[CameraContext] handleStatus received:', data);
-      //console.log('[CameraContext] Current connectionState:', connectionStateRef.current);
-
-      // Detect if a real camera is connected based on status data
-      // Check for meaningful values (not defaults like empty strings or generic values)
-      // NOTE: "liveview_streaming" or "liveview" mode alone proves camera is connected!
       const hasRealData = Boolean(
-        (data.mode === 'liveview_streaming' || data.mode === 'liveview') ||  // Streaming/liveview = camera connected
+        (data.mode === 'liveview_streaming' || data.mode === 'liveview') ||
         (data.shootingmode && data.shootingmode !== '' && data.shootingmode !== 'undefined') ||
         (data.battery && data.battery !== '' && data.battery !== '0') ||
         (data.iso && data.iso !== '') ||
@@ -189,31 +237,21 @@ export function CameraProvider({ children }: { children: ReactNode }) {
         (data.shutter && data.shutter !== '')
       );
 
-      //console.log('[CameraContext] hasRealData:', hasRealData, 'wasCameraConnected:', wasCameraConnectedRef.current);
-
-      // Use hysteresis to avoid false disconnects during capture
-      // Require multiple consecutive empty statuses before marking as disconnected
       if (hasRealData) {
         emptyStatusCountRef.current = 0;
         if (!wasCameraConnectedRef.current) {
-          //console.log('[CameraContext] Camera connection state changed: false -> true');
           wasCameraConnectedRef.current = true;
           setIsCameraConnected(true);
-          setHasEverConnected(true); // Mark that we've had a camera connection this session
+          setHasEverConnected(true);
         }
 
-        // Transition to Connected whenever we receive real data while in Connecting/Reconnecting
-        // (regardless of previous wasCameraConnected state)
         const currentState = connectionStateRef.current;
         if (currentState === 'Connecting' || currentState === 'Reconnecting') {
           updateConnectionState('Connected');
         }
       } else {
-        // If we're in Connecting state and receive status (even if no real data yet),
-        // consider it connected and transition to Connected
         const currentState = connectionStateRef.current;
         if (currentState === 'Connecting' && !wasCameraConnectedRef.current) {
-          console.log('[CameraContext] Connection established in Connecting state (no real data yet)');
           wasCameraConnectedRef.current = true;
           setIsCameraConnected(true);
           setHasEverConnected(true);
@@ -221,11 +259,9 @@ export function CameraProvider({ children }: { children: ReactNode }) {
         }
         emptyStatusCountRef.current++;
         if (wasCameraConnectedRef.current && emptyStatusCountRef.current >= DISCONNECT_THRESHOLD) {
-          console.log('[CameraContext] Camera connection state changed: true -> false (after', emptyStatusCountRef.current, 'empty statuses)');
           wasCameraConnectedRef.current = false;
           setIsCameraConnected(false);
 
-          // If we lose camera connection but WS is still connected, go to Reconnecting
           if (isWsConnectedRef.current && (currentState === 'Connected' || currentState === 'Connecting')) {
             updateConnectionState('Reconnecting');
           }
@@ -239,59 +275,82 @@ export function CameraProvider({ children }: { children: ReactNode }) {
         setBatteryLevel(data.battery.split(',')[0]);
       }
 
-      // Notify external listeners (e.g. PhotoboothSidebar)
       statusListenersRef.current.forEach(cb => {
         try { cb(data); } catch (e) { console.error('[CameraContext] listener error:', e); }
       });
     };
 
     const handleConnected = () => {
-      console.log('[CameraContext] WebSocket connected');
       isWsConnectedRef.current = true;
       setIsWsConnected(true);
-      // Camera re-registration is handled by the reconnect modal, not here
     };
 
-    const handleDisconnected = () => {
-      console.log('[CameraContext] WebSocket disconnected');
+    const handleDisconnected = (data?: { intentional?: boolean }) => {
+      const isIntentional = data?.intentional === true;
       isWsConnectedRef.current = false;
       setIsWsConnected(false);
       hasReceivedStatusRef.current = false;
 
-      // Only go to Reconnecting if we were previously connected
-      // If user intentionally disconnected (connectionState === 'NC'), stay in NC
       const currentState = connectionStateRef.current;
-      if (currentState === 'Connected' || currentState === 'Connecting') {
+      if (!isIntentional && (currentState === 'Connected' || currentState === 'Connecting')) {
         updateConnectionState('Reconnecting');
       }
     };
 
     const handleCaptureError = (data: CaptureErrorEvent) => {
-      console.error('[CameraContext] Capture error received:', data.error);
+      console.error('[CameraContext] Capture error:', data.error);
       setCaptureError(data.error);
     };
 
     const handleCameraDisconnected = () => {
-      console.log('[CameraContext] Camera physically disconnected');
+      const isIntentional = CameraWebSocketManager.getInstance().isIntentionalDisconnect();
       wasCameraConnectedRef.current = false;
       setIsCameraConnected(false);
       emptyStatusCountRef.current = 0;
 
-      // If we were connected, go to Reconnecting state
       const currentState = connectionStateRef.current;
-      if (currentState === 'Connected' || currentState === 'Connecting') {
+      if (!isIntentional && currentState !== 'NC' && (currentState === 'Connected' || currentState === 'Connecting')) {
         updateConnectionState('Reconnecting');
       }
     };
 
     const handlePhotoDownloaded = (data: PhotoDownloadedEvent) => {
-      console.log('[CameraContext::handlePhotoDownloaded] Photo downloaded event received:', data);
-      console.log('[CameraContext::handlePhotoDownloaded] Number of listeners:', photoDownloadedListenersRef.current.size);
-      // Notify external listeners (e.g. PhotoboothWorkspace)
+      if (downloadTimeoutRef.current) {
+        clearTimeout(downloadTimeoutRef.current);
+        downloadTimeoutRef.current = null;
+      }
+      setIsDownloading(false);
       photoDownloadedListenersRef.current.forEach(cb => {
-        console.log('[CameraContext::handlePhotoDownloaded] Calling listener:', cb.name || 'anonymous');
         try { cb(data); } catch (e) { console.error('[CameraContext] photo_downloaded listener error:', e); }
       });
+    };
+
+    const handleCameraConnecting = (_data: { type: string; camera_id: string }) => {
+      setIsConnecting(true);
+    };
+
+    const handleCameraConnectFailed = (data: { type: string; camera_id: string; error: string }) => {
+      console.error('[CameraContext] Camera connect failed:', data.error);
+      setIsConnecting(false);
+    };
+
+    const handleCameraConnected = (data: { type: string; camera_id: string; manufacturer: string; model: string; port: string; usb_version: string; serial_number?: string; firmware?: string }) => {
+      console.log('[CameraContext] camera_connected event:', JSON.stringify(data));
+      setIsConnecting(false);
+      setIsCameraConnected(true);
+      setHasEverConnected(true);
+      if (data.serial_number) setSerialNumber(data.serial_number);
+      if (data.firmware) setFirmware(data.firmware);
+    };
+
+    const handlePollingPaused = () => {
+      console.log('[CameraContext] polling_paused event');
+      setIsPollingPaused(true);
+    };
+
+    const handlePollingResumed = () => {
+      console.log('[CameraContext] polling_resumed event');
+      setIsPollingPaused(false);
     };
 
     manager.on('status', handleStatus);
@@ -300,6 +359,11 @@ export function CameraProvider({ children }: { children: ReactNode }) {
     manager.on('capture_error', handleCaptureError);
     manager.on('camera_disconnected', handleCameraDisconnected);
     manager.on('photo_downloaded', handlePhotoDownloaded);
+    manager.on('camera_connecting', handleCameraConnecting);
+    manager.on('camera_connect_failed', handleCameraConnectFailed);
+    manager.on('camera_connected', handleCameraConnected);
+    manager.on('polling_paused', handlePollingPaused);
+    manager.on('polling_resumed', handlePollingResumed);
 
     // Auto-connect on mount - will be in 'NC' state until user clicks connect
     // Note: manager.connect() is NOT called here - user must click connect button
@@ -311,10 +375,41 @@ export function CameraProvider({ children }: { children: ReactNode }) {
       manager.off('capture_error', handleCaptureError);
       manager.off('camera_disconnected', handleCameraDisconnected);
       manager.off('photo_downloaded', handlePhotoDownloaded);
-      manager.disconnect();
+      manager.off('camera_connecting', handleCameraConnecting);
+      manager.off('camera_connect_failed', handleCameraConnectFailed);
+      manager.off('camera_connected', handleCameraConnected);
+      manager.off('polling_paused', handlePollingPaused);
+      manager.off('polling_resumed', handlePollingResumed);
+      // Only disconnect WebSocket if we're the main window (not guest-display)
+      try {
+        const currentWindow = getCurrentWebviewWindow();
+        if (currentWindow.label !== 'guest-display') {
+          manager.disconnect();
+        }
+      } catch {
+        manager.disconnect();
+      }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Auto-clear downloading state after 5 seconds
+  useEffect(() => {
+    if (isDownloading) {
+      if (downloadTimeoutRef.current) {
+        clearTimeout(downloadTimeoutRef.current);
+      }
+      downloadTimeoutRef.current = setTimeout(() => {
+        setIsDownloading(false);
+      }, 5000);
+    }
+    return () => {
+      if (downloadTimeoutRef.current) {
+        clearTimeout(downloadTimeoutRef.current);
+        downloadTimeoutRef.current = null;
+      }
+    };
+  }, [isDownloading]);
 
   // Derive connection state text from current state
   const connectionStateText = getConnectionStateText(connectionState);
@@ -336,11 +431,18 @@ export function CameraProvider({ children }: { children: ReactNode }) {
       lastStatus,
       captureError,
       clearCaptureError,
+      isDownloading,
+      setDownloading: setIsDownloading,
       addStatusListener,
       removeStatusListener,
       addPhotoDownloadedListener,
       removePhotoDownloadedListener,
-      setCameraHttpConnected
+      setCameraHttpConnected,
+      serialNumber,
+      firmware,
+      isPollingPaused,
+      pausePolling,
+      resumePolling
     }}>
       {children}
     </CameraContext.Provider>
