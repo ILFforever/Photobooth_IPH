@@ -2,8 +2,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-shell";
-import { Download, Loader2 } from "lucide-react";
+import { Download, Loader2, Trash2 } from "lucide-react";
 import type { VersionStatus } from "../../types/updates";
+import FFmpegDownloadModal from "./FFmpegDownloadModal";
+import { createLogger } from '../../utils/logger';
+const logger = createLogger('AboutModal');
 
 interface AboutModalProps {
   show: boolean;
@@ -38,6 +41,11 @@ export default function AboutModal({
   const [versions, setVersions] = useState<VersionInfo | null>(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
+  const [ffmpegVersion, setFfmpegVersion] = useState<string | null>(null);
+  const [showFfmpegModal, setShowFfmpegModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [ffmpegSize, setFfmpegSize] = useState<number | null>(null);
 
   useEffect(() => {
     if (show && !appInfo) {
@@ -45,6 +53,9 @@ export default function AboutModal({
     }
     if (show && aboutTab === 'versions' && !versions) {
       checkForUpdates();
+    }
+    if (show && aboutTab === 'versions' && ffmpegVersion === null) {
+      checkFfmpegVersion();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [show, aboutTab]);
@@ -54,7 +65,7 @@ export default function AboutModal({
       const info = await invoke<AppInfo>('get_app_info');
       setAppInfo(info);
     } catch (e) {
-      console.error('Failed to fetch app info:', e);
+      logger.error('Failed to fetch app info:', e);
     }
   };
 
@@ -76,11 +87,45 @@ export default function AboutModal({
         virtualboxVersion: requirements.requirements.virtualbox_version
       });
     } catch (e) {
-      console.error('Failed to check for updates:', e);
+      logger.error('Failed to check for updates:', e);
     } finally {
       setCheckingUpdate(false);
     }
   };
+
+  const checkFfmpegVersion = async () => {
+    try {
+      const [version, size] = await Promise.all([
+        invoke<string>('get_ffmpeg_version'),
+        invoke<number>('get_ffmpeg_size')
+      ]);
+      setFfmpegVersion(version);
+      setFfmpegSize(size);
+    } catch (e) {
+      setFfmpegVersion(null);
+      setFfmpegSize(null);
+    }
+  };
+
+  const handleDeleteFfmpeg = async () => {
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDeleteFfmpeg = async () => {
+    setIsDeleting(true);
+    setShowDeleteConfirm(false);
+    try {
+      await invoke('delete_ffmpeg_command');
+      setFfmpegVersion(null);
+      setFfmpegSize(null);
+    } catch (e) {
+      logger.error('Failed to delete FFmpeg:', e);
+    } finally {
+      setIsDeleting(false);
+    }
+};
+
+
 
   if (!show) return null;
 
@@ -445,6 +490,76 @@ export default function AboutModal({
                         )}
                       </div>
 
+                      {/* FFmpeg Version */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
+                        <span style={{ fontSize: '24px' }}>🎬</span>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '2px' }}>FFmpeg</div>
+                          <div>
+                            <div style={{ fontSize: '16px', fontWeight: '600', color: ffmpegVersion ? 'var(--text-primary)' : '#ef4444', marginBottom: '2px' }}>
+                              {ffmpegVersion || 'Not installed'}
+                            </div>
+                            {ffmpegSize && (
+                              <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                                {(ffmpegSize / (1024 * 1024)).toFixed(1)} MB
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        {ffmpegVersion ? (
+                          <button
+                            onClick={handleDeleteFfmpeg}
+                            disabled={isDeleting}
+                            style={{
+                              padding: '0.4rem 0.75rem',
+                              fontSize: '11px',
+                              background: isDeleting ? '#f97316' : '#ef4444',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: isDeleting ? 'wait' : 'pointer',
+                              fontWeight: '500',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.25rem',
+                              opacity: isDeleting ? 0.7 : 1,
+                            }}
+                          >
+                            {isDeleting ? (
+                              <>
+                                <Loader2 size={12} className="spin" />
+                                Deleting...
+                              </>
+                            ) : (
+                              <>
+                                <Trash2 size={12} />
+                                Delete
+                              </>
+                            )}
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => setShowFfmpegModal(true)}
+                            style={{
+                              padding: '0.4rem 0.75rem',
+                              fontSize: '11px',
+                              background: '#22c55e',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              fontWeight: '500',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.25rem'
+                            }}
+                          >
+                            <Download size={12} />
+                            Download
+                          </button>
+                        )}
+                      </div>
+
                       {/* Action Button */}
                       <button
                         onClick={checkForUpdates}
@@ -538,6 +653,74 @@ export default function AboutModal({
             Close
           </motion.button>
         </motion.div>
+        
+         {/* Delete Confirmation Modal */}
+        {showDeleteConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="modal-overlay"
+            onClick={() => setShowDeleteConfirm(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="modal-content"
+              style={{ maxWidth: '400px' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 style={{ marginBottom: '0.5rem' }}>Delete FFmpeg?</h3>
+              <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem', fontSize: '13px' }}>
+                Are you sure you want to delete FFmpeg? You'll need to download it again to use HDMI capture or video generation features.
+              </p>
+              <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    fontSize: '12px',
+                    background: 'var(--bg-secondary)',
+                    color: 'var(--text-primary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDeleteFfmpeg}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    fontSize: '12px',
+                    background: '#ef4444',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontWeight: '500',
+                  }}
+                >
+                  Delete FFmpeg
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {/* FFmpeg Download Modal */}
+        {showFfmpegModal && (
+          <FFmpegDownloadModal
+            show={showFfmpegModal}
+            onClose={() => setShowFfmpegModal(false)}
+            onDownloadComplete={() => {
+              setShowFfmpegModal(false);
+              checkFfmpegVersion();
+            }}
+          />
+        )}
       </motion.div>
     </AnimatePresence>
   );

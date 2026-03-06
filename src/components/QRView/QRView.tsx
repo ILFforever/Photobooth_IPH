@@ -3,7 +3,9 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { useState, useCallback, useEffect, useRef } from "react";
 import "./QRView.css";
 import type { NoPreviewImage, Result } from "../../types/qr";
+import { createLogger } from '../../utils/logger';
 
+const logger = createLogger('QRView');
 interface QRViewProps {
   result: Result | null;
   selectedImages: string[];
@@ -56,18 +58,18 @@ export default function QRView({
       try {
         urls[path] = convertFileSrc(path.replace('asset://', ''));
       } catch (e) {
-        console.error('[QRView] Failed to convert file src:', path, e);
+        logger.error('[QRView] Failed to convert file src:', path, e);
       }
     }
     setImageUrls(urls);
-    console.log('[QRView] Converted image URLs for', selectedImages.length, 'images, refreshKey:', refreshKey);
+    logger.debug('[QRView] Converted image URLs for', selectedImages.length, 'images, refreshKey:', refreshKey);
   }, [selectedImages, refreshKey]);
 
   // Force refresh on visibility change (handles sleep/wake)
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        console.log('[QRView] Document became visible, refreshing images...');
+        logger.debug('[QRView] Document became visible, refreshing images...');
         setRefreshKey(prev => prev + 1);
         setFailedImages(new Set());
       }
@@ -79,7 +81,7 @@ export default function QRView({
 
   // Also refresh when component mounts (handles mode switch)
   useEffect(() => {
-    console.log('[QRView] Component mounted/updated, refreshing images...');
+    logger.debug('[QRView] Component mounted/updated, refreshing images...');
     setRefreshKey(prev => prev + 1);
     isMountedRef.current = true;
 
@@ -90,7 +92,7 @@ export default function QRView({
 
   // Handle image load error with retry
   const handleImageError = useCallback((imagePath: string, index: number) => {
-    console.error(`[QRView] Image ${index} failed to load: ${imagePath}`);
+    logger.error(`[QRView] Image ${index} failed to load: ${imagePath}`);
 
     // Mark as failed and trigger retry
     if (!failedImages.has(imagePath)) {

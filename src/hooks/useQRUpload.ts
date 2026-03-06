@@ -3,6 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import type { Result } from "../types/qr";
 import type { UploadProgress } from "../types/qr";
 import type { NoPreviewImage } from "../types/qr";
+import { createLogger } from '../utils/logger';
+const logger = createLogger('useQRUpload');
 
 interface UseQRUploadOptions {
   photosPath: string | null;
@@ -77,7 +79,7 @@ export function useQRUpload({
 
       setResult(res);
     } catch (e) {
-      console.error("Upload failed:", e);
+      logger.error("Upload failed:", e);
       const errorMsg = e instanceof Error ? e.message : String(e);
       // Don't show error if it was a user cancellation
       if (!errorMsg.includes("cancelled")) {
@@ -93,7 +95,7 @@ export function useQRUpload({
     try {
       await invoke("cancel_upload");
     } catch (e) {
-      console.error("Failed to cancel upload:", e);
+      logger.error("Failed to cancel upload:", e);
     }
     setLoading(false);
   };

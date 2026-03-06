@@ -4,6 +4,8 @@ import { useCollage } from '../contexts/CollageContext';
 import { usePhotobooth } from '../contexts/PhotoboothContext';
 import { useToast } from '../contexts/ToastContext';
 import type { CustomSet, CustomSetPreview } from '../types/customSet';
+import { createLogger } from '../utils/logger';
+const logger = createLogger('useCustomSets');
 
 export function useCustomSets() {
   const { showToast } = useToast();
@@ -38,7 +40,7 @@ export function useCustomSets() {
       );
       setCustomSets(fullSets.filter((s): s is CustomSet => s !== null));
     } catch (error) {
-      console.error('Failed to load custom sets:', error);
+      logger.error('Failed to load custom sets:', error);
     } finally {
       setLoadingSets(false);
     }
@@ -46,7 +48,7 @@ export function useCustomSets() {
 
   const handleLoadSet = useCallback(async (set: CustomSet) => {
     try {
-      console.log('[useCustomSets] Loading custom set:', set.name);
+      logger.debug('[useCustomSets] Loading custom set:', set.name);
 
       setPhotoboothCanvasSize({
         width: set.canvasSize.width,
@@ -68,13 +70,13 @@ export function useCustomSets() {
       setPhotoboothAutoMatchBackground(set.autoMatchBackground);
       setPhotoboothOverlays(set.overlays || []);
 
-      console.log('[useCustomSets] Setting selectedCustomSetName to:', set.name);
+      logger.debug('[useCustomSets] Setting selectedCustomSetName to:', set.name);
       setSelectedCustomSetName(set.name);
       setSelectedCustomSetId(set.id);
 
       showToast('Set loaded', 'success', 2000, `${set.name} has been applied`);
     } catch (error) {
-      console.error('Failed to load custom set:', error);
+      logger.error('Failed to load custom set:', error);
       showToast('Failed to load set', 'error', 3000);
     }
   }, [

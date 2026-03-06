@@ -449,7 +449,7 @@ export default function FinalizeView({
       });
       setIsDisplayingOnGuest(true);
     } catch (err) {
-      console.error('[FinalizeView] Failed to composite frame:', err);
+      logger.error('[FinalizeView] Failed to composite frame:', err);
     } finally {
       setIsCompositing(false);
     }

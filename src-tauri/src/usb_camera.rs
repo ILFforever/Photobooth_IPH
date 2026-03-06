@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 
@@ -55,7 +55,7 @@ impl CameraManager {
 
     /// List all USB cameras connected to the host
     pub fn list_cameras(&self) -> Result<Vec<UsbCamera>, String> {
-        let output = run_command_silent(&self.vbox_manage_path, &["list", "usbhosts"])
+        let output = run_command_silent(&self.vbox_manage_path, &["list", "usbhost"])
             .map_err(|e| format!("Failed to execute VBoxManage: {}", e))?;
 
         if !output.status.success() {
@@ -115,13 +115,12 @@ impl CameraManager {
                 // EXCLUDE all printers - they should stay on Windows, not attach to VM
                 let product_lower = camera.product.to_lowercase();
                 if product_lower.contains("printer") {
-                    continue; // Skip all printers
+                    continue;
                 }
 
                 // EXCLUDE Fuji ASK 400 Printer specifically (double protection)
-                // Printer: VendorId 04cb, ProductId 501a, Product "Photo Printer"
                 if camera.vendor_id.contains("04cb") && camera.product_id.contains("501a") {
-                    continue; // Skip Fuji ASK 400 printer
+                    continue;
                 }
 
                 // Only include cameras (PTP class or camera-related keywords)
@@ -156,9 +155,9 @@ impl CameraManager {
         Ok(cameras)
     }
 
-    /// Get list of existing USB filters for the VM
-    /// Uses --machinereadable for fast, reliable parsing
-    fn get_existing_filters(&self) -> Result<HashSet<String>, String> {
+    /// Get existing USB filters as a map of name → index.
+    /// Uses --machinereadable for fast, reliable parsing.
+    fn get_existing_filters(&self) -> Result<HashMap<String, usize>, String> {
         let output = run_command_silent(&self.vbox_manage_path, &["showvminfo", &self.vm_name, "--machinereadable"])
             .map_err(|e| format!("Failed to get VM info: {}", e))?;
 
@@ -167,16 +166,17 @@ impl CameraManager {
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let mut filters = HashSet::new();
+        let mut filters = HashMap::new();
 
         // --machinereadable outputs lines like: USBFilterName1="Canon Cameras"
         for line in stdout.lines() {
             if let Some(rest) = line.strip_prefix("USBFilterName") {
-                // rest is like: 1="Canon Cameras"
-                if let Some((_index, quoted_name)) = rest.split_once('=') {
-                    let name = quoted_name.trim_matches('"').to_string();
-                    if !name.is_empty() {
-                        filters.insert(name);
+                if let Some((index_str, quoted_name)) = rest.split_once('=') {
+                    if let Ok(idx) = index_str.parse::<usize>() {
+                        let name = quoted_name.trim_matches('"').to_string();
+                        if !name.is_empty() {
+                            filters.insert(name, idx);
+                        }
                     }
                 }
             }
@@ -185,64 +185,41 @@ impl CameraManager {
         Ok(filters)
     }
 
-    /// Add a USB filter for a camera vendor
-    fn add_usb_filter(&self, index: usize, name: &str, vendor_id: &str) -> Result<(), String> {
-        let output = run_command_silent(&self.vbox_manage_path, &[
-            "usbfilter",
-            "add",
-            &index.to_string(),
-            "--target",
-            &self.vm_name,
-            "--name",
-            name,
-            "--vendorid",
-            vendor_id,
-        ])
-            .map_err(|e| format!("Failed to add USB filter: {}", e))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("Failed to add USB filter '{}': {}", name, stderr));
+    /// Remove a USB filter by name, using its known index (no extra VBoxManage call needed).
+    fn remove_usb_filter(&self, index: usize, name: &str) {
+        let result = run_command_silent(&self.vbox_manage_path, &[
+            "usbfilter", "remove", &index.to_string(), "--target", &self.vm_name,
+        ]);
+        match result {
+            Ok(o) if o.status.success() => eprintln!("Removed stale USB filter: {}", name),
+            Ok(o) => eprintln!("Warning: could not remove filter '{}': {}", name, String::from_utf8_lossy(&o.stderr)),
+            Err(e) => eprintln!("Warning: could not remove filter '{}': {}", name, e),
         }
-
-        eprintln!("Added USB filter: {} (vendor ID: {})", name, vendor_id);
-        Ok(())
     }
 
-    /// Ensure USB filters exist for all supported camera brands
-    /// Returns the number of filters added
+    /// Ensure no broad vendor-level USB filters exist that would cause the VM to grab printers.
+    /// All cameras are now attached at runtime via attach_camera(), which identifies them by
+    /// product name/model and explicitly excludes printers.
+    /// This function only does work on first run after upgrading from an older version that
+    /// installed broad vendor filters — after cleanup it becomes a fast no-op.
     pub fn ensure_usb_filters(&self) -> Result<usize, String> {
-        // Define supported camera vendor filters
-        struct VendorFilter {
-            name: &'static str,
-            vendor_id: &'static str,
-        }
-
-        let vendors = [
-            VendorFilter { name: "Fujifilm Cameras", vendor_id: "04cb" },
-            VendorFilter { name: "Canon Cameras", vendor_id: "04a9" },
-            VendorFilter { name: "Nikon Cameras", vendor_id: "04b0" },
-            VendorFilter { name: "Sony Cameras", vendor_id: "054c" },
-            VendorFilter { name: "Olympus Cameras", vendor_id: "07b4" },
-            VendorFilter { name: "Panasonic Cameras", vendor_id: "04da" },
-            VendorFilter { name: "Ricoh Pentax Cameras", vendor_id: "05ca" },
-            VendorFilter { name: "Sigma Cameras", vendor_id: "0499" },
-            VendorFilter { name: "Leica Cameras", vendor_id: "07ca" },
+        // Filters that must NOT exist — broad vendor IDs shared with printer lines.
+        // e.g. Fujifilm 04cb covers both cameras and the FUJI ASK 400 printer.
+        //      Canon    04a9 covers both cameras and Canon photo printers.
+        let banned: &[&str] = &[
+            "Fujifilm Cameras",
+            "Canon Cameras",
         ];
 
-        let existing_filters = self.get_existing_filters()?;
-        let mut added_count = 0;
-        let mut next_index = existing_filters.len();
+        let existing = self.get_existing_filters()?;
 
-        for vendor in &vendors {
-            if !existing_filters.contains(vendor.name) {
-                self.add_usb_filter(next_index, vendor.name, vendor.vendor_id)?;
-                next_index += 1;
-                added_count += 1;
+        for name in banned {
+            if let Some(&idx) = existing.get(*name) {
+                self.remove_usb_filter(idx, name);
             }
         }
 
-        Ok(added_count)
+        Ok(0)
     }
 
     /// Attach a camera to the VM (runtime-only, no permanent config changes)

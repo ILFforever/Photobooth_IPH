@@ -114,7 +114,7 @@ await fetch('http://localhost:58321/api/camera/config', {
 const result = await fetch('http://localhost:58321/api/capture', {
   method: 'POST'
 }).then(r => r.json());
-console.log(result.files[0].file_path); // /tmp/DSCF0042.JPG
+logger.debug(result.files[0].file_path); // /tmp/DSCF0042.JPG
 ```
 
 ### Python
@@ -167,12 +167,12 @@ ws.onmessage = (event) => {
 
   // Mode changes
   if (data.mode === 'capture') {
-    console.log('Capture in progress');
+    logger.debug('Capture in progress');
   }
 
   // Photo downloaded
   if (data.type === 'photo_downloaded') {
-    console.log('New photo:', data.file_path);
+    logger.debug('New photo:', data.file_path);
     // Download and display
     fetch(`http://localhost:58321/api/photo/${data.file_path.split('/').pop()}`)
       .then(r => r.blob())

@@ -1,6 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { createLogger } from '../utils/logger';
+const logger = createLogger('useHdmiCapture');
 
 interface CaptureDevice {
   name: string;
@@ -13,6 +15,7 @@ export interface HdmiCaptureState {
   frameUrl: string | null;
   selectedDevice: string | null;
   error: string | null;
+  ffmpegRequired: boolean;
   loadDevices: () => Promise<void>;
   startCapture: (deviceName: string) => Promise<void>;
   stopCapture: () => Promise<void>;
@@ -35,14 +38,18 @@ export function useHdmiCapture(): HdmiCaptureState {
   const [frameUrl, setFrameUrl] = useState<string | null>(null);
   const [selectedDevice, setSelectedDeviceState] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [ffmpegRequired, setFfmpegRequired] = useState(false);
   const capturingRef = useRef(false);
   const prevUrlRef = useRef<string | null>(null);
   const unlistenRef = useRef<UnlistenFn | null>(null);
   const frameCountRef = useRef(0);
+  const mountedRef = useRef(true);
 
   // Cleanup blob URLs and event listener on unmount
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       if (unlistenRef.current) {
         unlistenRef.current();
         unlistenRef.current = null;
@@ -64,6 +71,9 @@ export function useHdmiCapture(): HdmiCaptureState {
     frameCountRef.current = 0;
 
     const unlisten = await listen<string>('hdmi-frame', (event) => {
+      // Check if component is still mounted before processing event
+      if (!mountedRef.current) return;
+
       const blob = base64ToBlob(event.payload, 'image/jpeg');
       const url = URL.createObjectURL(blob);
 
@@ -100,21 +110,37 @@ export function useHdmiCapture(): HdmiCaptureState {
     }
     try {
       const result = await invoke<CaptureDevice[]>('list_capture_devices');
+      // Check if component is still mounted before updating state
+      if (!mountedRef.current) return;
+
       const namesKey = result.map(d => d.name).join('\0');
       if (namesKey !== prevDeviceNamesRef.current) {
         prevDeviceNamesRef.current = namesKey;
         setDevices(result);
         setError(null);
+        setFfmpegRequired(false);
       }
     } catch (e) {
+      // Check if component is still mounted before updating state
+      if (!mountedRef.current) return;
+
       const msg = e instanceof Error ? e.message : String(e);
-      setError(`Failed to list devices: ${msg}`);
-      if (prevDeviceNamesRef.current !== '') {
-        prevDeviceNamesRef.current = '';
+      // Check if error is about FFmpeg
+      if (msg.includes('FFmpeg not found') || msg.includes('ffmpeg')) {
+        setFfmpegRequired(true);
+        setError('FFmpeg is required for HDMI capture');
+      } else {
+        setError(`Failed to list devices: ${msg}`);
+        setFfmpegRequired(false);
+      }
+      // Use sentinel (not '') so next loadDevices call won't show loading spinner
+      if (prevDeviceNamesRef.current !== '__error__') {
+        prevDeviceNamesRef.current = '__error__';
         setDevices([]);
       }
     } finally {
-      if (isFirstLoad) {
+      // Check if component is still mounted before updating state
+      if (mountedRef.current && isFirstLoad) {
         setIsLoadingDevices(false);
       }
     }
@@ -129,6 +155,7 @@ export function useHdmiCapture(): HdmiCaptureState {
     }
 
     setError(null);
+    setFfmpegRequired(false);
     capturingRef.current = true;
     setIsCapturing(true);
 
@@ -140,7 +167,13 @@ export function useHdmiCapture(): HdmiCaptureState {
       setSelectedDeviceState(deviceName);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      setError(`Capture failed: ${msg}`);
+      // Check if error is about FFmpeg
+      if (msg.includes('FFmpeg not found') || msg.includes('ffmpeg')) {
+        setFfmpegRequired(true);
+        setError('FFmpeg is required for HDMI capture');
+      } else {
+        setError(`Capture failed: ${msg}`);
+      }
       setIsCapturing(false);
       stopListening();
       capturingRef.current = false;
@@ -167,6 +200,7 @@ export function useHdmiCapture(): HdmiCaptureState {
     frameUrl,
     selectedDevice,
     error,
+    ffmpegRequired,
     loadDevices,
     startCapture,
     stopCapture,

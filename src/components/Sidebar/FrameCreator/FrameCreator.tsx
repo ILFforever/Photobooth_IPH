@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { invoke } from '@tauri-apps/api/core';
 import { useCollage } from '../../../contexts/CollageContext';
@@ -28,6 +28,10 @@ import {
 // Drag and drop imports
 import { useDrag, useDrop } from 'react-dnd';
 
+import { createLogger } from '../../../utils/logger';
+
+const logger = createLogger('FrameCreator');
+
 const DRAG_TYPE = 'zone';
 
 const CANVAS_SIZE = { width: 1200, height: 1800 };
@@ -53,6 +57,7 @@ function ZoneItem({
   onToggleLock: () => void;
 }) {
   const [dragHandled, setDragHandled] = useState(false);
+  const [panelInteracted, setPanelInteracted] = useState(false);
 
   const [{ isDragging }, drag] = useDrag({
     type: DRAG_TYPE,
@@ -266,6 +271,45 @@ function FrameCreator() {
   const showSaveDialog = isFrameCreatorSaving;
   const setShowSaveDialog = setIsFrameCreatorSaving;
 
+  // Refs for stable event listeners (avoid stale closures and re-registration)
+  const zonesRef = useRef<FrameZone[]>(zones);
+  const currentFrameRef = useRef(currentFrame);
+  const selectedZoneIndexRef = useRef(selectedZoneIndex);
+  const copiedZoneRef = useRef(copiedZone);
+  const showSaveDialogRef = useRef(showSaveDialog);
+  const showReplaceConfirmRef = useRef(showReplaceConfirm);
+  const activeSidebarTabRef = useRef(activeSidebarTab);
+  const setZonesRef = useRef(setZones);
+  const setSelectedZoneIndexRef = useRef(setSelectedZoneIndex);
+  const setCopiedZoneRef = useRef(setCopiedZone);
+  const setShowCopyNotificationRef = useRef(setShowCopyNotification);
+  const setShowSaveDialogRef = useRef(setShowSaveDialog);
+  const setSaveErrorRef = useRef(setSaveError);
+  const setSaveSuccessRef = useRef(setSaveSuccess);
+  const setCurrentFrameRef = useRef(setCurrentFrame);
+  const newFrameNameRef = useRef(newFrameName);
+  const isUpdatingFromEditorRef = useRef(false);
+
+  // Update refs when state changes (lightweight - only updates ref values)
+  useEffect(() => {
+    zonesRef.current = zones;
+    currentFrameRef.current = currentFrame;
+    selectedZoneIndexRef.current = selectedZoneIndex;
+    copiedZoneRef.current = copiedZone;
+    showSaveDialogRef.current = showSaveDialog;
+    showReplaceConfirmRef.current = showReplaceConfirm;
+    activeSidebarTabRef.current = activeSidebarTab;
+    setZonesRef.current = setZones;
+    setSelectedZoneIndexRef.current = setSelectedZoneIndex;
+    setCopiedZoneRef.current = setCopiedZone;
+    setShowCopyNotificationRef.current = setShowCopyNotification;
+    setShowSaveDialogRef.current = setShowSaveDialog;
+    setSaveErrorRef.current = setSaveError;
+    setSaveSuccessRef.current = setSaveSuccess;
+    setCurrentFrameRef.current = setCurrentFrame;
+    newFrameNameRef.current = newFrameName;
+  }, [zones, currentFrame, selectedZoneIndex, copiedZone, showSaveDialog, showReplaceConfirm, activeSidebarTab, setZones, setSelectedZoneIndex, setCopiedZone, setShowCopyNotification, setShowSaveDialog, setSaveError, setSaveSuccess, setCurrentFrame, newFrameName]);
+
   // Create portal root for modals on mount
   useEffect(() => {
     const portalRoot = document.createElement('div');
@@ -285,7 +329,7 @@ function FrameCreator() {
     updatedZones.splice(hoverIndex, 0, draggedZone);
     setZones(updatedZones);
 
-    console.log('Zones reordered:', updatedZones.map(z => z.id));
+    logger.debug('Zones reordered:', updatedZones.map(z => z.id));
 
     // Update selected zone index if needed
     if (selectedZoneIndex === dragIndex) {
@@ -304,29 +348,42 @@ function FrameCreator() {
     }
   };
 
-  // Handle zone updates from dropdown inputs
+  // Handle zone updates from dropdown inputs - stable listener with refs
   useEffect(() => {
     const handleZoneUpdate = (e: Event) => {
       const customEvent = e as CustomEvent<{ index: number; updates: Partial<FrameZone> }>;
       const { index, updates } = customEvent.detail;
+      const zones = zonesRef.current;
+      const currentFrame = currentFrameRef.current;
+      const setZones = setZonesRef.current;
+      const setCurrentFrame = setCurrentFrameRef.current;
       const updated = [...zones];
       updated[index] = { ...updated[index], ...updates };
+
+      // Mark that this update is from the editor (not a frame load)
+      isUpdatingFromEditorRef.current = true;
       setZones(updated);
 
       // Update the blank frame to show zones on the canvas
       if (currentFrame?.id === 'system-blank') {
         setCurrentFrame({ ...currentFrame, zones: updated });
       }
+
+      // Clear flag after both updates complete (next tick)
+      setTimeout(() => {
+        isUpdatingFromEditorRef.current = false;
+      }, 0);
     };
 
+    // Only register once - stable listener
     window.addEventListener('zoneUpdate', handleZoneUpdate);
     return () => window.removeEventListener('zoneUpdate', handleZoneUpdate);
-  }, [zones, currentFrame, setCurrentFrame]);
+  }, []); // Empty deps - listener never changes
 
   // Helper function to get the next zone ID
-  const getNextZoneId = () => {
+  const getNextZoneId = useCallback(() => {
     // Extract all existing zone numbers
-    const existingNumbers = zones
+    const existingNumbers = zonesRef.current
       .map(zone => {
         const match = zone.id.match(/zone-(\d+)/);
         return match ? parseInt(match[1], 10) : 0;
@@ -336,11 +393,16 @@ function FrameCreator() {
     // Find the highest number and add 1
     const maxNumber = existingNumbers.length > 0 ? Math.max(...existingNumbers) : 0;
     return `zone-${maxNumber + 1}`;
-  };
-
+  }, []); // Uses zonesRef internally, no deps needed
   // Sync zones with currentFrame when in frame creator mode
   useEffect(() => {
     if (activeSidebarTab === 'frames' && currentFrame?.id === 'system-blank') {
+            // Check if this update is coming from the editor (not a frame load)
+      if (isUpdatingFromEditorRef.current) {
+        // Don't reset selection - zones are already in sync
+        // Flag will be cleared by setTimeout in handleZoneUpdate
+        return;
+      }
       setZones(currentFrame.zones);
       setSelectedZoneIndex(null);
     }
@@ -454,7 +516,7 @@ function FrameCreator() {
           setCopiedZone(zone);
           setShowCopyNotification(true);
           setTimeout(() => setShowCopyNotification(false), 2000);
-          console.log('Zone copied:', zone);
+          logger.debug('Zone copied:', zone);
         }
       }
 
@@ -480,7 +542,7 @@ function FrameCreator() {
           });
         }
 
-        console.log('Zone pasted:', newZone);
+        logger.debug('Zone pasted:', newZone);
       }
 
       // Delete or Backspace to delete selected zone
@@ -573,20 +635,20 @@ function FrameCreator() {
 
   // Save frame
   const saveFrame = async (frameName: string, forceReplace = false, shouldApply = false) => {
-    console.log('[saveFrame] Called with:', { frameName, forceReplace, shouldApply });
-    console.log('[saveFrame] Current state:', { newFrameName, showReplaceConfirm, pendingApplyAfterSave });
+    logger.debug('[saveFrame] Called with:', { frameName, forceReplace, shouldApply });
+    logger.debug('[saveFrame] Current state:', { newFrameName, showReplaceConfirm, pendingApplyAfterSave });
 
     const trimmedName = frameName.trim();
-    console.log('[saveFrame] trimmedName:', trimmedName);
+    logger.debug('[saveFrame] trimmedName:', trimmedName);
 
     if (!trimmedName) {
-      console.log('[saveFrame] Error: empty name');
+      logger.debug('[saveFrame] Error: empty name');
       setSaveError('Please enter a frame name');
       return;
     }
 
     if (zones.length === 0) {
-      console.log('[saveFrame] Error: no zones');
+      logger.debug('[saveFrame] Error: no zones');
       setSaveError('Please add at least one zone');
       return;
     }
@@ -595,17 +657,17 @@ function FrameCreator() {
     const existingFrame = customFrames.find(
       f => f.name.toLowerCase() === trimmedName.toLowerCase()
     );
-    console.log('[saveFrame] existingFrame:', existingFrame?.name || 'none');
+    logger.debug('[saveFrame] existingFrame:', existingFrame?.name || 'none');
 
     if (existingFrame && !forceReplace) {
-      console.log('[saveFrame] Showing replace confirm dialog');
+      logger.debug('[saveFrame] Showing replace confirm dialog');
       setExistingFrameToReplace(existingFrame);
       setPendingApplyAfterSave(shouldApply);
       setShowReplaceConfirm(true);
       return;
     }
 
-    console.log('[saveFrame] Proceeding to save frame:', trimmedName);
+    logger.debug('[saveFrame] Proceeding to save frame:', trimmedName);
 
     // Calculate canvas dimensions based on zone positions
     const maxX = Math.max(...zones.map(z => z.x + z.width));
@@ -664,12 +726,12 @@ function FrameCreator() {
               setCurrentFrame(savedFrame);
               // Clear placed images since we're switching to a new frame
               setPlacedImages(new Map());
-              console.log('[saveFrame] Applied saved frame:', savedFrame.name);
+              logger.debug('[saveFrame] Applied saved frame:', savedFrame.name);
             } else {
-              console.warn('[saveFrame] Could not find saved frame after reload');
+              logger.warn('[saveFrame] Could not find saved frame after reload');
             }
           } catch (error) {
-            console.error('[saveFrame] Failed to load saved frame:', error);
+            logger.error('[saveFrame] Failed to load saved frame:', error);
           }
         }, 800);
       } else {
@@ -680,14 +742,14 @@ function FrameCreator() {
         }, 1000);
       }
     } catch (error) {
-      console.error('Failed to save frame:', error);
+      logger.error('Failed to save frame:', error);
       setSaveError('Failed to save frame');
     }
   };
 
   // Handle replace confirmation
   const confirmReplace = () => {
-    console.log('[confirmReplace] Called with:', { newFrameName, pendingApplyAfterSave });
+    logger.debug('[confirmReplace] Called with:', { newFrameName, pendingApplyAfterSave });
     setShowReplaceConfirm(false);
     saveFrame(newFrameName, true, pendingApplyAfterSave);
   };
@@ -1013,7 +1075,7 @@ function FrameCreator() {
                   if (e.key === 'Enter') {
                     e.preventDefault();
                     e.stopPropagation();
-                    console.log('[input onKeyDown] Enter pressed, calling saveFrame with:', newFrameName);
+                    logger.debug('[input onKeyDown] Enter pressed, calling saveFrame with:', newFrameName);
                     saveFrame(newFrameName, false, true);
                   }
                 }}

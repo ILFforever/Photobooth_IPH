@@ -1,5 +1,8 @@
 const API_BASE = 'http://localhost:58321';
 
+import { createLogger } from '../utils/logger';
+const logger = createLogger('cameraCaptureService');
+
 export interface CaptureResponse {
   success: boolean;
   message?: string;
@@ -16,7 +19,7 @@ export interface FetchPhotoResponse {
  * Trigger a camera capture via the daemon
  */
 export async function triggerCapture(onCaptureStart?: () => void): Promise<CaptureResponse> {
-  console.log('[CameraCapture] Sending capture request to', `${API_BASE}/api/capture`);
+  logger.debug('[CameraCapture] Sending capture request to', `${API_BASE}/api/capture`);
   onCaptureStart?.(); // Call callback when capture request is sent
   try {
     const response = await fetch(`${API_BASE}/api/capture`, {
@@ -24,17 +27,17 @@ export async function triggerCapture(onCaptureStart?: () => void): Promise<Captu
       headers: { 'Content-Type': 'application/json' },
     });
 
-    console.log('[CameraCapture] Response status:', response.status, response.statusText);
+    logger.debug('[CameraCapture] Response status:', response.status, response.statusText);
 
     if (!response.ok) {
       throw new Error(`Capture failed: ${response.statusText}`);
     }
 
     const data = await response.json() as CaptureResponse;
-    console.log('[CameraCapture] Response data:', data);
+    logger.debug('[CameraCapture] Response data:', data);
     return data;
   } catch (error) {
-    console.error('[CameraCapture] Failed to trigger capture:', error);
+    logger.error('[CameraCapture] Failed to trigger capture:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'
@@ -47,26 +50,26 @@ export async function triggerCapture(onCaptureStart?: () => void): Promise<Captu
  * The daemon serves photos at GET /api/photo/{filename}
  */
 export async function fetchPhoto(filename: string): Promise<FetchPhotoResponse> {
-  console.log('[CameraCapture] Fetching photo:', filename);
+  logger.debug('[CameraCapture] Fetching photo:', filename);
   try {
     const response = await fetch(`${API_BASE}/api/photo/${encodeURIComponent(filename)}`, {
       method: 'GET',
     });
 
-    console.log('[CameraCapture] Fetch photo response status:', response.status, response.statusText);
+    logger.debug('[CameraCapture] Fetch photo response status:', response.status, response.statusText);
 
     if (!response.ok) {
       throw new Error(`Failed to fetch photo: ${response.statusText}`);
     }
 
     const data = await response.arrayBuffer();
-    console.log('[CameraCapture] Photo fetched, size:', data.byteLength, 'bytes');
+    logger.debug('[CameraCapture] Photo fetched, size:', data.byteLength, 'bytes');
     return {
       success: true,
       data,
     };
   } catch (error) {
-    console.error('[CameraCapture] Failed to fetch photo:', error);
+    logger.error('[CameraCapture] Failed to fetch photo:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'

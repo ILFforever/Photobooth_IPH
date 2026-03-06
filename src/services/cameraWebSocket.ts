@@ -4,6 +4,9 @@
  * No auto-reconnect — UI shows a modal for the user to reconnect manually.
  */
 
+import { createLogger } from '../utils/logger';
+const logger = createLogger('cameraWebSocket');
+
 export interface CameraStatus {
   mode?: string;
   shootingmode?: string;
@@ -112,7 +115,7 @@ class CameraWebSocketManager {
       try {
         cb(data);
       } catch (e) {
-        console.error(`[WS Manager] Error in ${event} listener:`, e);
+        logger.error(`[WS Manager] Error in ${event} listener:`, e);
       }
     });
   }
@@ -134,7 +137,7 @@ class CameraWebSocketManager {
     try {
       ws = new WebSocket(WS_URL);
     } catch (err) {
-      console.error('[WS Manager] Failed to create WebSocket:', err);
+      logger.error('[WS Manager] Failed to create WebSocket:', err);
       this.emit('disconnected');
       return;
     }
@@ -161,7 +164,7 @@ class CameraWebSocketManager {
           if (data.type === 'photo_downloaded') {
             this.emit('photo_downloaded', data as PhotoDownloadedEvent);
           } else if (data.type === 'capture_error') {
-            console.error('[WS Manager] Capture error:', data.error);
+            logger.error('[WS Manager] Capture error:', data.error);
             this.emit('capture_error', data as CaptureErrorEvent);
           } else if (data.type === 'camera_disconnected') {
             this.emit('camera_disconnected', data as CameraDisconnectedEvent);
@@ -170,7 +173,7 @@ class CameraWebSocketManager {
           } else if (data.type === 'camera_connecting') {
             this.emit('camera_connecting', data);
           } else if (data.type === 'camera_connect_failed') {
-            console.error('[WS Manager] Camera connect failed:', data.error);
+            logger.error('[WS Manager] Camera connect failed:', data.error);
             this.emit('camera_connect_failed', data);
           } else if (data.type === 'camera_connected') {
             this.emit('camera_connected', data);
@@ -188,7 +191,7 @@ class CameraWebSocketManager {
     };
 
     ws.onerror = (error) => {
-      console.error('[WS Manager] Error:', error);
+      logger.error('[WS Manager] Error:', error);
     };
 
     ws.onclose = () => {

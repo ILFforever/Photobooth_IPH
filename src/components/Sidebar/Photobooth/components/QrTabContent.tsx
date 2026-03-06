@@ -8,6 +8,9 @@ import { useAuth } from '../../../../contexts/AuthContext';
 import { usePhotobooth } from '../../../../contexts/PhotoboothContext';
 import { useToast } from '../../../../contexts/ToastContext';
 import { getDriveAuthState, getAuthStateText, DriveAuthState, areUploadsEnabled } from '../../../../utils/driveAuthState';
+import { createLogger } from '../../../../utils/logger';
+
+const logger = createLogger('QrTabContent');
 
 export function QrTabContent() {
   const { currentSession, workingFolder, sessions, qrUploadEnabled } = usePhotoboothSettings();
@@ -107,7 +110,7 @@ export function QrTabContent() {
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
       } catch (err) {
-        console.error('Failed to copy link:', err);
+        logger.error('Failed to copy link:', err);
       }
     }
   };
@@ -128,7 +131,7 @@ export function QrTabContent() {
         const data = await invoke<string>('generate_qr_code', { url: folderLink });
         setQrBase64(data);
       } catch (err) {
-        console.error('[QrTabContent] Failed to generate QR:', err);
+        logger.error('[QrTabContent] Failed to generate QR:', err);
       }
     }
     setShowQr(true);
@@ -214,7 +217,7 @@ export function QrTabContent() {
       const localPath = `${workingFolder}/${sessionFolder}/${filename}`;
       await enqueuePhotos(currentSession.id, [{ filename, localPath }], driveMetadata.folderId);
     } catch (error) {
-      console.error('[QrTabContent] Failed to upload collage:', error);
+      logger.error('[QrTabContent] Failed to upload collage:', error);
       showToast('Upload failed', 'error', 5000, error instanceof Error ? error.message : String(error));
     } finally {
       setIsUploadingCollage(false);
@@ -238,10 +241,10 @@ export function QrTabContent() {
   // Auto-refresh upload queue for current session
   useEffect(() => {
     if (currentSession?.id) {
-      console.log('[QrTabContent] Starting auto-refresh for session:', currentSession.id);
+      logger.debug('[QrTabContent] Starting auto-refresh for session:', currentSession.id);
       startAutoRefresh(currentSession.id);
       return () => {
-        console.log('[QrTabContent] Stopping auto-refresh');
+        logger.debug('[QrTabContent] Stopping auto-refresh');
         stopAutoRefresh();
       };
     }

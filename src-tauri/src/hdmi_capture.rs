@@ -7,6 +7,8 @@ use tauri::{AppHandle, Emitter};
 use tokio::sync::watch;
 use base64::{Engine as _, engine::general_purpose};
 
+use crate::ffmpeg_sidecar;
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -42,8 +44,12 @@ const HEALTHY_RUN_SECS: f64 = 5.0;
 
 /// List DirectShow video capture devices via FFmpeg.
 #[tauri::command]
-pub async fn list_capture_devices() -> Result<Vec<CaptureDevice>, String> {
-    let output = Command::new("ffmpeg")
+pub async fn list_capture_devices(app: AppHandle) -> Result<Vec<CaptureDevice>, String> {
+    // Check if FFmpeg exists before running
+    crate::ffmpeg_manager::ensure_ffmpeg_exists()?;
+
+    let ffmpeg_path = ffmpeg_sidecar::ffmpeg_path();
+    let output = Command::new(&ffmpeg_path)
         .args(["-list_devices", "true", "-f", "dshow", "-i", "dummy"])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -168,6 +174,7 @@ fn spawn_and_parse(
     app: &AppHandle,
     shutdown_rx: &watch::Receiver<bool>,
 ) -> u64 {
+    let ffmpeg_path = ffmpeg_sidecar::ffmpeg_path();
     let ffmpeg_cmd = format!("video={device_name}");
     let ffmpeg_args = [
         // Input options - LOW LATENCY
@@ -189,7 +196,7 @@ fn spawn_and_parse(
         "pipe:1",
     ];
 
-    let mut child = match Command::new("ffmpeg")
+    let mut child = match Command::new(&ffmpeg_path)
         .args(&ffmpeg_args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

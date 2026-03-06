@@ -6,6 +6,9 @@ import { useToast } from '../../../contexts/ToastContext';
 import Icon from '@mdi/react';
 import { mdiFileExportOutline, mdiImageOutline, mdiLayers, mdiCheckCircle, mdiAlertCircle } from '@mdi/js';
 import './ExportSidebar.css';
+import { createLogger } from '../../../utils/logger';
+
+const logger = createLogger('ExportSidebar');
 
 export function ExportSidebar() {
   const {
@@ -69,7 +72,7 @@ export function ExportSidebar() {
 
       showToast('Exported', 'success', 3000, `Saved to ${filePath}`);
     } catch (error) {
-      console.error('Export failed:', error);
+      logger.error('Export failed:', error);
       showToast('Export failed', 'error', 5000, String(error));
     } finally {
       setIsExporting(false);

@@ -2,6 +2,9 @@ import { createContext, useContext, useState, useCallback, useEffect, ReactNode,
 import { invoke } from '@tauri-apps/api/core';
 import { useToast } from './ToastContext';
 import type { UploadQueueItem, UploadQueueStats, UploadStatus as UploadStatusType } from '../types/uploadQueue';
+import { createLogger } from '../utils/logger';
+
+const logger = createLogger('UploadQueue');
 
 // Map Rust enum values to TypeScript enum
 export enum UploadStatus {
@@ -77,7 +80,7 @@ export function UploadQueueProvider({ children }: { children: ReactNode }) {
 
       showToast('Upload Queued', 'success', 3000, `${photos.length} photo(s) added to upload queue`);
     } catch (error) {
-      console.error('Failed to enqueue photos:', error);
+      logger.error('Failed to enqueue photos:', error);
       showToast('Upload Failed', 'error', 5000, error instanceof Error ? error.message : 'Failed to queue photos for upload');
     }
   }, [showToast]);
@@ -93,10 +96,10 @@ export function UploadQueueProvider({ children }: { children: ReactNode }) {
         status: mapRustStatusToTs(item.status)
       }));
 
-      console.log('[UploadQueueContext] Queue updated:', convertedItems.length, 'items');
+      logger.debug('[UploadQueueContext] Queue updated:', convertedItems.length, 'items');
       setQueueItems(convertedItems);
     } catch (error) {
-      console.error('Failed to get session queue:', error);
+      logger.error('Failed to get session queue:', error);
     }
   }, []);
 
@@ -119,7 +122,7 @@ export function UploadQueueProvider({ children }: { children: ReactNode }) {
       const stats = await invoke<any>('get_upload_queue_stats');
       setStats(stats);
     } catch (error) {
-      console.error('Failed to get queue stats:', error);
+      logger.error('Failed to get queue stats:', error);
     }
   }, []);
 
@@ -130,7 +133,7 @@ export function UploadQueueProvider({ children }: { children: ReactNode }) {
       await getSessionQueue(currentSessionRef.current || '');
       showToast('Upload Retried', 'info', 3000, 'Upload has been queued for retry');
     } catch (error) {
-      console.error('Failed to retry upload:', error);
+      logger.error('Failed to retry upload:', error);
       showToast('Retry Failed', 'error', 5000, error instanceof Error ? error.message : 'Failed to retry upload');
     }
   }, [getSessionQueue, showToast]);
@@ -142,7 +145,7 @@ export function UploadQueueProvider({ children }: { children: ReactNode }) {
       await getSessionQueue(currentSessionRef.current || '');
       showToast('Upload Cancelled', 'info', 3000, 'Upload has been cancelled');
     } catch (error) {
-      console.error('Failed to cancel upload:', error);
+      logger.error('Failed to cancel upload:', error);
       showToast('Cancel Failed', 'error', 5000, error instanceof Error ? error.message : 'Failed to cancel upload');
     }
   }, [getSessionQueue, showToast]);

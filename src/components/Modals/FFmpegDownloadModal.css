@@ -1,0 +1,289 @@
+.ffmpeg-modal-content {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 480px;
+  width: 100%;
+  box-shadow: var(--shadow-lg);
+}
+
+/* Header */
+.ffmpeg-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding-bottom: 16px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.ffmpeg-modal-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  background: var(--accent-blue);
+  border: none;
+  border-radius: 12px;
+  color: white;
+  flex-shrink: 0;
+}
+
+.ffmpeg-modal-title {
+  flex: 1;
+}
+
+.ffmpeg-modal-title h2 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 4px 0;
+}
+
+.ffmpeg-modal-subtitle {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+/* Body */
+.ffmpeg-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Checking state */
+.ffmpeg-modal-checking {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 32px 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.ffmpeg-modal-checking .spinner {
+  animation: spin 1s linear infinite;
+  color: var(--accent-blue);
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Info section */
+.ffmpeg-modal-info {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ffmpeg-modal-info-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.ffmpeg-modal-info-item > svg {
+  color: var(--accent-blue);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.ffmpeg-modal-info-item strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* Progress section */
+.ffmpeg-modal-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+}
+
+.ffmpeg-modal-progress-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.ffmpeg-modal-progress-header span:last-child {
+  color: var(--accent-blue);
+  font-weight: 600;
+}
+
+.ffmpeg-modal-progress-bar {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  height: 8px;
+  overflow: hidden;
+}
+
+.ffmpeg-modal-progress-fill {
+  background: linear-gradient(90deg, var(--accent-blue), var(--accent-blue-hover));
+  height: 100%;
+  border-radius: 4px;
+}
+
+.ffmpeg-modal-progress-info {
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Complete state */
+.ffmpeg-modal-complete {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+  background: rgba(16, 124, 16, 0.05);
+  border: 1px solid rgba(16, 124, 16, 0.3);
+  border-radius: 10px;
+}
+
+.ffmpeg-modal-complete-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ffmpeg-modal-complete-info > svg {
+  color: var(--accent-green);
+  flex-shrink: 0;
+}
+
+.ffmpeg-modal-complete-info > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ffmpeg-modal-complete-info strong {
+  font-size: 14px;
+  color: var(--accent-green);
+}
+
+.ffmpeg-modal-version {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-family: monospace;
+  background: var(--bg-primary);
+  padding: 4px 8px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+/* Error state */
+.ffmpeg-modal-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  background: rgba(209, 52, 56, 0.05);
+  border: 1px solid rgba(209, 52, 56, 0.3);
+  border-radius: 10px;
+}
+
+.ffmpeg-modal-error > svg {
+  color: #ff99a4;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.ffmpeg-modal-error-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ffmpeg-modal-error-content strong {
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.ffmpeg-modal-error-content > span {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* Buttons */
+.ffmpeg-modal-error button,
+.ffmpeg-modal-complete button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: auto;
+  min-width: 120px;
+}
+
+.ffmpeg-modal-complete button {
+  background: var(--accent-green);
+  color: white;
+}
+
+.ffmpeg-modal-complete button:hover {
+  background: #1eb81e;
+}
+
+.ffmpeg-modal-error button {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  align-self: flex-start;
+}
+
+.ffmpeg-modal-error button:hover {
+  background: var(--bg-secondary);
+}
+
+/* Download button in idle state */
+.ffmpeg-modal-body > .btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 24px;
+  font-size: 14px;
+  font-weight: 600;
+  background: var(--accent-blue);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  width: 100%;
+}
+
+.ffmpeg-modal-body > .btn-primary:hover {
+  background: var(--accent-blue-hover);
+}

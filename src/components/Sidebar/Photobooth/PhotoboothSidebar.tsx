@@ -37,6 +37,8 @@ import {
   ConnectionInfoSection,
 } from "./components";
 import "./PhotoboothSidebar.css";
+import { createLogger } from '../../../utils/logger';
+const logger = createLogger('PhotoboothSidebar');
 
 interface PhotoboothSidebarProps {
   shutterSpeeds?: string[];
@@ -179,7 +181,7 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
   };
 
   const handleConnectionChange = useCallback((isConnected: boolean, hasSelected: boolean, camera?: { id: string; manufacturer: string; model: string; port: string; usb_version?: string; serial_number?: string; firmware?: string }, lens?: string | null) => {
-    console.log('[PhotoboothSidebar] Connection change:', isConnected, hasSelected, camera, lens);
+    logger.debug('[PhotoboothSidebar] Connection change:', isConnected, hasSelected, camera, lens);
     setHasSelectedCamera(hasSelected);
     if (camera) {
       setCameraInfo(camera);
@@ -202,7 +204,7 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
         setWorkingFolder(selected);
       }
     } catch (error) {
-      console.error('Failed to open folder dialog:', error);
+      logger.error('Failed to open folder dialog:', error);
     }
   };
 
@@ -216,7 +218,7 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
     try {
       await driveFolderPicker.openFolderPicker();
     } catch (error) {
-      console.error('Failed to open folder picker:', error);
+      logger.error('Failed to open folder picker:', error);
       showToast('Error', 'error', 3000, 'Failed to load Drive folders');
     } finally {
       setIsLoadingDriveFolder(false);

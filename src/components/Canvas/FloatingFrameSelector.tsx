@@ -22,6 +22,10 @@ import {
   mdiImageSizeSelectLarge,
   mdiPlus
 } from "@mdi/js";
+import { createLogger } from '../../utils/logger';
+
+const logger = createLogger('FloatingFrameSelector');
+
 
 // Droppable Background Pill Component
 function BackgroundPillButton({
@@ -41,8 +45,8 @@ function BackgroundPillButton({
   const [{ isOver, canDrop }, drop] = useDrop({
     accept: 'IMAGE',
     drop: (item: { path: string; thumbnail: string; dimensions?: { width: number; height: number } }) => {
-      console.log('=== DROPPED ON BACKGROUND PILL ===');
-      console.log('Item:', item);
+      logger.debug('=== DROPPED ON BACKGROUND PILL ===');
+      logger.debug('Item:', item);
       onDrop(item);
     },
     collect: (monitor) => ({
@@ -198,7 +202,7 @@ const FloatingFrameSelector = () => {
         setCurrentFrame(visibleFrames[0]);
       }
     } catch (error) {
-      console.error("Failed to load frames:", error);
+      logger.error("Failed to load frames:", error);
     }
   };
 
@@ -216,7 +220,7 @@ const FloatingFrameSelector = () => {
         // Load custom canvas sizes
         await refreshCustomCanvases();
       } catch (error) {
-        console.error("Failed to load data:", error);
+        logger.error("Failed to load data:", error);
       } finally {
         setLoading(false);
       }
@@ -286,7 +290,7 @@ const FloatingFrameSelector = () => {
         setCurrentFrame(null);
       }
     } catch (error) {
-      console.error('Failed to delete frame:', error);
+      logger.error('Failed to delete frame:', error);
     }
   };
 
@@ -315,7 +319,7 @@ const FloatingFrameSelector = () => {
         setBackground(null);
       }
     } catch (error) {
-      console.error('Failed to delete background:', error);
+      logger.error('Failed to delete background:', error);
     }
   };
 
@@ -337,9 +341,9 @@ const FloatingFrameSelector = () => {
         setCanvasSize(null);
       }
 
-      console.log('Custom canvas deleted:', canvasToDelete.name);
+      logger.debug('Custom canvas deleted:', canvasToDelete.name);
     } catch (error) {
-      console.error('Failed to delete custom canvas:', error);
+      logger.error('Failed to delete custom canvas:', error);
     }
   };
 
@@ -359,50 +363,50 @@ const FloatingFrameSelector = () => {
         createdAt: c.created_at.toString(),
       })));
     } catch (error) {
-      console.error('Failed to refresh custom canvases:', error);
+      logger.error('Failed to refresh custom canvases:', error);
     }
   };
 
   const handleSelectBackground = (bg: Background) => {
     // Convert asset:// URLs to usable URLs
-    console.log('=== handleSelectBackground ===');
-    console.log('Selected background:', bg);
-    console.log('Background value type:', typeof bg.value);
-    console.log('Background value:', bg.value);
-    console.log('canvasSize:', canvasSize);
+    logger.debug('=== handleSelectBackground ===');
+    logger.debug('Selected background:', bg);
+    logger.debug('Background value type:', typeof bg.value);
+    logger.debug('Background value:', bg.value);
+    logger.debug('canvasSize:', canvasSize);
 
     let finalValue = bg.value;
 
     if (bg.value.startsWith('asset://')) {
-      console.log('Converting asset:// URL');
+      logger.debug('Converting asset:// URL');
       const convertedSrc = convertFileSrc(bg.value.replace('asset://', ''));
-      console.log('Converted src:', convertedSrc);
+      logger.debug('Converted src:', convertedSrc);
       finalValue = convertedSrc;
     }
 
     // If no canvas is selected, enable auto-match
     if (!canvasSize && !autoMatchBackground) {
-      console.log('No canvas size selected, enabling autoMatchBackground');
+      logger.debug('No canvas size selected, enabling autoMatchBackground');
       setAutoMatchBackground(true);
     }
 
-    console.log('Setting background to:', finalValue);
+    logger.debug('Setting background to:', finalValue);
     setBackground(finalValue);
 
     if (autoMatchBackground) {
       handleMatchBackground();
     }
-    console.log('=========================');
+    logger.debug('=========================');
   };
 
   const handleImportBackground = async () => {
     try {
       setImportingBg(true);
-      console.log("Requesting background image selection...");
+      logger.debug("Requesting background image selection...");
       const selected = await invoke<string>("select_file");
 
       if (selected) {
-        console.log("Selected background file:", selected);
+        logger.debug("Selected background file:", selected);
         const fileName = selected.split(/[\\/]/).pop() || "Custom Background";
 
         // Import the background using backend command
@@ -422,26 +426,26 @@ const FloatingFrameSelector = () => {
 
         // If auto-match is enabled, trigger matching after a short delay
         if (autoMatchBackground) {
-          console.log('Auto-match enabled, triggering handleMatchBackground for import');
+          logger.debug('Auto-match enabled, triggering handleMatchBackground for import');
           setTimeout(() => {
             handleMatchBackground();
           }, 100);
         }
       }
     } catch (error) {
-      console.error("Failed to import background:", error);
+      logger.error("Failed to import background:", error);
     } finally {
       setImportingBg(false);
     }
   };
 
   const handleMatchBackground = async () => {
-    console.log('=== handleMatchBackground called ===');
-    console.log('Background:', background);
-    console.log('autoMatchBackground:', autoMatchBackground);
+    logger.debug('=== handleMatchBackground called ===');
+    logger.debug('Background:', background);
+    logger.debug('autoMatchBackground:', autoMatchBackground);
 
     if (!background) {
-      console.log('No background, returning');
+      logger.debug('No background, returning');
       return;
     }
 
@@ -450,7 +454,7 @@ const FloatingFrameSelector = () => {
       const isHexColor = /^#([0-9A-F]{3}){1,2}$/i.test(background);
 
       if (isHexColor) {
-        console.log('Background is a solid color, using default dimensions');
+        logger.debug('Background is a solid color, using default dimensions');
 
         // Default dimensions for solid colors (standard 4:3 aspect ratio)
         const defaultWidth = 1200;
@@ -473,15 +477,15 @@ const FloatingFrameSelector = () => {
         );
 
         if (existing) {
-          console.log('Using existing canvas size:', existing);
+          logger.debug('Using existing canvas size:', existing);
           setCanvasSize(existing);
         } else {
-          console.log('Setting new canvas size for solid color:', customSize);
+          logger.debug('Setting new canvas size for solid color:', customSize);
           setCanvasSize(customSize);
         }
 
-        console.log('Matched canvas to solid color background:', customSize);
-        console.log('=====================================');
+        logger.debug('Matched canvas to solid color background:', customSize);
+        logger.debug('=====================================');
         return;
       }
 
@@ -491,14 +495,14 @@ const FloatingFrameSelector = () => {
         ? convertFileSrc(background.replace('asset://', ''))
         : background;
 
-      console.log('Loading image to get dimensions:', img.src);
+      logger.debug('Loading image to get dimensions:', img.src);
 
       img.onload = () => {
-        console.log('Image loaded, dimensions:', img.width, 'x', img.height);
+        logger.debug('Image loaded, dimensions:', img.width, 'x', img.height);
 
         // Store the background dimensions
         setBackgroundDimensions({ width: img.width, height: img.height });
-        console.log('Set backgroundDimensions to:', { width: img.width, height: img.height });
+        logger.debug('Set backgroundDimensions to:', { width: img.width, height: img.height });
 
         // When auto-match is enabled, canvas size should exactly match the background image dimensions
         const customSize: CanvasSize = {
@@ -515,29 +519,29 @@ const FloatingFrameSelector = () => {
         );
 
         if (existing) {
-          console.log('Using existing canvas size:', existing);
+          logger.debug('Using existing canvas size:', existing);
           setCanvasSize(existing);
         } else {
-          console.log('Setting new canvas size:', customSize);
+          logger.debug('Setting new canvas size:', customSize);
           setCanvasSize(customSize);
         }
 
-        console.log('Matched canvas to background:', customSize);
-        console.log('=====================================');
+        logger.debug('Matched canvas to background:', customSize);
+        logger.debug('=====================================');
       };
 
       img.onerror = () => {
-        console.error('Failed to load background image for dimensions');
+        logger.error('Failed to load background image for dimensions');
       };
     } catch (error) {
-      console.error('Failed to match background:', error);
+      logger.error('Failed to match background:', error);
     }
   };
 
   const handleDropImageOnBackground = async (item: { path: string; thumbnail: string; dimensions?: { width: number; height: number } }) => {
     try {
-      console.log('=== SETTING DRAGGED IMAGE AS BACKGROUND ===');
-      console.log('Image path:', item.path);
+      logger.debug('=== SETTING DRAGGED IMAGE AS BACKGROUND ===');
+      logger.debug('Image path:', item.path);
 
       // Generate a temp ID for this background while importing
       const tempId = `temp-${Date.now()}`;
@@ -545,12 +549,12 @@ const FloatingFrameSelector = () => {
 
       // Convert the path immediately and set as background - no need to import first!
       const convertedSrc = convertFileSrc(item.path.replace('asset://', ''));
-      console.log('Setting background directly:', convertedSrc);
+      logger.debug('Setting background directly:', convertedSrc);
       setBackground(convertedSrc);
 
       // If auto-match is enabled, trigger matching after a short delay
       if (autoMatchBackground) {
-        console.log('Auto-match enabled, triggering handleMatchBackground for drag-drop');
+        logger.debug('Auto-match enabled, triggering handleMatchBackground for drag-drop');
         setTimeout(() => {
           handleMatchBackground();
         }, 100);
@@ -575,9 +579,9 @@ const FloatingFrameSelector = () => {
           return newSet;
         });
 
-        console.log('Background imported for future use:', newBg.name);
+        logger.debug('Background imported for future use:', newBg.name);
       }).catch(err => {
-        console.error('Failed to import background for future use:', err);
+        logger.error('Failed to import background for future use:', err);
 
         // Remove from importing set on error
         setImportingBackgrounds(prev => {
@@ -587,10 +591,10 @@ const FloatingFrameSelector = () => {
         });
       });
 
-      console.log('Background set successfully (instant)');
-      console.log('=========================================');
+      logger.debug('Background set successfully (instant)');
+      logger.debug('=========================================');
     } catch (error) {
-      console.error("Failed to set dragged background:", error);
+      logger.error("Failed to set dragged background:", error);
     }
   };
 

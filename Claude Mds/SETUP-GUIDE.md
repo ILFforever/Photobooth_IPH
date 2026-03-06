@@ -107,12 +107,12 @@ The Linux VM provides camera hardware control through:
 
 Console logs are stored in:
 ```
-%LOCALAPPDATA%\Photobooth_IPH\logs\vbox-console.log
+%LOCALAPPDATA%\Photobooth_IPH\logs\vbox-console.txt
 ```
 
 This is typically:
 ```
-C:\Users\YourUsername\AppData\Local\Photobooth_IPH\logs\vbox-console.log
+C:\Users\YourUsername\AppData\Local\Photobooth_IPH\logs\vbox-console.txt
 ```
 
 ## Troubleshooting
@@ -162,7 +162,7 @@ Choose option 1 unless you need to rebuild the VM completely.
    ```
 2. Check the console log for errors:
    ```cmd
-   type "%LOCALAPPDATA%\Photobooth_IPH\logs\vbox-console.log"
+   type "%LOCALAPPDATA%\Photobooth_IPH\logs\vbox-console.txt"
    ```
 3. Test the API endpoint:
    - Open browser: http://localhost:58321/api/health
@@ -288,7 +288,7 @@ For developers and advanced users, see:
 - **Network:** NAT with port forwarding
 - **Serial Port:** COM1, logged to AppData
 - **ISO Location:** `<install-dir>\linux-build\photobooth.iso`
-- **Log Location:** `%LOCALAPPDATA%\Photobooth_IPH\logs\vbox-console.log`
+- **Log Location:** `%LOCALAPPDATA%\Photobooth_IPH\logs\vbox-console.txt`
 
 ## Getting Help
 
@@ -296,7 +296,7 @@ If you encounter issues not covered in this guide:
 
 1. Check the console log:
    ```cmd
-   type "%LOCALAPPDATA%\Photobooth_IPH\logs\vbox-console.log"
+   type "%LOCALAPPDATA%\Photobooth_IPH\logs\vbox-console.txt"
    ```
 
 2. Verify VM status:

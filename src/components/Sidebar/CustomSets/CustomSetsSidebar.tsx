@@ -5,7 +5,9 @@ import { useCollage } from '../../../contexts/CollageContext';
 import { CustomSet, CustomSetPreview } from '../../../types/customSet';
 import { Background } from '../../../types/background';
 import './CustomSetsSidebar.css';
+import { createLogger } from '../../../utils/logger';
 
+const logger = createLogger('CustomSetsSidebar');
 interface SetPreviewData extends CustomSetPreview {
   previewInfo?: {
     canvasSize: string;
@@ -65,7 +67,7 @@ export function CustomSetsSidebar() {
               }
             };
           } catch (error) {
-            console.error('Failed to load full set data for preview:', error);
+            logger.error('Failed to load full set data for preview:', error);
             return set;
           }
         })
@@ -73,7 +75,7 @@ export function CustomSetsSidebar() {
 
       setCustomSets(enrichedSets);
     } catch (error) {
-      console.error('Failed to load custom sets:', error);
+      logger.error('Failed to load custom sets:', error);
     } finally {
       setLoading(false);
     }
@@ -110,10 +112,10 @@ export function CustomSetsSidebar() {
     );
 
     if (!backgroundObj) {
-      console.error('Background not found in backgrounds array');
-      console.error('Looking for background value:', background);
-      console.error('Normalized background value:', normalizedBackground);
-      console.error('Available backgrounds:', backgrounds.map(bg => ({ id: bg.id, value: bg.value })));
+      logger.error('Background not found in backgrounds array');
+      logger.error('Looking for background value:', background);
+      logger.error('Normalized background value:', normalizedBackground);
+      logger.error('Available backgrounds:', backgrounds.map(bg => ({ id: bg.id, value: bg.value })));
 
       // Create a temporary background object if not found (for solid colors or gradients)
       const tempBackground: Background = {
@@ -127,7 +129,7 @@ export function CustomSetsSidebar() {
         created_at: new Date().toISOString(),
       };
 
-      console.log('Using temporary background object:', tempBackground);
+      logger.debug('Using temporary background object:', tempBackground);
 
       try {
         setSaving(true);
@@ -169,7 +171,7 @@ export function CustomSetsSidebar() {
         setShowCreateDialog(false);
         await loadCustomSets();
       } catch (error) {
-        console.error('Failed to save custom set:', error);
+        logger.error('Failed to save custom set:', error);
         alert('Failed to save custom set: ' + error);
       } finally {
         setSaving(false);
@@ -218,7 +220,7 @@ export function CustomSetsSidebar() {
       setShowCreateDialog(false);
       await loadCustomSets();
     } catch (error) {
-      console.error('Failed to save custom set:', error);
+      logger.error('Failed to save custom set:', error);
       alert('Failed to save custom set: ' + error);
     } finally {
       setSaving(false);
@@ -227,9 +229,9 @@ export function CustomSetsSidebar() {
 
   const handleLoadSet = async (setId: string) => {
     try {
-      console.log('[CustomSetsSidebar] Loading set with ID:', setId);
+      logger.debug('[CustomSetsSidebar] Loading set with ID:', setId);
       const set = await invoke<CustomSet>('get_custom_set', { setId });
-      console.log('[CustomSetsSidebar] Set loaded:', set.name);
+      logger.debug('[CustomSetsSidebar] Set loaded:', set.name);
 
       // Apply the set configuration
       setCanvasSize({
@@ -261,11 +263,11 @@ export function CustomSetsSidebar() {
         const img = new Image();
         img.src = bgValue;
         img.onload = () => {
-          console.log('[CustomSetsSidebar] Background image loaded, dimensions:', img.width, 'x', img.height);
+          logger.debug('[CustomSetsSidebar] Background image loaded, dimensions:', img.width, 'x', img.height);
           setBackgroundDimensions({ width: img.width, height: img.height });
         };
         img.onerror = () => {
-          console.error('[CustomSetsSidebar] Failed to load background image for dimensions');
+          logger.error('[CustomSetsSidebar] Failed to load background image for dimensions');
         };
       } else if (!set.autoMatchBackground) {
         // Clear background dimensions if auto-match is disabled
@@ -276,12 +278,12 @@ export function CustomSetsSidebar() {
       setOverlays(set.overlays || []);
 
       // Track the loaded custom set name
-      console.log('[CustomSetsSidebar] Setting selectedCustomSetName to:', set.name);
+      logger.debug('[CustomSetsSidebar] Setting selectedCustomSetName to:', set.name);
       setSelectedCustomSetName(set.name);
 
-      console.log('Custom set loaded successfully');
+      logger.debug('Custom set loaded successfully');
     } catch (error) {
-      console.error('Failed to load custom set:', error);
+      logger.error('Failed to load custom set:', error);
       alert('Failed to load custom set: ' + error);
     }
   };
@@ -292,7 +294,7 @@ export function CustomSetsSidebar() {
       setDeletingSetId(null);
       await loadCustomSets();
     } catch (error) {
-      console.error('Failed to delete custom set:', error);
+      logger.error('Failed to delete custom set:', error);
       alert('Failed to delete custom set: ' + error);
     }
   };

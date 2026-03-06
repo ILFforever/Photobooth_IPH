@@ -8,6 +8,8 @@ import {
   createFolderFromPath,
 } from "../utils/driveFolder";
 import type { DriveFolder } from "../types/qr";
+import { createLogger } from '../utils/logger';
+const logger = createLogger('useDriveFolderPicker');
 
 interface FolderPathItem {
   id: string;
@@ -35,7 +37,7 @@ export function useDriveFolderPicker(
       const folders = await fetchDriveFolders(parentId);
       setDriveFolders(folders);
     } catch (e) {
-      console.error("Failed to list folders:", e);
+      logger.error("Failed to list folders:", e);
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoadingFolders(false);

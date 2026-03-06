@@ -9,6 +9,9 @@ import { useUploadQueue } from "../../contexts/UploadQueueContext";
 import { UploadQueueStatus } from "./UploadQueueStatus";
 import { UploadStatus } from "../../types/uploadQueue";
 import CameraWebSocketManager from "../../services/cameraWebSocket";
+import { createLogger } from '../../utils/logger';
+
+const logger = createLogger('PhotoSessionsSidebar');
 
 interface PhotoExifData {
   filename: string;
@@ -239,7 +242,7 @@ export default function PhotoSessionsSidebar({
       await deleteSessionPhoto(sessionId, filename);
       showToast('Photo Deleted', 'success', 3000, `Deleted "${filename}"`);
     } catch (error) {
-      console.error('Failed to delete photo:', error);
+      logger.error('Failed to delete photo:', error);
       showToast('Failed to Delete', 'error', 5000, error instanceof Error ? error.message : 'Unknown error');
     } finally {
       setDeletingPhoto(null);
@@ -256,7 +259,7 @@ export default function PhotoSessionsSidebar({
 
     try {
       if (!workingFolder) {
-        console.error('Working folder not set');
+        logger.error('Working folder not set');
         setLoadingExif(false);
         return;
       }
@@ -268,7 +271,7 @@ export default function PhotoSessionsSidebar({
       });
       setPhotoExifData(exif);
     } catch (error) {
-      console.error('Failed to get photo EXIF:', error);
+      logger.error('Failed to get photo EXIF:', error);
       setPhotoExifData(null);
     } finally {
       setLoadingExif(false);
@@ -900,8 +903,8 @@ export default function PhotoSessionsSidebar({
                             alt="Preview"
                             className="photo-preview-image"
                             onError={() => {
-                              console.error('Failed to load thumbnail:', showPhotoInfoModal.thumbnailPath);
-                              console.error('Converted path:', convertFileSrc(showPhotoInfoModal.thumbnailPath.replace('asset://', '')));
+                              logger.error('Failed to load thumbnail:', showPhotoInfoModal.thumbnailPath);
+                              logger.error('Converted path:', convertFileSrc(showPhotoInfoModal.thumbnailPath.replace('asset://', '')));
                             }}
                           />
                         </div>

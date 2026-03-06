@@ -1,6 +1,8 @@
 import { useState, useCallback, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useToast } from '../contexts/ToastContext';
+import { createLogger } from '../utils/logger';
+const logger = createLogger('useVMLogs');
 
 export interface VmLogEntry {
   timestamp: string;
@@ -46,7 +48,7 @@ export function useVmLogs() {
 
       setVmLogs(parseLogs(response.logs));
     } catch (error) {
-      console.error('Failed to fetch VM logs:', error);
+      logger.error('Failed to fetch VM logs:', error);
       setLogsError(error instanceof Error ? error.message : 'Failed to fetch logs');
       setVmLogs([]);
     } finally {
@@ -79,7 +81,7 @@ export function useVmLogs() {
         fetchVmLogs();
       }, 2000);
     } catch (error) {
-      console.error('Failed to restart VM:', error);
+      logger.error('Failed to restart VM:', error);
       const errorMsg = error instanceof Error ? error.message : String(error);
       setLogsError(`Failed to restart VM: ${errorMsg}`);
       showToast('Failed to restart VM', 'error', 5000, errorMsg);

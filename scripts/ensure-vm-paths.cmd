@@ -16,7 +16,7 @@ for %%I in ("%SCRIPT_DIR%\..") do set PROJECT_ROOT=%%~fI
 
 REM Build expected paths
 set APP_DATA_DIR=%LOCALAPPDATA%\Photobooth_IPH
-set EXPECTED_LOG=%APP_DATA_DIR%\logs\vbox-console.log
+set EXPECTED_LOG=%APP_DATA_DIR%\logs\vbox-console.txt
 set EXPECTED_ISO=%PROJECT_ROOT%\linux-build\photobooth.iso
 
 REM Ensure log directory exists

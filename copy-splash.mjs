@@ -22,7 +22,6 @@ splashContent = splashContent.replace(/data-version="[^"]*"/g, `data-version="${
 // Write modified splash.html to dist
 const splashDest = join(__dirname, 'dist', 'splash.html');
 writeFileSync(splashDest, splashContent);
-console.log(`Copied splash.html to dist/ (Version ${APP_VERSION})`);
 
 // Copy IPH.png to dist
 const logoSource = join(__dirname, 'src', 'assets', 'images', 'IPH.png');
@@ -30,7 +29,7 @@ const logoDest = join(__dirname, 'dist', 'src', 'assets', 'images', 'IPH.png');
 
 if (existsSync(logoSource)) {
   copyFileSync(logoSource, logoDest);
-  console.log('Copied IPH.png to dist/src/assets/images/');
+  logger.debug('Copied IPH.png to dist/src/assets/images/');
 } else {
-  console.log('IPH.png not found, skipping...');
+  logger.debug('IPH.png not found, skipping...');
 }

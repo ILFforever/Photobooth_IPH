@@ -1064,7 +1064,7 @@ fn create_vm_from_iso(vbox_manage: &str, vm_name: &str, window: &tauri::Window) 
         .join("Photobooth_IPH")
         .join("logs");
     let _ = std::fs::create_dir_all(&log_dir);
-    let log_path = log_dir.join("vbox-console.log");
+    let log_path = log_dir.join("vbox-console.txt");
 
     let iso_str = iso_path.to_string_lossy().to_string();
     let log_str = log_path.to_string_lossy().to_string();

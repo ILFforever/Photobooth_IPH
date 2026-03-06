@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createLogger } from '../utils/logger';
+const logger = createLogger('useLiveViewManager');
 
 export interface CaptureDevice {
   id: string;
@@ -129,11 +131,11 @@ export function useLiveViewManager(): LiveViewManagerState {
       }
 
       if (!permissionGrantedRef.current) {
-        console.log('[LiveViewManager] Requesting initial media permission...');
+        logger.debug('[LiveViewManager] Requesting initial media permission...');
         const permissionStream = await navigator.mediaDevices.getUserMedia({ video: true });
         permissionStream.getTracks().forEach(track => track.stop());
         permissionGrantedRef.current = true;
-        console.log('[LiveViewManager] Permission granted');
+        logger.debug('[LiveViewManager] Permission granted');
       }
 
       const allDevices = await navigator.mediaDevices.enumerateDevices();
@@ -146,7 +148,7 @@ export function useLiveViewManager(): LiveViewManagerState {
 
       if (!mountedRef.current) return;
 
-      //console.log('[LiveViewManager] Devices found:', videoDevices.length);
+      //logger.debug('[LiveViewManager] Devices found:', videoDevices.length);
       setDevices(videoDevices);
 
       if (videoDevices.length === 0) {
@@ -154,7 +156,7 @@ export function useLiveViewManager(): LiveViewManagerState {
       }
     } catch (error) {
       if (!mountedRef.current) return;
-      console.error('[LiveViewManager] Device enumeration error:', error);
+      logger.error('[LiveViewManager] Device enumeration error:', error);
       setPermissionError(error instanceof Error ? error.message : 'Failed to access camera devices');
     } finally {
       if (mountedRef.current) {
@@ -177,7 +179,7 @@ export function useLiveViewManager(): LiveViewManagerState {
 
     // Guard: another start is in-flight
     if (streamStartingRef.current) {
-      console.log('[LiveViewManager] Start already in progress, queued device:', deviceId);
+      logger.debug('[LiveViewManager] Start already in progress, queued device:', deviceId);
       lastDeviceIdRef.current = deviceId;
       return;
     }
@@ -186,7 +188,7 @@ export function useLiveViewManager(): LiveViewManagerState {
 
     // Tear down any existing stream (stop live tracks only)
     if (streamRef.current) {
-      console.log('[LiveViewManager] Tearing down previous stream');
+      logger.debug('[LiveViewManager] Tearing down previous stream');
       teardownStream(false);
       if (mountedRef.current) {
         setStream(null);
@@ -195,7 +197,7 @@ export function useLiveViewManager(): LiveViewManagerState {
     }
 
     try {
-      console.log('[LiveViewManager] getUserMedia for device:', deviceId);
+      logger.debug('[LiveViewManager] getUserMedia for device:', deviceId);
 
       const newStream = await navigator.mediaDevices.getUserMedia({
         video: { deviceId: { exact: deviceId } },
@@ -221,12 +223,12 @@ export function useLiveViewManager(): LiveViewManagerState {
 
       // --- Attach unified recovery handlers ---
       videoTrack.onended = () => {
-        console.warn('[LiveViewManager] Track ended — scheduling recovery');
+        logger.warn('[LiveViewManager] Track ended — scheduling recovery');
         scheduleRecovery(deviceId);
       };
 
       videoTrack.onmute = () => {
-        console.warn('[LiveViewManager] Track muted — waiting grace period');
+        logger.warn('[LiveViewManager] Track muted — waiting grace period');
         if (muteTimerRef.current) clearTimeout(muteTimerRef.current);
         muteTimerRef.current = setTimeout(() => {
           muteTimerRef.current = null;
@@ -236,7 +238,7 @@ export function useLiveViewManager(): LiveViewManagerState {
             videoTrack.muted &&
             videoTrack.readyState === 'live'
           ) {
-            console.warn('[LiveViewManager] Track still muted after grace — scheduling recovery');
+            logger.warn('[LiveViewManager] Track still muted after grace — scheduling recovery');
             scheduleRecovery(deviceId);
           }
         }, RECOVERY.MUTE_GRACE_MS);
@@ -263,9 +265,9 @@ export function useLiveViewManager(): LiveViewManagerState {
         cancelRecovery();
       }
 
-      console.log('[LiveViewManager] Stream started successfully');
+      logger.debug('[LiveViewManager] Stream started successfully');
     } catch (error) {
-      console.error('[LiveViewManager] getUserMedia failed:', error);
+      logger.error('[LiveViewManager] getUserMedia failed:', error);
       streamRef.current = null;
       activeDeviceIdRef.current = '';
 
@@ -303,7 +305,7 @@ export function useLiveViewManager(): LiveViewManagerState {
       if (deviceName) {
         const nameMatch = videoDevices.find(d => d.label === deviceName);
         if (nameMatch) {
-          console.log('[LiveViewManager] Device found by name with new ID:', nameMatch.deviceId);
+          logger.debug('[LiveViewManager] Device found by name with new ID:', nameMatch.deviceId);
           return nameMatch.deviceId;
         }
       }
@@ -343,7 +345,7 @@ export function useLiveViewManager(): LiveViewManagerState {
     const attempt = recoveryAttemptRef.current;
 
     if (attempt >= RECOVERY.MAX_ATTEMPTS) {
-      console.error('[LiveViewManager] Recovery exhausted after', attempt, 'attempts');
+      logger.error('[LiveViewManager] Recovery exhausted after', attempt, 'attempts');
       isRecoveringRef.current = false;
       if (mountedRef.current) {
         setIsRecovering(false);
@@ -358,7 +360,7 @@ export function useLiveViewManager(): LiveViewManagerState {
       RECOVERY.MAX_DELAY_MS,
     );
 
-    console.log(
+    logger.debug(
       `[LiveViewManager] Recovery attempt ${attempt + 1}/${RECOVERY.MAX_ATTEMPTS} in ${Math.round(delay)}ms`,
     );
     recoveryAttemptRef.current = attempt + 1;
@@ -373,7 +375,7 @@ export function useLiveViewManager(): LiveViewManagerState {
       if (!mountedRef.current) return;
 
       if (!resolvedId) {
-        console.log('[LiveViewManager] Device not visible yet, will retry');
+        logger.debug('[LiveViewManager] Device not visible yet, will retry');
         scheduleRecovery(deviceId);
         return;
       }
@@ -381,14 +383,14 @@ export function useLiveViewManager(): LiveViewManagerState {
       // Step 2: Device is visible — try to acquire the stream
       try {
         await startStream(resolvedId);
-        console.log('[LiveViewManager] Recovery succeeded on attempt', attempt + 1);
+        logger.debug('[LiveViewManager] Recovery succeeded on attempt', attempt + 1);
         // Update the device ID if it changed after re-enumeration
         if (resolvedId !== deviceId) {
           lastDeviceIdRef.current = resolvedId;
           if (mountedRef.current) setSelectedDeviceId(resolvedId);
         }
       } catch {
-        console.warn('[LiveViewManager] Recovery attempt', attempt + 1, 'failed (getUserMedia)');
+        logger.warn('[LiveViewManager] Recovery attempt', attempt + 1, 'failed (getUserMedia)');
         scheduleRecovery(deviceId);
       }
     }, delay);
@@ -397,7 +399,7 @@ export function useLiveViewManager(): LiveViewManagerState {
   // --- stopStream (user-initiated) ---
 
   const stopStream = useCallback(() => {
-    console.log('[LiveViewManager] stopStream (user-initiated)');
+    logger.debug('[LiveViewManager] stopStream (user-initiated)');
     cancelRecovery();
     teardownStream(false); // user-initiated: do a full stop
 
@@ -413,10 +415,10 @@ export function useLiveViewManager(): LiveViewManagerState {
   const restartStream = useCallback(async () => {
     const deviceId = lastDeviceIdRef.current;
     if (!deviceId) {
-      console.warn('[LiveViewManager] No device to restart');
+      logger.warn('[LiveViewManager] No device to restart');
       return;
     }
-    console.log('[LiveViewManager] restartStream for device:', deviceId);
+    logger.debug('[LiveViewManager] restartStream for device:', deviceId);
     cancelRecovery();
     teardownStream(false);
 
@@ -443,11 +445,11 @@ export function useLiveViewManager(): LiveViewManagerState {
       if (!mountedRef.current) return;
 
       if (isRecoveringRef.current || streamRef.current) {
-        console.log('[LiveViewManager] Device change ignored (recovery/stream active)');
+        logger.debug('[LiveViewManager] Device change ignored (recovery/stream active)');
         return;
       }
 
-      console.log('[LiveViewManager] Device change — reloading devices');
+      logger.debug('[LiveViewManager] Device change — reloading devices');
       loadDevices();
     }, 500);
   }, [loadDevices]);
@@ -460,7 +462,7 @@ export function useLiveViewManager(): LiveViewManagerState {
     navigator.mediaDevices?.addEventListener('devicechange', handleDeviceChange);
 
     return () => {
-      console.log('[LiveViewManager] Unmounting — full cleanup');
+      logger.debug('[LiveViewManager] Unmounting — full cleanup');
       mountedRef.current = false;
 
       navigator.mediaDevices?.removeEventListener('devicechange', handleDeviceChange);

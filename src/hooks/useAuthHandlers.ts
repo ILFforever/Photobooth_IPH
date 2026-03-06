@@ -4,6 +4,9 @@ import {
   googleLogin,
   googleLogout,
 } from "../utils/googleAuth";
+import { createLogger } from '../utils/logger';
+const logger = createLogger('useAuthHandlers');
+
 
 interface AuthHandlersOptions {
   setAccount: (account: GoogleAccount | null) => void;
@@ -58,7 +61,7 @@ export function useAuthHandlers(options: AuthHandlersOptions) {
       setAccount(accountData);
       setShowAccountMenu(false);
     } catch (e) {
-      console.error("Login failed:", e);
+      logger.error("Login failed:", e);
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoggingIn(false);
@@ -78,7 +81,7 @@ export function useAuthHandlers(options: AuthHandlersOptions) {
       const accountData = await googleLogin();
       setAccount(accountData);
     } catch (e) {
-      console.error("Failed to restore session:", e);
+      logger.error("Failed to restore session:", e);
       setError(e instanceof Error ? e.message : String(e));
       setAccount(cachedAccount);
     } finally {
@@ -94,7 +97,7 @@ export function useAuthHandlers(options: AuthHandlersOptions) {
     try {
       await googleLogout();
     } catch (e) {
-      console.error("Failed to clear cached account:", e);
+      logger.error("Failed to clear cached account:", e);
     }
 
     await handleLogin(undefined, true);
@@ -113,7 +116,7 @@ export function useAuthHandlers(options: AuthHandlersOptions) {
       setRootFolder(null);
       setShowAccountMenu(false);
     } catch (e) {
-      console.error("Logout failed:", e);
+      logger.error("Logout failed:", e);
     }
   };
 

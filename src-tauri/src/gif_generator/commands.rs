@@ -11,6 +11,8 @@ use std::process::Command;
 use std::time::Instant;
 use tauri::Emitter;
 
+use crate::ffmpeg_sidecar;
+
 #[derive(Serialize, Clone)]
 pub struct GifProgress {
     pub current: usize,
@@ -441,6 +443,9 @@ pub async fn generate_slideshow_video(
         let temp_dir = session_dir.join(".slideshow_temp");
         let _cleanup = TempDirCleanup(&temp_dir);
 
+        // Check if FFmpeg exists before running
+        crate::ffmpeg_manager::ensure_ffmpeg_exists()?;
+
         let (_w, _h) = prepare_frames_for_video(&app, &image_paths, &temp_dir, max_dim)?;
 
         let _ = app.emit(
@@ -475,7 +480,8 @@ pub async fn generate_slideshow_video(
             .map_err(|e| format!("Failed to write concat file: {}", e))?;
 
         // Run ffmpeg
-        let output = Command::new("ffmpeg")
+        let ffmpeg_path = ffmpeg_sidecar::ffmpeg_path();
+        let output = Command::new(&ffmpeg_path)
             .args([
                 "-y",
                 "-f",

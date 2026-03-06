@@ -5,6 +5,8 @@ import { listen } from '@tauri-apps/api/event';
 import { useWorkingFolder } from '../../contexts/WorkingFolderContext';
 import { WorkingImage } from '../../types/assets';
 import './WorkingFolderGallery.css';
+import { createLogger } from '../../utils/logger';
+const logger = createLogger('WorkingFolderGallery');
 
 interface DraggableImageProps {
   img: WorkingImage;
@@ -158,6 +160,14 @@ export function WorkingFolderGallery() {
   const hasLoadedRef = useRef(false);
   const lastActiveTimeRef = useRef(Date.now());
   const rafIdRef = useRef<number | undefined>(undefined);
+  const loadedImagesMapRef = useRef(loadedImagesMap);
+  const refreshTriggerRef = useRef(refreshTrigger);
+
+  // Keep refs in sync with state
+  useEffect(() => {
+    loadedImagesMapRef.current = loadedImagesMap;
+    refreshTriggerRef.current = refreshTrigger;
+  });
 
   // Time-based sleep detection
   useEffect(() => {
@@ -207,13 +217,12 @@ export function WorkingFolderGallery() {
   // Window focus handler
   useEffect(() => {
     const handleFocus = () => {
-      if (loadedImagesMap.size > 0) {
-        setRefreshTrigger(refreshTrigger + 1);
+      if (loadedImagesMapRef.current.size > 0) {
+        setRefreshTrigger(refreshTriggerRef.current + 1);
       }
     };
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Set up event listeners for progressive loading
@@ -267,7 +276,7 @@ export function WorkingFolderGallery() {
         .catch(error => {
           // Silently ignore "No folder selected" error (user cancelled the dialog)
           if (error !== 'No folder selected') {
-            console.error('Failed to select working folder:', error);
+            logger.error('Failed to select working folder:', error);
             alert(`Failed to select folder: ${error}`);
           }
         })
@@ -275,7 +284,7 @@ export function WorkingFolderGallery() {
           setLoading(false);
         });
     } catch (error) {
-      console.error('Failed to select working folder:', error);
+      logger.error('Failed to select working folder:', error);
       alert(`Failed to select folder: ${error}`);
       setLoading(false);
     }

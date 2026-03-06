@@ -32,10 +32,15 @@
   transition: all 0.2s;
 }
 
-.finalize-back-btn:hover {
+.finalize-back-btn:hover:not(:disabled) {
   background: #333;
   border-color: #444;
   color: #fff;
+}
+
+.finalize-back-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .finalize-title {

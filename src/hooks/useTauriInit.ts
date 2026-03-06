@@ -5,6 +5,8 @@ import type { DriveFolder } from "../types/qr";
 import type { UploadProgress } from "../types/qr";
 import { getAccount } from "../utils/googleAuth";
 import { getRootFolder } from "../utils/driveFolder";
+import { createLogger } from '../utils/logger';
+const logger = createLogger('useTauriInit');
 
 interface UseTauriInitOptions {
   setAccount: (account: GoogleAccount | null) => void;
@@ -20,7 +22,7 @@ export function useTauriInit({
   // App initialization log (dev only)
   useEffect(() => {
     if (import.meta.env.DEV) {
-      console.log("App initialized:", new Date().toISOString());
+      logger.debug("App initialized:", new Date().toISOString());
     }
   }, []);
 
@@ -40,7 +42,7 @@ export function useTauriInit({
         attempts++;
       }
 
-      console.error("Tauri initialization timeout");
+      logger.error("Tauri initialization timeout");
     };
     initTauri();
   }, []);
@@ -61,7 +63,7 @@ export function useTauriInit({
           }
         }
       } catch (e) {
-        console.error("Failed to check account:", e);
+        logger.error("Failed to check account:", e);
       }
     };
     checkExistingSession();
@@ -87,7 +89,7 @@ export function useTauriEvents({
       'upload-progress',
       (event) => {
         if (import.meta.env.DEV) {
-          console.log('Upload progress:', event.payload);
+          logger.debug('Upload progress:', event.payload);
         }
         setUploadProgress(event.payload);
       }

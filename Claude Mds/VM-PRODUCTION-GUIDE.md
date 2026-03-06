@@ -271,7 +271,7 @@ export function useVMManager() {
             }, 3000);
 
         } catch (err) {
-            console.error('VM initialization failed:', err);
+            logger.error('VM initialization failed:', err);
             setError(String(err));
             setVmStatus('error');
         }
@@ -443,7 +443,7 @@ scripts\ensure-vm-paths.cmd
 ### VM stuck at boot
 Check console output:
 ```cmd
-type linux-build\vbox-console.log
+type linux-build\vbox-console.txt
 ```
 
 ## Advanced: Network Configuration

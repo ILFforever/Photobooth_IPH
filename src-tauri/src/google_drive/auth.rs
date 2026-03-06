@@ -1,6 +1,7 @@
 use crate::state::{AppState, GoogleAccount};
 use tauri::{Manager, State};
 use yup_oauth2::{InstalledFlowAuthenticator, InstalledFlowReturnMethod};
+use tauri_plugin_shell::ShellExt;
 
 async fn load_client_secret(_app: &tauri::AppHandle) -> Result<yup_oauth2::ApplicationSecret, String> {
     // Embed the client_secret.json at compile time
@@ -25,7 +26,10 @@ pub async fn google_login(
 ) -> Result<GoogleAccount, String> {
     let secret = load_client_secret(&app).await?;
 
-    struct BrowserOpenerDelegate;
+    struct BrowserOpenerDelegate {
+        app: tauri::AppHandle,
+    }
+
     impl yup_oauth2::authenticator_delegate::InstalledFlowDelegate for BrowserOpenerDelegate {
         fn present_user_url<'a>(
             &'a self,
@@ -34,7 +38,8 @@ pub async fn google_login(
         ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send + 'a>>
         {
             Box::pin(async move {
-                let _ = open::that(url);
+                // Use Tauri's shell plugin instead of open::that for better browser compatibility
+                let _ = self.app.shell().open(url, None);
                 if need_code {
                     yup_oauth2::authenticator_delegate::DefaultInstalledFlowDelegate
                         .present_user_url(url, need_code)
@@ -58,7 +63,7 @@ pub async fn google_login(
 
     let auth = InstalledFlowAuthenticator::builder(secret, InstalledFlowReturnMethod::HTTPRedirect)
         .persist_tokens_to_disk(cache_path)
-        .flow_delegate(Box::new(BrowserOpenerDelegate))
+        .flow_delegate(Box::new(BrowserOpenerDelegate { app: app.clone() }))
         .build()
         .await
         .map_err(|e| format!("Failed to create authenticator: {}", e))?;

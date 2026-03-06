@@ -34,6 +34,9 @@ import { useCamera } from "../../../contexts/CameraContext";
 import { detectBrand, normalizeMode, isSettingAdjustable, type CameraBrand } from "../../../services/cameraBrands";
 import { getCameraSettingsService } from "../../../services/cameraSettingsService";
 import "./PhotoboothSidebar.css";
+import { createLogger } from '../../../utils/logger';
+
+const logger = createLogger('CameraSection');
 
 const API_BASE = 'http://localhost:58321';
 
@@ -249,7 +252,7 @@ export function CameraSection({
         setAvailableCameras(cameras);
       }
     } catch (error) {
-      console.error('Error fetching cameras:', error);
+      logger.error('Error fetching cameras:', error);
     } finally {
       if (showLoading) {
         const elapsed = Date.now() - startTime;
@@ -272,7 +275,7 @@ export function CameraSection({
     // Detect camera brand for quirks handling
     const brand = detectBrand(camera.manufacturer, camera.model);
     setCameraBrand(brand);
-    console.log(`Detected camera brand: ${brand.name} (id: ${brand.id})`);
+    logger.debug(`Detected camera brand: ${brand.name} (id: ${brand.id})`);
 
     // Update the global camera settings service
     cameraSettingsService.setCamera(camera.id, camera.manufacturer, camera.model);
@@ -280,9 +283,9 @@ export function CameraSection({
     // Tell controller to track this camera for polling/disconnect detection
     try {
       await fetch(`${API_BASE}/api/controller/switch?camera=${camera.id}`, { method: 'POST' });
-      console.log(`Controller switched to camera ${camera.id}`);
+      logger.debug(`Controller switched to camera ${camera.id}`);
     } catch (error) {
-      console.warn('Failed to switch controller camera:', error);
+      logger.warn('Failed to switch controller camera:', error);
     }
 
     // Fetch initial status and config
@@ -299,7 +302,7 @@ export function CameraSection({
 
       if (configResponse.ok) {
         const config = await configResponse.json();
-        console.log('Config response:', JSON.stringify(config, null, 2));
+        logger.debug('Config response:', JSON.stringify(config, null, 2));
 
         // Store full config for accessing choices
         setCameraConfig(config);
@@ -314,13 +317,13 @@ export function CameraSection({
         let evChoices: string[] | undefined;
         if (config[evSettingName]?.choices && Array.isArray(config[evSettingName].choices)) {
           evChoices = cameraSettingsService.convertEvChoicesToDisplay(config[evSettingName].choices);
-          console.log(`Converted ${evSettingName} EV choices:`, evChoices);
+          logger.debug(`Converted ${evSettingName} EV choices:`, evChoices);
         }
 
         // Convert camera ISO choices to display format (e.g., "-1" -> "Auto 1" for Fuji)
         const isoChoices = config.iso?.choices || [];
         const convertedIsoChoices = cameraSettingsService.convertIsoChoicesToDisplay(isoChoices);
-        console.log('Converted ISO choices:', convertedIsoChoices);
+        logger.debug('Converted ISO choices:', convertedIsoChoices);
 
         // Extract current VALUES from config (the 'value' field of each setting)
         const initialValues: { shutter?: string; aperture?: string; iso?: string; ev?: string; wb?: string; metering?: string; battery?: string } = {};
@@ -357,7 +360,7 @@ export function CameraSection({
           initialValues.battery = batteryParts[0];
         }
 
-        console.log('Extracted initial values from config:', initialValues);
+        logger.debug('Extracted initial values from config:', initialValues);
 
         const newOptions: typeof cameraSettingOptions = {
           iso: convertedIsoChoices,
@@ -369,7 +372,7 @@ export function CameraSection({
           ev: evChoices,
         };
         setCameraSettingOptions(newOptions);
-        console.log('Camera setting options:', newOptions);
+        logger.debug('Camera setting options:', newOptions);
 
         // Notify parent component of loaded options with initial values
         // Pass the initial values directly so they can be applied synchronously with the options
@@ -383,16 +386,16 @@ export function CameraSection({
         // Config returns lensname as an object with label, type, value
         if (config.lensname?.value) {
           const cleaned = cleanLensName(config.lensname.value);
-          console.log(`Found lens info: "${config.lensname.value}" -> "${cleaned}"`);
+          logger.debug(`Found lens info: "${config.lensname.value}" -> "${cleaned}"`);
           setLensInfo(cleaned);
         } else {
-          console.log('No lensname found in config');
+          logger.debug('No lensname found in config');
         }
       } else {
-        console.error('Config response not OK:', configResponse.status, configResponse.statusText);
+        logger.error('Config response not OK:', configResponse.status, configResponse.statusText);
       }
     } catch (error) {
-      console.error('Error fetching camera info:', error);
+      logger.error('Error fetching camera info:', error);
     } finally {
       setConnecting(false);
     }
@@ -452,9 +455,9 @@ export function CameraSection({
 
   // Send setting to camera
   const setCameraSetting = async (setting: string, value: string) => {
-    console.log('[CameraSection] setCameraSetting:', setting, value, 'selectedCamera:', selectedCamera);
+    logger.debug('[CameraSection] setCameraSetting:', setting, value, 'selectedCamera:', selectedCamera);
     if (!selectedCamera) {
-      console.warn('[CameraSection] No selected camera, skipping setting');
+      logger.warn('[CameraSection] No selected camera, skipping setting');
       return;
     }
 
@@ -468,14 +471,14 @@ export function CameraSection({
       });
 
       if (!response.ok) {
-        console.error(`Failed to set ${setting} to ${value}:`, response.statusText);
+        logger.error(`Failed to set ${setting} to ${value}:`, response.statusText);
         return false;
       }
 
-      console.log(`[CameraSection] Successfully set ${setting} to ${value}`);
+      logger.debug(`[CameraSection] Successfully set ${setting} to ${value}`);
       return true;
     } catch (error) {
-      console.error(`[CameraSection] Error setting ${setting}:`, error);
+      logger.error(`[CameraSection] Error setting ${setting}:`, error);
       return false;
     }
   };

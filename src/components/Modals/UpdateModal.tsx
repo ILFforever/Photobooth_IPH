@@ -5,9 +5,10 @@ import { useState, useEffect, useCallback } from 'react';
 import { Download, Loader2, AlertCircle, Package, CheckCircle2, Info, Monitor, HardDrive } from 'lucide-react';
 import type { UpdateDownloadProgress, VersionStatus } from '../../types/updates';
 import { useToast } from '../../contexts/ToastContext';
+import { createLogger } from '../../utils/logger';
 import './UpdateModal.css';
 
-const DEBUG = true; // Set to false to disable debug logging
+const logger = createLogger('UpdateModal');
 
 interface UpdateModalProps {
   show: boolean;
@@ -64,10 +65,10 @@ export default function UpdateModal({
   useEffect(() => {
     if (!show) return;
 
-    if (DEBUG) console.log('[UPDATE MODAL] Setting up progress listener');
+    logger.debug('[UPDATE MODAL] Setting up progress listener');
 
     const unlisten = listen<UpdateDownloadProgress>('update-download-progress', (event) => {
-      if (DEBUG) console.log('[UPDATE MODAL] Progress update:', event.payload);
+      logger.debug('[UPDATE MODAL] Progress update:', event.payload);
       const progress = event.payload;
       // Determine which update this is for based on file size
       const msiSize = versionStatus.app.file_size || 0;
@@ -81,7 +82,7 @@ export default function UpdateModal({
     });
 
     return () => {
-      if (DEBUG) console.log('[UPDATE MODAL] Cleaning up progress listener');
+      logger.debug('[UPDATE MODAL] Cleaning up progress listener');
       unlisten.then(fn => fn());
     };
   }, [show, versionStatus]);
@@ -96,31 +97,31 @@ export default function UpdateModal({
 
   // Handle MSI download
   const handleMsiUpdate = useCallback(async () => {
-    if (DEBUG) console.log('[UPDATE MODAL] Starting MSI download...');
+    logger.debug('[UPDATE MODAL] Starting MSI download...');
     setUpdateState(prev => ({ ...prev, msi: 'downloading', msiError: null }));
 
     try {
       const path = await invoke<string>('download_msi_update');
-      if (DEBUG) console.log('[UPDATE MODAL] MSI Download complete, path:', path);
+      logger.debug('[UPDATE MODAL] MSI Download complete, path:', path);
       setUpdateState(prev => ({ ...prev, msi: 'ready', msiPath: path }));
     } catch (e) {
-      console.error('[UPDATE MODAL] MSI Download failed:', e);
+      logger.error('[UPDATE MODAL] MSI Download failed:', e);
       setUpdateState(prev => ({ ...prev, msi: 'error', msiError: String(e) }));
     }
   }, []);
 
   // Handle VM download
   const handleVmUpdate = useCallback(async () => {
-    if (DEBUG) console.log('[UPDATE MODAL] Starting VM download...');
+    logger.debug('[UPDATE MODAL] Starting VM download...');
     setUpdateState(prev => ({ ...prev, vm: 'downloading', vmError: null }));
 
     try {
       const url = `https://photobooth-iph.fly.dev/api/releases/download?type=vm`;
       await invoke<string>('install_vm_update', { url, version: versionStatus.vm.latest_version || '' });
-      if (DEBUG) console.log('[UPDATE MODAL] VM download complete');
+      logger.debug('[UPDATE MODAL] VM download complete');
       setUpdateState(prev => ({ ...prev, vm: 'ready' }));
     } catch (e) {
-      console.error('[UPDATE MODAL] VM download failed:', e);
+      logger.error('[UPDATE MODAL] VM download failed:', e);
       setUpdateState(prev => ({ ...prev, vm: 'error', vmError: String(e) }));
     }
   }, [versionStatus.vm.latest_version]);
@@ -130,17 +131,17 @@ export default function UpdateModal({
     if (!updateState.msiPath) return;
 
     try {
-      if (DEBUG) console.log('[UPDATE MODAL] Launching MSI installer:', updateState.msiPath);
+      logger.debug('[UPDATE MODAL] Launching MSI installer:', updateState.msiPath);
       await invoke('launch_msi_installer', { msiPath: updateState.msiPath });
     } catch (e) {
-      console.error('[UPDATE MODAL] Failed to launch installer:', e);
+      logger.error('[UPDATE MODAL] Failed to launch installer:', e);
       setUpdateState(prev => ({ ...prev, msiError: String(e) }));
     }
   }, [updateState.msiPath]);
 
   // Handle VM restart
   const handleVmRestart = useCallback(() => {
-    if (DEBUG) console.log('[UPDATE MODAL] Restarting VM...');
+    logger.debug('[UPDATE MODAL] Restarting VM...');
     // Close modal and show toast immediately
     if (updateType === 'vm') {
       onClose();
@@ -148,7 +149,7 @@ export default function UpdateModal({
     showToast('VM is restarting...', 'success', 5000);
     // Fire and forget - don't await
     invoke('restart_vm').catch((e) => {
-      console.error('[UPDATE MODAL] Failed to restart VM:', e);
+      logger.error('[UPDATE MODAL] Failed to restart VM:', e);
       showToast('Failed to restart VM', 'error', 5000, String(e));
     });
   }, [updateType, onClose, showToast]);

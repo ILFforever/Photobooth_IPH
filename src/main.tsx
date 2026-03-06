@@ -19,6 +19,9 @@ import { ToastProvider, ToastContainer } from "./contexts/ToastContext";
 import { PrintSettingsProvider } from "./contexts/PrintSettingsContext";
 import { UploadQueueProvider } from "./contexts/UploadQueueContext";
 import "./components/PhotoboothView/GuestDisplay.css";
+import { createLogger } from './utils/logger';
+
+const logger = createLogger('main');
 
 // Render the app
 async function renderApp() {
@@ -29,20 +32,20 @@ async function renderApp() {
   try {
     const currentWindow = getCurrentWebviewWindow();
     const label = currentWindow.label;
-    console.log('Window label:', label);
+    logger.debug('Window label:', label);
 
     if (label === 'guest-display') {
       AppComponent = GuestDisplay;
-      console.log('Rendering GuestDisplay component');
+      logger.debug('Rendering GuestDisplay component');
     } else if (label === 'splash') {
       // Splash window has its own logic in splash.html
-      console.log('Splash window detected, skipping React render');
+      logger.debug('Splash window detected, skipping React render');
       return;
     } else {
-      console.log('Rendering App component');
+      logger.debug('Rendering App component');
     }
   } catch (e) {
-    console.log('Not in Tauri environment or window not ready, rendering App', e);
+    logger.debug('Not in Tauri environment or window not ready, rendering App', e);
     AppComponent = App;
   }
 

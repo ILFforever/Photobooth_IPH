@@ -281,6 +281,7 @@
 
 .zone-prop-field input[type="number"] {
   width: 100%;
+  min-width: 60px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 4px;

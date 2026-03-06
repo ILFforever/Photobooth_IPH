@@ -150,7 +150,7 @@
           }
         })
         .catch(e => {
-          console.error('[Splash] Failed to fetch version:', e);
+          logger.error('[Splash] Failed to fetch version:', e);
           versionEl.textContent = 'v1.0.0'; // Fallback version
         });
 
@@ -190,29 +190,29 @@
             try {
               await invoke('close_splash_and_show_main');
             } catch (e) {
-              console.error('[Splash] Failed to transition:', e);
+              logger.error('[Splash] Failed to transition:', e);
             }
           }, 700);
         });
       } catch (e) {
-        console.error('[Splash] Failed to set up listeners:', e);
+        logger.error('[Splash] Failed to set up listeners:', e);
       }
 
       // Force-close safety net (45 seconds max wait - must be longer than VM boot timeout of 30s)
       const forceCloseTimeout = setTimeout(async () => {
         if (!initComplete) {
-          console.warn('[Splash] Timeout - forcing app load');
+          logger.warn('[Splash] Timeout - forcing app load');
           if (statusEl) statusEl.textContent = 'Loading app...';
           if (progressFill) progressFill.style.width = '100%';
           setTimeout(async () => {
             try {
               await invoke('close_splash_and_show_main');
             } catch (e) {
-              console.error('[Splash] Force close failed:', e);
+              logger.error('[Splash] Force close failed:', e);
               try {
                 await appWindow.close();
               } catch (e2) {
-                console.error('[Splash] Could not close window:', e2);
+                logger.error('[Splash] Could not close window:', e2);
               }
             }
           }, 500);
@@ -225,7 +225,7 @@
       let invokeCompleted = false;
       setTimeout(() => {
         if (!invokeCompleted) {
-          console.error('[Splash] invoke appears to be hanging (> 5s)');
+          logger.error('[Splash] invoke appears to be hanging (> 5s)');
           statusEl.textContent = 'Initializing (slow...)';
         }
       }, 5000);
@@ -236,7 +236,7 @@
         // Don't clear timeout - let init-complete event handle closing
       } catch (e) {
         invokeCompleted = true;
-        console.error('[Splash] initialize_app error:', e);
+        logger.error('[Splash] initialize_app error:', e);
         statusEl.textContent = 'Init error: ' + e;
         // Don't clear timeout - force close will handle it
       }

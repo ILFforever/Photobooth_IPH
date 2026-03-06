@@ -5,6 +5,9 @@ import { useAssets } from "../../contexts/AssetsContext";
 import { useCollage } from "../../contexts/CollageContext";
 import { Frame } from "../../types/frame";
 import "./FrameSelector.css";
+import { createLogger } from '../../utils/logger';
+
+const logger = createLogger('FrameSelector');
 
 export default function FrameSelector() {
   const { frames, setFrames, loading, setLoading } = useAssets();
@@ -25,17 +28,17 @@ export default function FrameSelector() {
         setCurrentFrame(loadedFrames[0]);
       }
     } catch (error) {
-      console.error("Failed to load frames:", error);
+      logger.error("Failed to load frames:", error);
     } finally {
       setLoading(false);
     }
   };
 
   const handleSelectFrame = (frame: Frame) => {
-    console.log('[FrameSelector] handleSelectFrame called with:', frame.name);
+    logger.debug('[FrameSelector] handleSelectFrame called with:', frame.name);
     setCurrentFrame(frame);
     // Clear custom set name when manually selecting a frame
-    console.log('[FrameSelector] Clearing selectedCustomSetName');
+    logger.debug('[FrameSelector] Clearing selectedCustomSetName');
     setSelectedCustomSetName(null);
   };
 

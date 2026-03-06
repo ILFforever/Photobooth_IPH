@@ -46,21 +46,21 @@ fn read_tail_lines(path: &PathBuf, num_lines: usize) -> Result<Vec<String>, Stri
 }
 
 /// Read the VM console log file
-/// Production: reads from %LOCALAPPDATA%\Photobooth_IPH\logs\vbox-console.log
-/// Dev mode: falls back to linux-build/vbox-console.log
+/// Production: reads from %LOCALAPPDATA%\Photobooth_IPH\logs\vbox-console.txt
+/// Dev mode: falls back to linux-build/vbox-console.txt
 #[tauri::command]
 pub async fn get_vm_logs(lines: Option<usize>) -> Result<VmLogsResponse, String> {
     let num_lines = lines.unwrap_or(100).min(1000); // Max 1000 lines
 
     let mut possible_paths: Vec<PathBuf> = vec![];
 
-    // Production location: %LOCALAPPDATA%\Photobooth_IPH\logs\vbox-console.log
+    // Production location: %LOCALAPPDATA%\Photobooth_IPH\logs\vbox-console.txt
     if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
         possible_paths.push(
             PathBuf::from(local_app_data)
                 .join("Photobooth_IPH")
                 .join("logs")
-                .join("vbox-console.log"),
+                .join("vbox-console.txt"),
         );
     }
 
@@ -69,12 +69,12 @@ pub async fn get_vm_logs(lines: Option<usize>) -> Result<VmLogsResponse, String>
         .map_err(|e| format!("Failed to get current directory: {}", e))?;
 
     // Dev mode fallbacks: in the linux-build folder (relative to exe dir)
-    possible_paths.push(exe_dir.join("linux-build").join("vbox-console.log"));
-    possible_paths.push(exe_dir.join("../linux-build").join("vbox-console.log"));
+    possible_paths.push(exe_dir.join("linux-build").join("vbox-console.txt"));
+    possible_paths.push(exe_dir.join("../linux-build").join("vbox-console.txt"));
     possible_paths.push(
         exe_dir
             .join("../../linux-build")
-            .join("vbox-console.log"),
+            .join("vbox-console.txt"),
     );
 
     // In development, also try the project root (up from src-tauri/target/debug)
@@ -83,10 +83,10 @@ pub async fn get_vm_logs(lines: Option<usize>) -> Result<VmLogsResponse, String>
             // Go up from target/debug to project root
             path.pop(); // debug
             path.pop(); // target
-            possible_paths.push(path.join("linux-build").join("vbox-console.log"));
+            possible_paths.push(path.join("linux-build").join("vbox-console.txt"));
             // Also try from src-tauri
             path.pop(); // src-tauri
-            possible_paths.push(path.join("linux-build").join("vbox-console.log"));
+            possible_paths.push(path.join("linux-build").join("vbox-console.txt"));
         }
     }
 
@@ -119,16 +119,24 @@ pub async fn get_vm_logs(lines: Option<usize>) -> Result<VmLogsResponse, String>
                 .iter()
                 .map(|p| p.display().to_string())
                 .collect();
+
+            let mut error_logs = vec![
+                "⚠ No log file found. The VM may not be running.".to_string(),
+                format!("Current directory: {}", exe_dir.display()),
+                format!("\nSearched {} possible locations:", possible_paths.len()),
+            ];
+
+            for (i, path) in paths_str.iter().enumerate() {
+                error_logs.push(format!("  {}. {}", i + 1, path));
+            }
+
             eprintln!("[get_vm_logs] No log file found. Searched paths:");
             for p in &paths_str {
                 eprintln!("  - {}", p);
             }
+
             return Ok(VmLogsResponse {
-                logs: vec![
-                    "No log file found. The VM may not be running.".to_string(),
-                    format!("Current directory: {:?}", exe_dir.display()),
-                    format!("Searched {} possible locations.", possible_paths.len()),
-                ],
+                logs: error_logs,
                 line_count: 0,
             });
         }

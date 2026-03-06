@@ -2,6 +2,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useQR } from "../../contexts/QRContext";
 import { invoke } from "@tauri-apps/api/core";
 import { useState, useEffect } from "react";
+import { createLogger } from '../../utils/logger';
+
+const logger = createLogger('HistoryModal');
 
 interface HistoryItem {
   timestamp: string;
@@ -28,7 +31,7 @@ export default function HistoryModal({ show, onClose, formatDate }: HistoryModal
           const items = await invoke<HistoryItem[]>("get_history");
           setHistoryItems(items);
         } catch (e) {
-          console.error("Failed to load history:", e);
+          logger.error("Failed to load history:", e);
         }
       };
       loadHistory();
@@ -63,7 +66,7 @@ export default function HistoryModal({ show, onClose, formatDate }: HistoryModal
                       await invoke("clear_history");
                       setHistoryItems([]);
                     } catch (e) {
-                      console.error("Failed to clear history", e);
+                      logger.error("Failed to clear history", e);
                     }
                  }}
                  style={{

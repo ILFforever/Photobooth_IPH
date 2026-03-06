@@ -1,11 +1,14 @@
-import { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, ReactNode, useEffect, useCallback, useRef } from 'react';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { PlacedImage } from '../types/collage';
 import { Frame, FrameZone } from '../types/frame';
 import { applyZoneClipPath } from '../utils/canvasShapeClip';
 import { Background } from '../types/background';
 import { OverlayLayer, LayerPosition, DEFAULT_OVERLAY_TRANSFORM } from '../types/overlay';
+import { createLogger } from '../utils/logger';
+import { LRUCache } from '../utils/lruCache';
 
+const logger = createLogger('CollageContext');
 // Panel type for FloatingFrameSelector
 export type FloatingPanelType = "frame" | "canvas" | "background" | null;
 
@@ -150,16 +153,35 @@ export function CollageProvider({ children }: { children: ReactNode }) {
   // FloatingFrameSelector panel state
   const [openFloatingPanel, setOpenFloatingPanel] = useState<FloatingPanelType>(null);
 
+  // Image cache to avoid redundant fetches - LRU cache with max 500 images to prevent memory leaks
+  const imageCache = useRef<LRUCache<string, HTMLImageElement>>(new LRUCache(500));
+
   // Load backgrounds and settings on mount
   useEffect(() => {
     const loadSettings = async () => {
       try {
         const [loadedBgs, savedBg, savedTransform, customCanvases, loadedFrames] = await Promise.all([
           invoke<Background[]>('load_backgrounds'),
-          invoke<string | null>('get_app_setting', { key: 'selected_background' }).catch(() => null),
-          invoke<string>('get_app_setting', { key: 'background_transform' }).catch(() => null),
-          invoke<Array<{ width: number; height: number; name: string; created_at: number }>>('get_custom_canvas_sizes').catch(() => []),
-          invoke<Frame[]>('load_frames').catch(() => []),
+          invoke<string | null>('get_app_setting', { key: 'selected_background' })
+            .catch((err) => {
+              logger.error('Failed to load selected_background setting:', err);
+              return null;
+            }),
+          invoke<string | null>('get_app_setting', { key: 'background_transform' })
+            .catch((err) => {
+              logger.error('Failed to load background_transform setting:', err);
+              return null;
+            }),
+          invoke<Array<{ width: number; height: number; name: string; created_at: number }>>('get_custom_canvas_sizes')
+            .catch((err) => {
+              logger.error('Failed to load custom canvas sizes:', err);
+              return [];
+            }),
+          invoke<Frame[]>('load_frames')
+            .catch((err) => {
+              logger.error('Failed to load frames:', err);
+              return [];
+            }),
         ]);
 
         setBackgrounds(loadedBgs);
@@ -180,7 +202,7 @@ export function CollageProvider({ children }: { children: ReactNode }) {
         // Load custom frames (non-default frames)
         setCustomFrames(loadedFrames.filter(f => !f.is_default));
       } catch (error) {
-        console.error('Failed to load settings:', error);
+        logger.error('Failed to load settings:', error);
       }
     };
 
@@ -190,12 +212,14 @@ export function CollageProvider({ children }: { children: ReactNode }) {
   // Save background settings when they change
   useEffect(() => {
     if (background !== null) {
-      invoke('save_app_setting', { key: 'selected_background', value: background }).catch(console.error);
+      invoke('save_app_setting', { key: 'selected_background', value: background })
+        .catch((err) => logger.error('Failed to save selected_background setting:', err));
     }
   }, [background]);
 
   useEffect(() => {
-    invoke('save_app_setting', { key: 'background_transform', value: JSON.stringify(backgroundTransform) }).catch(console.error);
+    invoke('save_app_setting', { key: 'background_transform', value: JSON.stringify(backgroundTransform) })
+      .catch((err) => logger.error('Failed to save background_transform setting:', err));
   }, [backgroundTransform]);
 
   const addPlacedImage = (zoneId: string, image: PlacedImage) => {
@@ -230,7 +254,7 @@ export function CollageProvider({ children }: { children: ReactNode }) {
       const loadedFrames = await invoke<Frame[]>('load_frames');
       setCustomFrames(loadedFrames.filter(f => !f.is_default));
     } catch (error) {
-      console.error('Failed to reload frames:', error);
+      logger.error('Failed to reload frames:', error);
     }
   };
 
@@ -238,7 +262,7 @@ export function CollageProvider({ children }: { children: ReactNode }) {
     try {
       const canvasElement = document.querySelector('.collage-canvas') as HTMLElement;
       if (!canvasElement) {
-        console.error('Canvas element not found');
+        logger.error('Canvas element not found');
         return null;
       }
 
@@ -258,17 +282,26 @@ export function CollageProvider({ children }: { children: ReactNode }) {
       const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
       return dataUrl;
     } catch (error) {
-      console.error('Failed to capture canvas thumbnail:', error);
+      logger.error('Failed to capture canvas thumbnail:', error);
       return null;
     }
   };
 
-  // Helper: Load an image element from a source URL
+  // Helper: Load an image element from a source URL (with caching)
   const loadImage = useCallback((src: string): Promise<HTMLImageElement> => {
+    // Check cache first
+    const cached = imageCache.current.get(src);
+    if (cached && cached.complete) {
+      return Promise.resolve(cached);
+    }
+
     return new Promise((resolve, reject) => {
       const img = new Image();
       img.crossOrigin = 'anonymous';
-      img.onload = () => resolve(img);
+      img.onload = () => {
+        imageCache.current.set(src, img);
+        resolve(img);
+      };
       img.onerror = reject;
       img.src = src;
     });
@@ -276,6 +309,19 @@ export function CollageProvider({ children }: { children: ReactNode }) {
 
   // Helper: Load an image with fetch+objectURL fallback for CORS
   const loadImageWithFallback = useCallback(async (src: string): Promise<HTMLImageElement> => {
+    // Check cache first
+    const cached = imageCache.current.get(src);
+    if (cached && cached.complete) {
+      return cached;
+    }
+
+    // Also cache the fetch variant
+    const fetchKey = `fetch:${src}`;
+    const fetchCached = imageCache.current.get(fetchKey);
+    if (fetchCached && fetchCached.complete) {
+      return fetchCached;
+    }
+
     try {
       return await loadImage(src);
     } catch {
@@ -283,6 +329,8 @@ export function CollageProvider({ children }: { children: ReactNode }) {
       const blob = await resp.blob();
       const url = URL.createObjectURL(blob);
       const img = await loadImage(url);
+      // Cache with fetch key so subsequent loads don't create new object URLs
+      imageCache.current.set(fetchKey, img);
       URL.revokeObjectURL(url);
       return img;
     }
@@ -307,8 +355,8 @@ export function CollageProvider({ children }: { children: ReactNode }) {
       );
       ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
       ctx.restore();
-    } catch {
-      // Skip overlay if it fails to load
+    } catch (err) {
+      logger.warn('Failed to draw overlay layer, skipping:', layer.sourcePath, err);
     }
   }, [loadImageWithFallback]);
 
@@ -327,7 +375,7 @@ export function CollageProvider({ children }: { children: ReactNode }) {
     try {
       const frame = currentFrame;
       if (!frame) {
-        console.error('No frame available for export');
+        logger.error('No frame available for export');
         return null;
       }
 
@@ -335,15 +383,27 @@ export function CollageProvider({ children }: { children: ReactNode }) {
       const canvasWidth = autoMatchBackground && backgroundDimensions ? backgroundDimensions.width : canvasSize?.width ?? frame.width;
       const canvasHeight = autoMatchBackground && backgroundDimensions ? backgroundDimensions.height : canvasSize?.height ?? frame.height;
 
-      // Create canvas at full resolution
+      // Scale canvas to target resolution for consistent high-quality print output.
+      // Target: ~15MP (sufficient for 4x6" at 300+ DPI, larger formats at 200+ DPI).
+      // Formula: scale = sqrt(target / current) preserves aspect ratio exactly.
+      // Capped at 5x to avoid extreme upscaling of very small frames.
+      const PRINT_EXPORT_CONFIG = {
+        targetPixels: 15_000_000,  // Target output resolution (~15MP)
+        maxUpscale: 5,              // Maximum upscale factor to prevent artifacts
+      } as const;
+      const currentPixels = canvasWidth * canvasHeight;
+      const printScale = currentPixels >= PRINT_EXPORT_CONFIG.targetPixels
+        ? 1
+        : Math.min(Math.sqrt(PRINT_EXPORT_CONFIG.targetPixels / currentPixels), PRINT_EXPORT_CONFIG.maxUpscale);
       const canvas = document.createElement('canvas');
-      canvas.width = canvasWidth;
-      canvas.height = canvasHeight;
+      canvas.width = canvasWidth * printScale;
+      canvas.height = canvasHeight * printScale;
       const ctx = canvas.getContext('2d');
       if (!ctx) {
-        console.error('Failed to get canvas context');
+        logger.error('Failed to get canvas context');
         return null;
       }
+      if (printScale > 1) ctx.scale(printScale, printScale);
 
       // 1. Draw background
       if (background) {
@@ -369,7 +429,8 @@ export function CollageProvider({ children }: { children: ReactNode }) {
             }
             ctx.drawImage(bgImg, -drawW / 2, -drawH / 2, drawW, drawH);
             ctx.restore();
-          } catch {
+          } catch (err) {
+            logger.warn('Failed to load background image, using black fallback:', err);
             ctx.fillStyle = '#000';
             ctx.fillRect(0, 0, canvasWidth, canvasHeight);
           }
@@ -395,7 +456,8 @@ export function CollageProvider({ children }: { children: ReactNode }) {
         let img: HTMLImageElement;
         try {
           img = await loadImageWithFallback(convertFileSrc(placed.sourceFile.replace('asset://', '')));
-        } catch {
+        } catch (err) {
+          logger.warn('Failed to load placed image, skipping zone:', zone.id, err);
           continue;
         }
 
@@ -445,7 +507,7 @@ export function CollageProvider({ children }: { children: ReactNode }) {
       const filename = `collage_${Date.now()}.png`;
       return { bytes, filename };
     } catch (error) {
-      console.error('Failed to export canvas:', error);
+      logger.error('Failed to export canvas:', error);
       return null;
     }
   }, [currentFrame, canvasSize, autoMatchBackground, backgroundDimensions, background, isSolidColor, bgSrc, backgroundTransform, overlays, placedImages, loadImageWithFallback, drawOverlayLayer]);
@@ -653,7 +715,7 @@ export function CollageProvider({ children }: { children: ReactNode }) {
 export async function exportCollageAsPNG(): Promise<{ bytes: Uint8Array; filename: string } | null> {
   // This function needs to be called from within a component that has access to the context
   // For now, we'll return an error to guide developers
-  console.error('exportCollageAsPNG() called directly. Please use the context method: useCollage().exportCanvasAsPNG()');
+  logger.error('exportCollageAsPNG() called directly. Please use the context method: useCollage().exportCanvasAsPNG()');
   return null;
 }
 

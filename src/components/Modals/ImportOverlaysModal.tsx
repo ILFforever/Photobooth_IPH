@@ -3,6 +3,9 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useCollage } from '../../contexts/CollageContext';
 import { LayerPosition } from '../../types/overlay';
+import { createLogger } from '../../utils/logger';
+
+const logger = createLogger('ImportOverlaysModal');
 
 interface ImportOverlaysModalProps {
   isOpen: boolean;
@@ -33,7 +36,7 @@ export function ImportOverlaysModal({ isOpen, onClose }: ImportOverlaysModalProp
         onClose();
       }
     } catch (error) {
-      console.error('Failed to open file dialog:', error);
+      logger.error('Failed to open file dialog:', error);
     } finally {
       setImporting(false);
     }

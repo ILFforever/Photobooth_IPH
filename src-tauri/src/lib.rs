@@ -20,6 +20,8 @@ mod upload_queue;
 mod gif_generator;
 mod system_requirements;
 mod version;
+mod ffmpeg_sidecar;
+mod ffmpeg_manager;
 
 // Re-export state
 use state::AppState;
@@ -42,6 +44,7 @@ use photobooth_sessions::*;
 use upload_queue::*;
 use upload_queue::queue::UploadQueue;
 use gif_generator::*;
+use ffmpeg_manager::*;
 use system_requirements::*;
 use version::*;
 
@@ -221,6 +224,11 @@ pub fn run() {
             close_splash_and_show_main,
             // GIF/Video Generation
             generate_gif,
+            check_ffmpeg_installed,
+            get_ffmpeg_version,
+            get_ffmpeg_size,
+            download_ffmpeg_command,
+            delete_ffmpeg_command,
             generate_slideshow_video,
             // QR Code
             utils::qr_code::generate_qr_code,

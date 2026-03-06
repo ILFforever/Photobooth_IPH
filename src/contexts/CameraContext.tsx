@@ -100,7 +100,7 @@ export function CameraProvider({ children }: { children: ReactNode }) {
   // Connection state machine helpers — ref-stable, reads from connectionStateRef
   const updateConnectionState = useCallback((newState: ConnectionState) => {
     if (newState !== connectionStateRef.current) {
-      //console.log(`[CameraContext] Connection state: ${connectionStateRef.current} -> ${newState}`);
+      //logger.debug(`[CameraContext] Connection state: ${connectionStateRef.current} -> ${newState}`);
       connectionStateRef.current = newState; // sync ref immediately for subsequent reads
       setConnectionState(newState);
     }
@@ -171,7 +171,7 @@ export function CameraProvider({ children }: { children: ReactNode }) {
     const cameraId = selectedCameraIdRef.current;
     if (cameraId) {
       fetch(`http://localhost:58321/api/controller/switch?camera=${cameraId}`, { method: 'POST' })
-        .catch((err) => console.warn('[CameraContext] Failed to re-register camera:', err));
+        .catch((err) => logger.warn('[CameraContext] Failed to re-register camera:', err));
     }
   }, [updateConnectionState]);
 
@@ -191,7 +191,7 @@ export function CameraProvider({ children }: { children: ReactNode }) {
       downloadTimeoutRef.current = null;
     }
     fetch('http://localhost:58321/api/controller/disconnect', { method: 'POST' })
-      .catch(err => console.warn('[CameraContext] Failed to send disconnect to controller:', err));
+      .catch(err => logger.warn('[CameraContext] Failed to send disconnect to controller:', err));
     CameraWebSocketManager.getInstance().disconnect();
   }, []);
 
@@ -200,10 +200,10 @@ export function CameraProvider({ children }: { children: ReactNode }) {
     try {
       const response = await fetch('http://localhost:58321/api/controller/pause-polling', { method: 'POST' });
       if (!response.ok) {
-        console.warn('[CameraContext] Failed to pause polling');
+        logger.warn('[CameraContext] Failed to pause polling');
       }
     } catch (err) {
-      console.warn('[CameraContext] Failed to send pause polling command:', err);
+      logger.warn('[CameraContext] Failed to send pause polling command:', err);
     }
   }, []);
 
@@ -212,10 +212,10 @@ export function CameraProvider({ children }: { children: ReactNode }) {
     try {
       const response = await fetch('http://localhost:58321/api/controller/resume-polling', { method: 'POST' });
       if (!response.ok) {
-        console.warn('[CameraContext] Failed to resume polling');
+        logger.warn('[CameraContext] Failed to resume polling');
       }
     } catch (err) {
-      console.warn('[CameraContext] Failed to send resume polling command:', err);
+      logger.warn('[CameraContext] Failed to send resume polling command:', err);
     }
   }, []);
 
@@ -276,7 +276,7 @@ export function CameraProvider({ children }: { children: ReactNode }) {
       }
 
       statusListenersRef.current.forEach(cb => {
-        try { cb(data); } catch (e) { console.error('[CameraContext] listener error:', e); }
+        try { cb(data); } catch (e) { logger.error('[CameraContext] listener error:', e); }
       });
     };
 
@@ -298,7 +298,7 @@ export function CameraProvider({ children }: { children: ReactNode }) {
     };
 
     const handleCaptureError = (data: CaptureErrorEvent) => {
-      console.error('[CameraContext] Capture error:', data.error);
+      logger.error('[CameraContext] Capture error:', data.error);
       setCaptureError(data.error);
     };
 
@@ -321,7 +321,7 @@ export function CameraProvider({ children }: { children: ReactNode }) {
       }
       setIsDownloading(false);
       photoDownloadedListenersRef.current.forEach(cb => {
-        try { cb(data); } catch (e) { console.error('[CameraContext] photo_downloaded listener error:', e); }
+        try { cb(data); } catch (e) { logger.error('[CameraContext] photo_downloaded listener error:', e); }
       });
     };
 
@@ -330,12 +330,12 @@ export function CameraProvider({ children }: { children: ReactNode }) {
     };
 
     const handleCameraConnectFailed = (data: { type: string; camera_id: string; error: string }) => {
-      console.error('[CameraContext] Camera connect failed:', data.error);
+      logger.error('[CameraContext] Camera connect failed:', data.error);
       setIsConnecting(false);
     };
 
     const handleCameraConnected = (data: { type: string; camera_id: string; manufacturer: string; model: string; port: string; usb_version: string; serial_number?: string; firmware?: string }) => {
-      console.log('[CameraContext] camera_connected event:', JSON.stringify(data));
+      logger.debug('[CameraContext] camera_connected event:', JSON.stringify(data));
       setIsConnecting(false);
       setIsCameraConnected(true);
       setHasEverConnected(true);
@@ -344,12 +344,12 @@ export function CameraProvider({ children }: { children: ReactNode }) {
     };
 
     const handlePollingPaused = () => {
-      console.log('[CameraContext] polling_paused event');
+      logger.debug('[CameraContext] polling_paused event');
       setIsPollingPaused(true);
     };
 
     const handlePollingResumed = () => {
-      console.log('[CameraContext] polling_resumed event');
+      logger.debug('[CameraContext] polling_resumed event');
       setIsPollingPaused(false);
     };
 

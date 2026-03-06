@@ -228,7 +228,6 @@ function ControlButtons({
   const canStartAuto = isCameraConnected && hasWorkingFolder;
 
   const handleCaptureClick = () => {
-    console.log('[PhotoboothControls] Capture button clicked, isActive:', isActive);
     if (!isCameraConnected) {
       onShowNoCameraWarning();
       return;

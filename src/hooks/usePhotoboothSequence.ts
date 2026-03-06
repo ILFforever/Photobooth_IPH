@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { triggerCapture } from '../services/cameraCaptureService';
+import { createLogger } from '../utils/logger';
+const logger = createLogger('usePhotoboothSequence');
 
 export type SequenceState = 'idle' | 'scramble' | 'countdown' | 'capturing' | 'photoConfirm' | 'waitingForPreview' | 'review' | 'betweenPhotos' | 'preCountdown' | 'complete' | 'manualReview';
 
@@ -117,25 +119,25 @@ export function usePhotoboothSequence(config: SequenceConfig): UsePhotoboothSequ
   // Completely separate from auto. Uses manualPhase state only.
   const captureNow = useCallback(() => {
     if (manualPhase !== 'idle') {
-      console.log('[PhotoboothSequence] captureNow skipped — manual capture already in progress');
+      logger.debug('[PhotoboothSequence] captureNow skipped — manual capture already in progress');
       return;
     }
     const autoState = sequenceStateRef.current;
     if (autoState !== 'idle' && autoState !== 'complete') {
-      console.log('[PhotoboothSequence] captureNow skipped — auto sequence active:', autoState);
+      logger.debug('[PhotoboothSequence] captureNow skipped — auto sequence active:', autoState);
       return;
     }
-    console.log('[PhotoboothSequence] captureNow — starting manual capture');
+    logger.debug('[PhotoboothSequence] captureNow — starting manual capture');
     setManualPhase('waiting');
 
     triggerCapture(config.onCaptureStart).then((response) => {
-      console.log('[PhotoboothSequence] Manual capture response:', response);
+      logger.debug('[PhotoboothSequence] Manual capture response:', response);
       if (!response.success) {
-        console.error('[PhotoboothSequence] Manual capture failed:', response.error);
+        logger.error('[PhotoboothSequence] Manual capture failed:', response.error);
         setManualPhase('idle');
       }
     }).catch((error) => {
-      console.error('[PhotoboothSequence] Manual capture error:', error);
+      logger.error('[PhotoboothSequence] Manual capture error:', error);
       setManualPhase('idle');
     });
   }, [manualPhase]);
@@ -180,11 +182,11 @@ export function usePhotoboothSequence(config: SequenceConfig): UsePhotoboothSequ
   // Called by workspace when photo_downloaded WS event arrives (auto only).
   const notifyCaptureComplete = useCallback(() => {
     if (!capturingRef.current) {
-      console.log('[PhotoboothSequence] notifyCaptureComplete — no active auto capture, ignoring');
+      logger.debug('[PhotoboothSequence] notifyCaptureComplete — no active auto capture, ignoring');
       return;
     }
 
-    console.log('[PhotoboothSequence] notifyCaptureComplete — advancing state machine');
+    logger.debug('[PhotoboothSequence] notifyCaptureComplete — advancing state machine');
     const newTaken = photosTaken + 1;
     setPhotosTaken(newTaken);
     capturingRef.current = false;
@@ -196,7 +198,7 @@ export function usePhotoboothSequence(config: SequenceConfig): UsePhotoboothSequ
 
     // Always go through review cycle, even for the last photo
     if (previewLoadedRef.current) {
-      console.log('[PhotoboothSequence] Preview already loaded, starting review immediately');
+      logger.debug('[PhotoboothSequence] Preview already loaded, starting review immediately');
       setReviewCountdown(config.photoReviewTime + 1);
       setSequenceState('review');
       previewLoadedRef.current = false;
@@ -209,7 +211,7 @@ export function usePhotoboothSequence(config: SequenceConfig): UsePhotoboothSequ
   const startReviewCountdown = useCallback(() => {
     // Manual path: preview loaded during manual capture
     if (manualPhase === 'waiting') {
-      console.log('[PhotoboothSequence] Preview loaded — starting manual review countdown');
+      logger.debug('[PhotoboothSequence] Preview loaded — starting manual review countdown');
       setManualReviewCountdown(config.photoReviewTime + 1);
       setManualPhase('review');
       return;
@@ -218,10 +220,10 @@ export function usePhotoboothSequence(config: SequenceConfig): UsePhotoboothSequ
     // Auto path: use ref to avoid stale closure (state may still be 'capturing'
     // in the closure when the preview image onLoad fires)
     const currentState = sequenceStateRef.current;
-    console.log('[PhotoboothSequence] startReviewCountdown (auto) — sequenceState:', currentState);
+    logger.debug('[PhotoboothSequence] startReviewCountdown (auto) — sequenceState:', currentState);
     previewLoadedRef.current = true;
     if (currentState === 'waitingForPreview') {
-      console.log('[PhotoboothSequence] Preview loaded — starting auto review countdown');
+      logger.debug('[PhotoboothSequence] Preview loaded — starting auto review countdown');
       setReviewCountdown(config.photoReviewTime + 1);
       setSequenceState('review');
     }
@@ -230,7 +232,7 @@ export function usePhotoboothSequence(config: SequenceConfig): UsePhotoboothSequ
   // External camera capture (not via button) — enters manual waiting
   const startManualReview = useCallback(() => {
     if (manualPhase !== 'idle') return;
-    console.log('[PhotoboothSequence] startManualReview — entering manual waiting');
+    logger.debug('[PhotoboothSequence] startManualReview — entering manual waiting');
     setManualPhase('waiting');
   }, [manualPhase]);
 
@@ -243,16 +245,16 @@ export function usePhotoboothSequence(config: SequenceConfig): UsePhotoboothSequ
       // Trigger the actual camera capture via daemon
       triggerCapture(config.onCaptureStart).then((response) => {
         if (!response.success) {
-          console.error('[PhotoboothSequence] Capture failed:', response.error);
+          logger.error('[PhotoboothSequence] Capture failed:', response.error);
         }
       }).catch((error) => {
-        console.error('[PhotoboothSequence] Capture error:', error);
+        logger.error('[PhotoboothSequence] Capture error:', error);
       });
 
       // Safety timeout: if no photo_downloaded arrives within 15s, advance anyway
       const safetyTimeout = setTimeout(() => {
         if (capturingRef.current) {
-          console.warn('[PhotoboothSequence] Safety timeout — advancing after 15s');
+          logger.warn('[PhotoboothSequence] Safety timeout — advancing after 15s');
           const newTaken = photosTaken + 1;
           setPhotosTaken(newTaken);
           capturingRef.current = false;
@@ -278,7 +280,7 @@ export function usePhotoboothSequence(config: SequenceConfig): UsePhotoboothSequ
   useEffect(() => {
     if (sequenceState === 'waitingForPreview') {
       if (previewLoadedRef.current) {
-        console.log('[PhotoboothSequence] Auto waitingForPreview — preview already loaded, starting review');
+        logger.debug('[PhotoboothSequence] Auto waitingForPreview — preview already loaded, starting review');
         setReviewCountdown(config.photoReviewTime + 1);
         setSequenceState('review');
         previewLoadedRef.current = false;
@@ -286,7 +288,7 @@ export function usePhotoboothSequence(config: SequenceConfig): UsePhotoboothSequ
         // Safety timeout: if preview never loads, use photoReviewTime + 4s
         const safetyTimeout = setTimeout(() => {
           if (sequenceStateRef.current === 'waitingForPreview') {
-            console.warn('[PhotoboothSequence] waitingForPreview safety timeout — continuing');
+            logger.warn('[PhotoboothSequence] waitingForPreview safety timeout — continuing');
             setReviewCountdown(config.photoReviewTime + 1);
             setSequenceState('review');
             previewLoadedRef.current = false;
@@ -307,11 +309,11 @@ export function usePhotoboothSequence(config: SequenceConfig): UsePhotoboothSequ
             // Use the current photosTaken value from state, not closure
             setPhotosTaken(currentTaken => {
               if (currentTaken >= config.autoCount) {
-                console.log('[PhotoboothSequence] Auto review ended — all photos taken, completing');
+                logger.debug('[PhotoboothSequence] Auto review ended — all photos taken, completing');
                 setCurrentCountdown(config.delayBeforeFirstPhoto);
                 setSequenceState('complete');
               } else {
-                console.log('[PhotoboothSequence] Auto review ended, continuing to betweenPhotos');
+                logger.debug('[PhotoboothSequence] Auto review ended, continuing to betweenPhotos');
                 const nextDelay = currentTaken >= 1 ? config.delayBetweenPhotos : config.delayBeforeFirstPhoto;
                 setCurrentCountdown(nextDelay);
                 setSequenceState('betweenPhotos');
@@ -353,7 +355,7 @@ export function usePhotoboothSequence(config: SequenceConfig): UsePhotoboothSequ
   useEffect(() => {
     if (manualPhase === 'waiting') {
       const timeout = setTimeout(() => {
-        console.warn('[PhotoboothSequence] Manual waiting safety timeout');
+        logger.warn('[PhotoboothSequence] Manual waiting safety timeout');
         setManualPhase('idle');
       }, (config.photoReviewTime + 3) * 1000);
       return () => clearTimeout(timeout);
@@ -367,7 +369,7 @@ export function usePhotoboothSequence(config: SequenceConfig): UsePhotoboothSequ
         setManualReviewCountdown(prev => {
           if (prev <= 1) {
             clearInterval(interval);
-            console.log('[PhotoboothSequence] Manual review ended, returning to idle');
+            logger.debug('[PhotoboothSequence] Manual review ended, returning to idle');
             setManualPhase('idle');
             return 0;
           }

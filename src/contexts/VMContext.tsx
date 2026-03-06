@@ -1,5 +1,8 @@
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { createLogger } from '../utils/logger';
+
+const logger = createLogger('VMContext');
 
 interface VMContextType {
   /** Whether the Linux VM is currently online (daemon responding) */
@@ -12,6 +15,8 @@ const VMContext = createContext<VMContextType | null>(null);
 
 /** Polling interval for VM health checks (milliseconds) */
 const VM_HEALTH_CHECK_INTERVAL = 5000; // Check every 5 seconds
+/** Polling interval for USB camera auto-attach (milliseconds) */
+const USB_ATTACH_INTERVAL = 1000; // Check every 1 second
 
 export function VMProvider({ children }: { children: ReactNode }) {
   const [isVmOnline, setIsVmOnline] = useState(false);
@@ -21,7 +26,7 @@ export function VMProvider({ children }: { children: ReactNode }) {
       const isOnline = await invoke<boolean>('check_vm_online');
       setIsVmOnline(isOnline);
     } catch (error) {
-      console.error('[VMContext] Failed to check VM status:', error);
+      logger.error('Failed to check VM status:', error);
       setIsVmOnline(false);
     }
   }, []);
@@ -38,6 +43,21 @@ export function VMProvider({ children }: { children: ReactNode }) {
 
     return () => clearInterval(intervalId);
   }, [checkVmStatus]);
+
+  // Poll USB camera attach every second, only while VM is online
+  useEffect(() => {
+    if (!isVmOnline) return;
+
+    const intervalId = setInterval(async () => {
+      try {
+        await invoke('attach_all_cameras');
+      } catch (error) {
+        logger.warn('USB auto-attach failed:', error);
+      }
+    }, USB_ATTACH_INTERVAL);
+
+    return () => clearInterval(intervalId);
+  }, [isVmOnline]);
 
   return (
     <VMContext.Provider value={{ isVmOnline, checkVmStatus }}>

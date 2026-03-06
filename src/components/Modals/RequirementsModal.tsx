@@ -6,6 +6,9 @@ import { useState, useEffect, useRef } from 'react';
 import { useToast } from '../../contexts/ToastContext';
 import { RefreshCw, Loader2 } from 'lucide-react';
 import './RequirementsModal.css';
+import { createLogger } from '../../utils/logger';
+
+const logger = createLogger('RequirementsModal');
 
 interface RequirementCheck {
   passed: boolean;
@@ -100,7 +103,7 @@ export default function RequirementsModal({
       // Start polling for VirtualBox installation
       startPollingForVirtualBox();
     } catch (error) {
-      console.error('Failed to launch VirtualBox installer:', error);
+      logger.error('Failed to launch VirtualBox installer:', error);
       // Fallback to download
       downloadVirtualBox();
     }

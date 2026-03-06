@@ -7,6 +7,9 @@
 
 import type { CameraBrand, StandardMode, StandardSetting } from './cameraBrands';
 import { detectBrand, normalizeMode, getBrandModeName, isSettingAdjustable } from './cameraBrands';
+import { createLogger } from '../utils/logger';
+
+const logger = createLogger('cameraSettingsService');
 
 const API_BASE = 'http://localhost:58321';
 
@@ -101,7 +104,7 @@ class CameraSettingsService {
   setCamera(cameraId: string, manufacturer: string, model: string): void {
     this.cameraId = cameraId;
     this.brand = detectBrand(manufacturer, model);
-    console.log(`[CameraSettingsService] Camera set to ${manufacturer} ${model}, brand: ${this.brand.name}`);
+    logger.debug(`[CameraSettingsService] Camera set to ${manufacturer} ${model}, brand: ${this.brand.name}`);
   }
 
   /**
@@ -130,12 +133,12 @@ class CameraSettingsService {
    */
   private async sendSetting(setting: string, value: string): Promise<boolean> {
     if (!this.cameraId) {
-      console.warn('[CameraSettingsService] No camera connected');
+      logger.warn('[CameraSettingsService] No camera connected');
       return false;
     }
 
     try {
-      console.log(`[CameraSettingsService] Setting ${setting} to ${value}`);
+      logger.debug(`[CameraSettingsService] Setting ${setting} to ${value}`);
       const response = await fetch(`${API_BASE}/api/camera/config${this.cameraId !== '0' ? `?camera=${this.cameraId}` : ''}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -143,13 +146,13 @@ class CameraSettingsService {
       });
 
       if (!response.ok) {
-        console.error(`[CameraSettingsService] Failed to set ${setting}:`, response.statusText);
+        logger.error(`[CameraSettingsService] Failed to set ${setting}:`, response.statusText);
         return false;
       }
 
       return true;
     } catch (error) {
-      console.error(`[CameraSettingsService] Error setting ${setting}:`, error);
+      logger.error(`[CameraSettingsService] Error setting ${setting}:`, error);
       return false;
     }
   }
@@ -162,7 +165,7 @@ class CameraSettingsService {
     const cameraMode = this.getCameraModeName(mode);
     // Use brand-specific mode widget name (Canon: 'autoexposuremode', Fuji/others: 'expprogram')
     const modeSetting = this.brand.quirks.modeSetting || 'expprogram';
-    console.log(`[CameraSettingsService] setMode: ${mode} -> camera mode: "${cameraMode}" (setting: ${modeSetting})`);
+    logger.debug(`[CameraSettingsService] setMode: ${mode} -> camera mode: "${cameraMode}" (setting: ${modeSetting})`);
 
     const result = await this.sendSetting(modeSetting, cameraMode);
 
@@ -177,7 +180,7 @@ class CameraSettingsService {
    * Set shutter speed
    */
   async setShutterSpeed(value: ShutterSpeedValue): Promise<boolean> {
-    console.log(`[CameraSettingsService] setShutterSpeed: ${value}`);
+    logger.debug(`[CameraSettingsService] setShutterSpeed: ${value}`);
 
     // The setting name is typically 'shutterspeed' for most cameras
     const result = await this.sendSetting('shutterspeed', value);
@@ -193,7 +196,7 @@ class CameraSettingsService {
    * Set aperture (f-number)
    */
   async setAperture(value: ApertureValue): Promise<boolean> {
-    console.log(`[CameraSettingsService] setAperture: ${value}, brand: ${this.brand.name} (${this.brand.id}), apertureSetting: ${this.brand.quirks.apertureSetting}`);
+    logger.debug(`[CameraSettingsService] setAperture: ${value}, brand: ${this.brand.name} (${this.brand.id}), apertureSetting: ${this.brand.quirks.apertureSetting}`);
 
     // Get brand-specific aperture setting name
     const settingName = this.brand.quirks.apertureSetting || 'f-number';
@@ -222,7 +225,7 @@ class CameraSettingsService {
    * Set ISO
    */
   async setIso(value: IsoValue): Promise<boolean> {
-    console.log(`[CameraSettingsService] setIso: ${value}`);
+    logger.debug(`[CameraSettingsService] setIso: ${value}`);
 
     const result = await this.sendSetting('iso', value);
 
@@ -239,7 +242,7 @@ class CameraSettingsService {
    * For Canon/others, uses standard exposurecompensation with direct values
    */
   async setEv(value: EvValue): Promise<boolean> {
-    console.log(`[CameraSettingsService] setEv: ${value}`);
+    logger.debug(`[CameraSettingsService] setEv: ${value}`);
 
     const evSetting = this.brand.quirks.evSetting || 'exposurecompensation';
     let sendValue = value;
@@ -249,14 +252,14 @@ class CameraSettingsService {
       const mapped = FUJI_EV_MAP[value];
       if (mapped) {
         sendValue = mapped;
-        console.log(`[CameraSettingsService] Fuji EV conversion: ${value} -> ${sendValue}`);
+        logger.debug(`[CameraSettingsService] Fuji EV conversion: ${value} -> ${sendValue}`);
       } else {
-        console.warn(`[CameraSettingsService] No Fuji EV map entry for ${value}, sending as-is`);
+        logger.warn(`[CameraSettingsService] No Fuji EV map entry for ${value}, sending as-is`);
       }
     } else if (this.brand.id === 'canon') {
       // Canon: strip "+" prefix — camera expects plain decimal (e.g., "+0.3" -> "0.3")
       sendValue = canonEvToCamera(value);
-      console.log(`[CameraSettingsService] Canon EV: ${value} -> ${sendValue}`);
+      logger.debug(`[CameraSettingsService] Canon EV: ${value} -> ${sendValue}`);
     }
     // Others: use the value directly
 
@@ -274,7 +277,7 @@ class CameraSettingsService {
    * Maps display labels to camera-specific values
    */
   async setWhiteBalance(value: WbValue): Promise<boolean> {
-    console.log(`[CameraSettingsService] setWhiteBalance: ${value}`);
+    logger.debug(`[CameraSettingsService] setWhiteBalance: ${value}`);
 
     // Map display labels to camera-specific values (must match exact gphoto2 choices)
     let wbMap: Record<string, string>;
@@ -321,7 +324,7 @@ class CameraSettingsService {
 
     // Map the display value to camera value, or use as-is if not in map
     const cameraValue = wbMap[value] || value;
-    console.log(`[CameraSettingsService] WB mapping for ${this.brand.name}: "${value}" -> "${cameraValue}"`);
+    logger.debug(`[CameraSettingsService] WB mapping for ${this.brand.name}: "${value}" -> "${cameraValue}"`);
 
     const result = await this.sendSetting('whitebalance', cameraValue);
 
@@ -336,7 +339,7 @@ class CameraSettingsService {
    * Set metering mode
    */
   async setMetering(value: MeteringValue): Promise<boolean> {
-    console.log(`[CameraSettingsService] setMetering: ${value}`);
+    logger.debug(`[CameraSettingsService] setMetering: ${value}`);
 
     // Get brand-specific metering setting name
     const meteringSetting = this.brand.quirks.meteringSetting || 'meteringmode';
@@ -385,7 +388,7 @@ class CameraSettingsService {
    * Set focus mode
    */
   async setFocusMode(value: FocusModeValue): Promise<boolean> {
-    console.log(`[CameraSettingsService] setFocusMode: ${value}`);
+    logger.debug(`[CameraSettingsService] setFocusMode: ${value}`);
 
     let focusModeMap: Record<FocusModeValue, string>;
 
@@ -517,12 +520,12 @@ class CameraSettingsService {
 
       // Only return closest match if within reasonable tolerance (1/3 EV)
       if (closestIdx !== -1 && closestDiff < 0.4) {
-        console.log(`[CameraSettingsService] EV closest match: ${cameraEv} -> ${options[closestIdx]} (diff: ${closestDiff.toFixed(3)})`);
+        logger.debug(`[CameraSettingsService] EV closest match: ${cameraEv} -> ${options[closestIdx]} (diff: ${closestDiff.toFixed(3)})`);
         return closestIdx;
       }
     }
 
-    console.warn(`[CameraSettingsService] EV value "${cameraEv}" could not be mapped to options`);
+    logger.warn(`[CameraSettingsService] EV value "${cameraEv}" could not be mapped to options`);
     return -1;
   }
 
@@ -578,7 +581,7 @@ class CameraSettingsService {
    * Converts display value to camera format and uses the correct setting name
    */
   setEvFromDisplay(displayValue: string): Promise<boolean> {
-    console.log(`[CameraSettingsService] setEvFromDisplay: ${displayValue}`);
+    logger.debug(`[CameraSettingsService] setEvFromDisplay: ${displayValue}`);
 
     const evSetting = this.brand.quirks.evSetting || 'exposurecompensation';
     let mappedValue: string;
@@ -586,15 +589,15 @@ class CameraSettingsService {
     if (this.brand.id === 'fuji') {
       // Fuji: Convert display decimal to ×1000 format
       mappedValue = FUJI_EV_MAP[displayValue] || displayValue;
-      console.log(`[CameraSettingsService] Fuji EV conversion: ${displayValue} -> ${mappedValue} (setting: ${evSetting})`);
+      logger.debug(`[CameraSettingsService] Fuji EV conversion: ${displayValue} -> ${mappedValue} (setting: ${evSetting})`);
     } else if (this.brand.id === 'canon') {
       // Canon: strip "+" prefix — camera expects plain decimal (e.g., "+0.3" -> "0.3")
       mappedValue = canonEvToCamera(displayValue);
-      console.log(`[CameraSettingsService] Canon EV: ${displayValue} -> ${mappedValue} (setting: ${evSetting})`);
+      logger.debug(`[CameraSettingsService] Canon EV: ${displayValue} -> ${mappedValue} (setting: ${evSetting})`);
     } else {
       // Others: Use display value directly
       mappedValue = displayValue;
-      console.log(`[CameraSettingsService] Setting EV: ${displayValue} (setting: ${evSetting})`);
+      logger.debug(`[CameraSettingsService] Setting EV: ${displayValue} (setting: ${evSetting})`);
     }
 
     return this.sendSetting(evSetting, mappedValue);

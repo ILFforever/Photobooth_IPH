@@ -10,6 +10,9 @@ import { DEFAULT_TRANSFORM } from "../../types/collage";
 import { Background } from "../../types/background";
 import FloatingFrameSelector from "./FloatingFrameSelector";
 import { OverlayLayer as OverlayLayerComponent } from "./OverlayLayer";
+import { createLogger } from '../../utils/logger';
+
+const logger = createLogger('CollageCanvas');
 
 interface EditableZoneProps {
   zone: FrameZone;
@@ -908,8 +911,8 @@ function ImageZone({ zone }: ImageZoneProps) {
         const rawImgAspect = imgWidth / imgHeight;
         const zoneAspect = zoneWidthPx / zoneHeightPx;
 
-        console.log('Raw image aspect ratio (width/height):', rawImgAspect.toFixed(4));
-        console.log('Zone aspect ratio (width/height):', zoneAspect.toFixed(4));
+        logger.debug('Raw image aspect ratio (width/height):', rawImgAspect.toFixed(4));
+        logger.debug('Zone aspect ratio (width/height):', zoneAspect.toFixed(4));
 
         // Detect if dimensions might be swapped due to EXIF orientation
         // If image is much wider than zone (aspect > 1.2x different), it might need swapping
@@ -918,53 +921,53 @@ function ImageZone({ zone }: ImageZoneProps) {
         const mightBeSwapped = rawImgAspect > 1.0 && zoneAspect < 1.0 && aspectRatioDiff > 0.3;
 
         if (mightBeSwapped) {
-          console.log('⚠️ Dimensions might be swapped due to EXIF orientation');
-          console.log('   Image looks landscape but zone is portrait');
-          console.log('   Aspect ratio difference:', aspectRatioDiff.toFixed(4));
+          logger.debug('⚠️ Dimensions might be swapped due to EXIF orientation');
+          logger.debug('   Image looks landscape but zone is portrait');
+          logger.debug('   Aspect ratio difference:', aspectRatioDiff.toFixed(4));
         }
 
         const imgAspect = imgWidth / imgHeight;
         const imgIsWider = imgAspect > zoneAspect;
 
-        console.log('Image is wider than zone?', imgIsWider);
+        logger.debug('Image is wider than zone?', imgIsWider);
 
         if (imgIsWider) {
           // Image is wider - constrained by zone width, leaving gaps top/bottom
           // objectFit: 'contain' will scale image to fit zone width
           // Rendered height = zoneWidth / imgAspect
           const renderedHeight = zoneWidthPx / imgAspect;
-          console.log('objectFit:contain will render image at:', zoneWidthPx.toFixed(0), 'x', renderedHeight.toFixed(0));
-          console.log('Empty space top/bottom:', (zoneHeightPx - renderedHeight).toFixed(0), 'px');
+          logger.debug('objectFit:contain will render image at:', zoneWidthPx.toFixed(0), 'x', renderedHeight.toFixed(0));
+          logger.debug('Empty space top/bottom:', (zoneHeightPx - renderedHeight).toFixed(0), 'px');
 
           // We need to scale up so height fills the zone
           // Scale needed = zoneHeight / renderedHeight
           // Which simplifies to: (zoneHeight * imgAspect) / zoneWidth = imgAspect / zoneAspect
           scale = imgAspect / zoneAspect;
-          console.log('Scale needed to fill height:', scale.toFixed(4));
-          console.log('Image is width-constrained, scaling to fill height');
+          logger.debug('Scale needed to fill height:', scale.toFixed(4));
+          logger.debug('Image is width-constrained, scaling to fill height');
         } else {
           // Image is taller - constrained by zone height, leaving gaps left/right
           // objectFit: 'contain' will scale image to fit zone height
           // Rendered width = zoneHeight * imgAspect
           const renderedWidth = zoneHeightPx * imgAspect;
-          console.log('objectFit:contain will render image at:', renderedWidth.toFixed(0), 'x', zoneHeightPx.toFixed(0));
-          console.log('Empty space left/right:', (zoneWidthPx - renderedWidth).toFixed(0), 'px');
+          logger.debug('objectFit:contain will render image at:', renderedWidth.toFixed(0), 'x', zoneHeightPx.toFixed(0));
+          logger.debug('Empty space left/right:', (zoneWidthPx - renderedWidth).toFixed(0), 'px');
 
           // We need to scale up so width fills the zone
           // Scale needed = zoneWidth / renderedWidth
           // Which simplifies to: zoneWidth / (zoneHeight * imgAspect) = zoneAspect / imgAspect
           scale = zoneAspect / imgAspect;
-          console.log('Scale needed to fill width:', scale.toFixed(4));
-          console.log('Image is height-constrained, scaling to fill width');
+          logger.debug('Scale needed to fill width:', scale.toFixed(4));
+          logger.debug('Image is height-constrained, scaling to fill width');
         }
 
-        console.log('Calculated scale:', scale.toFixed(4));
-        console.log('==================');
+        logger.debug('Calculated scale:', scale.toFixed(4));
+        logger.debug('==================');
       }
 
       // Snap to 1.0 if difference is negligible (~1%), otherwise round up to nearest 0.1
       const scaleRounded = (scale > 0.99 && scale < 1.01) ? 1.0 : Math.ceil(scale * 10 - 1e-9) / 10;
-      console.log('Final rounded scale:', scaleRounded.toFixed(2));
+      logger.debug('Final rounded scale:', scaleRounded.toFixed(2));
 
       const placedImageData = {
         sourceFile: item.path,
@@ -974,10 +977,10 @@ function ImageZone({ zone }: ImageZoneProps) {
         originalScale: scaleRounded, // Store the optimal scale for reset
       };
 
-      console.log('=== ADDING PLACED IMAGE ===');
-      console.log('Zone ID:', zone.id);
-      console.log('Placed image data:', placedImageData);
-      console.log('===========================');
+      logger.debug('=== ADDING PLACED IMAGE ===');
+      logger.debug('Zone ID:', zone.id);
+      logger.debug('Placed image data:', placedImageData);
+      logger.debug('===========================');
 
       addPlacedImage(zone.id, placedImageData);
     },
@@ -1118,13 +1121,13 @@ function ImageZone({ zone }: ImageZoneProps) {
           offsetY = 0;
         }
 
-        console.log('=== IMAGE SIZE CALCULATION ===');
-        console.log('Zone ID:', zone.id);
-        console.log('containerSize:', { width: containerWidth, height: containerHeight });
-        console.log('imageNaturalSize:', { width: imgNaturalWidth, height: imgNaturalHeight });
-        console.log('aspects:', { container: containerAspect.toFixed(4), image: imgAspect.toFixed(4) });
-        console.log('calculated:', { renderWidth, renderHeight, offsetX, offsetY });
-        console.log('============================');
+        logger.debug('=== IMAGE SIZE CALCULATION ===');
+        logger.debug('Zone ID:', zone.id);
+        logger.debug('containerSize:', { width: containerWidth, height: containerHeight });
+        logger.debug('imageNaturalSize:', { width: imgNaturalWidth, height: imgNaturalHeight });
+        logger.debug('aspects:', { container: containerAspect.toFixed(4), image: imgAspect.toFixed(4) });
+        logger.debug('calculated:', { renderWidth, renderHeight, offsetX, offsetY });
+        logger.debug('============================');
 
         setImageSize({ width: renderWidth, height: renderHeight, left: offsetX, top: offsetY });
       };
@@ -1225,17 +1228,17 @@ function ImageZone({ zone }: ImageZoneProps) {
             draggable={false}
             onMouseDown={handleImageMouseDown}
             onLoad={() => {
-              console.log('=== IMAGE LOADED ===');
-              console.log('Zone ID:', zone.id);
-              console.log('Image src:', imageSrc);
-              console.log('====================');
+              logger.debug('=== IMAGE LOADED ===');
+              logger.debug('Zone ID:', zone.id);
+              logger.debug('Image src:', imageSrc);
+              logger.debug('====================');
             }}
             onError={(e) => {
-              console.error('=== IMAGE LOAD ERROR ===');
-              console.error('Zone ID:', zone.id);
-              console.error('Image src:', imageSrc);
-              console.error('Error:', e);
-              console.error('========================');
+              logger.error('=== IMAGE LOAD ERROR ===');
+              logger.error('Zone ID:', zone.id);
+              logger.error('Image src:', imageSrc);
+              logger.error('Error:', e);
+              logger.error('========================');
             }}
             style={{
               width: '100%',
@@ -1799,7 +1802,7 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
         const zone = currentFrame.zones.find(z => z.id === selectedZone);
         if (zone) {
           setCopiedZone(zone);
-          console.log('Zone copied:', zone);
+          logger.debug('Zone copied:', zone);
         }
       }
 
@@ -1830,7 +1833,7 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
 
         // Select the newly pasted zone
         setSelectedZone(newZone.id);
-        console.log('Zone pasted:', newZone);
+        logger.debug('Zone pasted:', newZone);
       }
 
       // Delete or Backspace to delete selected zone
@@ -1896,11 +1899,11 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
             // Calculate new scroll position to center the target point
             const newScrollTop = targetPointY - viewportMiddleY;
 
-            console.log('=== Zoom-to-Point ===');
-            console.log('zoomCenter:', zoomCenter);
-            console.log('canvasMiddleY:', canvasMiddleY, 'targetOffsetY:', targetOffsetY);
-            console.log('currentScrollTop:', currentScrollTop, 'newScrollTop:', newScrollTop);
-            console.log('====================');
+            logger.debug('=== Zoom-to-Point ===');
+            logger.debug('zoomCenter:', zoomCenter);
+            logger.debug('canvasMiddleY:', canvasMiddleY, 'targetOffsetY:', targetOffsetY);
+            logger.debug('currentScrollTop:', currentScrollTop, 'newScrollTop:', newScrollTop);
+            logger.debug('====================');
 
             scrollableParent.scrollTo({
               left: currentScrollLeft,

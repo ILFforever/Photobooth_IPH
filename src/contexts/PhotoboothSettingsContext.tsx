@@ -173,7 +173,7 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
             },
           });
         } catch (error) {
-          console.error('Failed to save delay settings:', error);
+          logger.error('Failed to save delay settings:', error);
         }
       };
       saveDelaySettings();
@@ -194,7 +194,7 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
             },
           });
         } catch (error) {
-          console.error('Failed to save photobooth settings:', error);
+          logger.error('Failed to save photobooth settings:', error);
         }
       };
       savePhotoboothSettings();
@@ -215,7 +215,7 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
             },
           });
         } catch (error) {
-          console.error('Failed to save GIF settings:', error);
+          logger.error('Failed to save GIF settings:', error);
         }
       };
       saveGifSettings();
@@ -227,11 +227,11 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
     sessionId: string,
     sessionName: string
   ): Promise<void> => {
-    console.log('[createDriveFolderForSession] Called with:', { sessionId, sessionName, account, workingFolder, rootFolder });
+    logger.debug('[createDriveFolderForSession] Called with:', { sessionId, sessionName, account, workingFolder, rootFolder });
 
     // Check if user is logged in
     if (!account) {
-      console.log('[createDriveFolderForSession] No account, showing warning');
+      logger.debug('[createDriveFolderForSession] No account, showing warning');
       showToast(
         'Google Drive Not Connected',
         'warning',
@@ -243,7 +243,7 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
 
     // Check if working folder is set
     if (!workingFolder) {
-      console.log('[createDriveFolderForSession] No working folder, showing warning');
+      logger.debug('[createDriveFolderForSession] No working folder, showing warning');
       showToast(
         'Working Folder Not Set',
         'warning',
@@ -255,7 +255,7 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
 
     // Check if Drive root folder is set
     if (!rootFolder) {
-      console.log('[createDriveFolderForSession] No root folder, showing warning');
+      logger.debug('[createDriveFolderForSession] No root folder, showing warning');
       showToast(
         'Drive Folder Not Configured',
         'warning',
@@ -265,7 +265,7 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
       return;
     }
 
-    console.log('[createDriveFolderForSession] All validations passed, creating Drive folder...');
+    logger.debug('[createDriveFolderForSession] All validations passed, creating Drive folder...');
     try {
       await sessionDrive.initializeSessionDriveFolder(
         workingFolder,
@@ -282,7 +282,7 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
       // Refresh sessions to update UI with new Drive metadata
       await refreshSessions();
     } catch (error) {
-      console.error('Failed to create Drive folder:', error);
+      logger.error('Failed to create Drive folder:', error);
       showToast(
         'Failed to Create Drive Folder',
         'error',
@@ -419,7 +419,7 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
         });
       }
     } catch (error) {
-      console.error('Failed to refresh sessions:', error);
+      logger.error('Failed to refresh sessions:', error);
     } finally {
       setIsLoadingSessions(false);
     }
@@ -490,7 +490,7 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
         sessionId,
       });
     } catch (error) {
-      console.error('Failed to load session:', error);
+      logger.error('Failed to load session:', error);
       throw error;
     }
   }, [workingFolder]);
@@ -699,7 +699,7 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
         `Folder removed for session: ${sessionName}`
       );
     } catch (error) {
-      console.error('Failed to delete Drive folder:', error);
+      logger.error('Failed to delete Drive folder:', error);
       showToast(
         'Failed to Remove Drive Folder',
         'error',
@@ -766,7 +766,7 @@ export function PhotoboothSettingsProvider({ children }: { children: ReactNode }
         `Deleted "${filename}"`
       );
     } catch (error) {
-      console.error('Failed to delete photo:', error);
+      logger.error('Failed to delete photo:', error);
       showToast(
         'Failed to Delete Photo',
         'error',

@@ -1,4 +1,7 @@
 import { motion } from "framer-motion";
+import { createLogger } from '../../utils/logger';
+
+const logger = createLogger('ImageGallery');
 
 interface ImageGalleryProps {
   selectedImages: string[];
@@ -72,7 +75,7 @@ const ImageGallery = ({
                     onLoad={() => {
                       onImageLoaded(imagePath);
                     }}
-                    onError={(e) => console.error(`Image ${index} failed to load:`, imagePath, e)}
+                    onError={(e) => logger.error(`Image ${index} failed to load:`, imagePath, e)}
                   />
                   <button
                     className="remove-image-btn"

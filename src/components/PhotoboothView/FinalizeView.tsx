@@ -1,13 +1,23 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { ChevronLeft, Monitor, MonitorOff, ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
+import {
+  ChevronLeft,
+  Monitor,
+  MonitorOff,
+  ZoomIn,
+  ZoomOut,
+  RotateCcw,
+} from "lucide-react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { emitTo } from '@tauri-apps/api/event';
+import { emitTo } from "@tauri-apps/api/event";
 import { Frame, FrameZone } from "../../types/frame";
 import { PlacedImage } from "../../types/collage";
 import { usePhotobooth } from "../../contexts/PhotoboothContext";
 import { autoPlacePhotos, PhotoForPlacement } from "../../utils/autoPlacement";
 import { useToast } from "../../contexts/ToastContext";
 import "./FinalizeView.css";
+import { createLogger } from '../../utils/logger';
+
+const logger = createLogger('FinalizeView');
 
 interface CurrentSetPhoto {
   id: string;
@@ -23,9 +33,14 @@ interface FinalizeViewProps {
   sessionFolderName: string;
   onBack: () => void;
   updateGuestDisplay: (data: {
-    currentSetPhotos?: Array<{ id: string; thumbnailUrl: string; fullUrl?: string; timestamp: string }>;
+    currentSetPhotos?: Array<{
+      id: string;
+      thumbnailUrl: string;
+      fullUrl?: string;
+      timestamp: string;
+    }>;
     selectedPhotoIndex?: number | null;
-    displayMode?: 'single' | 'center' | 'canvas' | 'finalize';
+    displayMode?: "single" | "center" | "canvas" | "finalize";
     liveViewStream?: boolean;
     hdmiStreamActive?: boolean;
     showCapturePreview?: boolean;
@@ -76,6 +91,7 @@ export default function FinalizeView({
   const [isCompositing, setIsCompositing] = useState(false);
   const [hasEverZoomed, setHasEverZoomed] = useState(false);
   const canvasRef = useRef<HTMLDivElement>(null);
+  const autoTriggerRef = useRef(false); // Track if we've auto-triggered send to display
 
   // Zoom state — local to FinalizeView (same pattern as CollageCanvas)
   const [localZoom, setLocalZoom] = useState(1);
@@ -110,8 +126,14 @@ export default function FinalizeView({
   }, []);
 
   // Canvas dimensions — same logic as CollageCanvas
-  const canvasWidth = autoMatchBackground && backgroundDimensions ? backgroundDimensions.width : canvasSize?.width ?? frame.width;
-  const canvasHeight = autoMatchBackground && backgroundDimensions ? backgroundDimensions.height : canvasSize?.height ?? frame.height;
+  const canvasWidth =
+    autoMatchBackground && backgroundDimensions
+      ? backgroundDimensions.width
+      : (canvasSize?.width ?? frame.width);
+  const canvasHeight =
+    autoMatchBackground && backgroundDimensions
+      ? backgroundDimensions.height
+      : (canvasSize?.height ?? frame.height);
 
   // Check if background is a solid color
   const isSolidColor = useMemo(() => {
@@ -122,10 +144,10 @@ export default function FinalizeView({
   // Convert background path to displayable URL
   const bgSrc = useMemo(() => {
     if (!background || isSolidColor) return null;
-    if (background.startsWith('http') || background.startsWith('data:')) {
+    if (background.startsWith("http") || background.startsWith("data:")) {
       return background;
     }
-    return convertFileSrc(background.replace('asset://', ''));
+    return convertFileSrc(background.replace("asset://", ""));
   }, [background, isSolidColor]);
 
   // Keep refs in sync
@@ -134,6 +156,8 @@ export default function FinalizeView({
     setLocalZoomRef.current = setLocalZoom;
     setZoomCenterRef.current = setZoomCenter;
   }, [localZoom, setLocalZoom, setZoomCenter]);
+
+
 
   // Handle Ctrl+Scroll to zoom from mouse position
   const handleWheel = useCallback((e: WheelEvent) => {
@@ -169,9 +193,10 @@ export default function FinalizeView({
       const touch2 = e.touches[1];
       const distance = Math.hypot(
         touch2.clientX - touch1.clientX,
-        touch2.clientY - touch1.clientY
+        touch2.clientY - touch1.clientY,
       );
-      (e.currentTarget as HTMLElement).dataset.pinchDistance = distance.toString();
+      (e.currentTarget as HTMLElement).dataset.pinchDistance =
+        distance.toString();
     }
   }, []);
 
@@ -182,16 +207,19 @@ export default function FinalizeView({
       const touch2 = e.touches[1];
       const distance = Math.hypot(
         touch2.clientX - touch1.clientX,
-        touch2.clientY - touch1.clientY
+        touch2.clientY - touch1.clientY,
       );
-      const initialDistance = parseFloat((e.currentTarget as HTMLElement).dataset.pinchDistance || '0');
+      const initialDistance = parseFloat(
+        (e.currentTarget as HTMLElement).dataset.pinchDistance || "0",
+      );
 
       if (initialDistance > 0) {
         const delta = (distance - initialDistance) * 0.01;
         const currentZoom = localZoomRef.current;
         const newZoom = Math.max(0.5, Math.min(3, currentZoom + delta));
         setLocalZoomRef.current(newZoom);
-        (e.currentTarget as HTMLElement).dataset.pinchDistance = distance.toString();
+        (e.currentTarget as HTMLElement).dataset.pinchDistance =
+          distance.toString();
       }
     }
   }, []);
@@ -200,25 +228,30 @@ export default function FinalizeView({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (canvas) {
-      canvas.addEventListener('wheel', handleWheel, { passive: false });
-      canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
-      canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+      canvas.addEventListener("wheel", handleWheel, { passive: false });
+      canvas.addEventListener("touchstart", handleTouchStart, {
+        passive: false,
+      });
+      canvas.addEventListener("touchmove", handleTouchMove, { passive: false });
 
       return () => {
-        canvas.removeEventListener('wheel', handleWheel);
-        canvas.removeEventListener('touchstart', handleTouchStart);
-        canvas.removeEventListener('touchmove', handleTouchMove);
+        canvas.removeEventListener("wheel", handleWheel);
+        canvas.removeEventListener("touchstart", handleTouchStart);
+        canvas.removeEventListener("touchmove", handleTouchMove);
       };
     }
   }, [handleWheel, handleTouchStart, handleTouchMove]);
 
   // Handle clicks on background to deselect
-  const handleBackgroundClick = useCallback((e: React.MouseEvent) => {
-    // Only clear selection if clicking directly on the background (not on canvas or zones)
-    if (e.target === e.currentTarget) {
-      setEditingZoneId(null);
-    }
-  }, [setEditingZoneId]);
+  const handleBackgroundClick = useCallback(
+    (e: React.MouseEvent) => {
+      // Only clear selection if clicking directly on the background (not on canvas or zones)
+      if (e.target === e.currentTarget) {
+        setEditingZoneId(null);
+      }
+    },
+    [setEditingZoneId],
+  );
 
   // Handle clicks on canvas background (between zones) to deselect
   const handleCanvasClick = useCallback(() => {
@@ -239,7 +272,9 @@ export default function FinalizeView({
       const canvas = canvasRef.current;
       if (canvas) {
         setTimeout(() => {
-          const scrollableParent = canvas.closest('.finalize-content') as HTMLElement;
+          const scrollableParent = canvas.closest(
+            ".finalize-content",
+          ) as HTMLElement;
           if (scrollableParent) {
             const canvasRect = canvas.getBoundingClientRect();
             const viewportRect = scrollableParent.getBoundingClientRect();
@@ -247,7 +282,11 @@ export default function FinalizeView({
             const currentScrollTop = scrollableParent.scrollTop;
             const currentScrollLeft = scrollableParent.scrollLeft;
 
-            const canvasMiddleY = canvasRect.top - viewportRect.top + currentScrollTop + (canvasRect.height / 2);
+            const canvasMiddleY =
+              canvasRect.top -
+              viewportRect.top +
+              currentScrollTop +
+              canvasRect.height / 2;
             const viewportMiddleY = viewportRect.height / 2;
 
             const targetOffsetY = zoomCenter.y * (canvasRect.height / 2);
@@ -257,7 +296,7 @@ export default function FinalizeView({
             scrollableParent.scrollTo({
               left: currentScrollLeft,
               top: newScrollTop,
-              behavior: 'instant'
+              behavior: "instant",
             });
           }
         }, 0);
@@ -276,14 +315,17 @@ export default function FinalizeView({
   const finalScale = baseScale * localZoom;
 
   // Track previous photo IDs to prevent redundant placement
-  const prevPhotoIdsRef = useRef<string>('');
+  const prevPhotoIdsRef = useRef<string>("");
 
   // Auto-place photos into zones on mount or when photos actually change
   useEffect(() => {
     let aborted = false;
 
     // Create a stable ID string from selectedPhotos to detect actual changes
-    const currentPhotoIds = selectedPhotos.map(p => p.id).sort().join(',');
+    const currentPhotoIds = selectedPhotos
+      .map((p) => p.id)
+      .sort()
+      .join(",");
 
     // Skip if photos haven't actually changed (prevent infinite loop)
     if (currentPhotoIds === prevPhotoIdsRef.current) {
@@ -301,14 +343,17 @@ export default function FinalizeView({
               const filePath = `${workingFolder}/${sessionFolderName}/${photo.id}`;
               img.onload = () => {
                 if (!aborted) {
-                  dimsMap.set(photo.id, { width: img.naturalWidth, height: img.naturalHeight });
+                  dimsMap.set(photo.id, {
+                    width: img.naturalWidth,
+                    height: img.naturalHeight,
+                  });
                 }
                 resolve();
               };
               img.onerror = () => resolve();
               img.src = convertFileSrc(filePath);
-            })
-        )
+            }),
+        ),
       );
 
       if (aborted) return;
@@ -330,14 +375,22 @@ export default function FinalizeView({
     };
 
     loadAndPlace();
-    return () => { aborted = true; };
-  }, [frame, selectedPhotos, workingFolder, sessionFolderName, setPlacedImages]);
+    return () => {
+      aborted = true;
+    };
+  }, [
+    frame,
+    selectedPhotos,
+    workingFolder,
+    sessionFolderName,
+    setPlacedImages,
+  ]);
 
   // Toggle display on guest screen
   const handleToggleDisplay = useCallback(async () => {
     if (isDisplayingOnGuest) {
       updateGuestDisplay({
-        displayMode: 'center',
+        displayMode: "center",
         finalizeImageUrl: null,
         finalizeQrData: null,
       });
@@ -347,7 +400,12 @@ export default function FinalizeView({
 
     // Check if another operation is already generating
     if (isGeneratingCollage) {
-      showToast('Please wait', 'warning', 2000, 'Collage is being generated...');
+      showToast(
+        "Please wait",
+        "warning",
+        2000,
+        "Collage is being generated...",
+      );
       return;
     }
 
@@ -365,18 +423,26 @@ export default function FinalizeView({
         // Collage already saved to disk by print/QR — load directly
         const filePath = `${workingFolder}/${sessionFolderName}/${currentCollageFilename}`;
         imageUrl = convertFileSrc(filePath);
-        showToast('Using cached collage', 'success', 2000, currentCollageFilename);
+        showToast(
+          "Using cached collage",
+          "success",
+          2000,
+          currentCollageFilename,
+        );
       } else {
         // First time: composite, save to disk, then use file URL
         setIsGeneratingCollage(true);
         const exportResult = await exportPhotoboothCanvasAsPNG();
-        if (!exportResult) throw new Error('Export returned null');
+        if (!exportResult) throw new Error("Export returned null");
 
-        const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-        const randomStr = Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+        const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+        const randomStr = Array.from(
+          { length: 8 },
+          () => chars[Math.floor(Math.random() * chars.length)],
+        ).join("");
         const filename = `Collage_${randomStr}.png`;
 
-        await invoke('save_file_to_session_folder', {
+        await invoke("save_file_to_session_folder", {
           folderPath: workingFolder,
           sessionId: sessionFolderName,
           filename,
@@ -390,7 +456,7 @@ export default function FinalizeView({
       }
 
       const displayData = {
-        displayMode: 'finalize' as const,
+        displayMode: "finalize" as const,
         finalizeImageUrl: imageUrl,
         finalizeQrData: qrData || null,
       };
@@ -399,29 +465,57 @@ export default function FinalizeView({
         // updateGuestDisplay won't work here — isSecondScreenOpen is stale in its closure.
         // Send multiple times to ensure the guest window receives it once its listeners are ready.
         for (const delay of [500, 1000, 2000]) {
-          await new Promise(resolve => setTimeout(resolve, delay));
-          emitTo('guest-display', 'guest-display:update', displayData);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          emitTo("guest-display", "guest-display:update", displayData);
         }
       } else {
         updateGuestDisplay(displayData);
       }
       setIsDisplayingOnGuest(true);
     } catch (err) {
-      console.error('[FinalizeView] Failed to composite frame:', err);
+      logger.error("[FinalizeView] Failed to composite frame:", err);
       setIsGeneratingCollage(false);
     } finally {
       setIsCompositing(false);
     }
-  }, [isDisplayingOnGuest, isSecondScreenOpen, updateGuestDisplay, openSecondScreen, qrData, currentCollageFilename, workingFolder, sessionFolderName, exportPhotoboothCanvasAsPNG, setCurrentCollageFilename, isGeneratingCollage, showToast]);
+  }, [
+    isDisplayingOnGuest,
+    isSecondScreenOpen,
+    updateGuestDisplay,
+    openSecondScreen,
+    qrData,
+    currentCollageFilename,
+    workingFolder,
+    sessionFolderName,
+    exportPhotoboothCanvasAsPNG,
+    setCurrentCollageFilename,
+    isGeneratingCollage,
+    showToast,
+  ]);
+
+  // Auto-send to guest display on mount if second screen is already open
+  useEffect(() => {
+    if (isSecondScreenOpen && !autoTriggerRef.current && !isCompositing && !isGeneratingCollage && placedImages.size > 0) {
+      logger.debug('[FinalizeView] Auto-sending to guest display on mount');
+      autoTriggerRef.current = true;
+      handleToggleDisplay();
+    }
+  }, [isSecondScreenOpen, isCompositing, isGeneratingCollage, placedImages.size, handleToggleDisplay]);
 
   // Sorted overlay layers for rendering
-  const belowFrameOverlays = useMemo(() =>
-    overlays.filter(o => o.position === 'below-frames' && o.visible).sort((a, b) => a.layerOrder - b.layerOrder),
-    [overlays]
+  const belowFrameOverlays = useMemo(
+    () =>
+      overlays
+        .filter((o) => o.position === "below-frames" && o.visible)
+        .sort((a, b) => a.layerOrder - b.layerOrder),
+    [overlays],
   );
-  const aboveFrameOverlays = useMemo(() =>
-    overlays.filter(o => o.position === 'above-frames' && o.visible).sort((a, b) => a.layerOrder - b.layerOrder),
-    [overlays]
+  const aboveFrameOverlays = useMemo(
+    () =>
+      overlays
+        .filter((o) => o.position === "above-frames" && o.visible)
+        .sort((a, b) => a.layerOrder - b.layerOrder),
+    [overlays],
   );
 
   // Scaled dimensions for the outer wrapper (visual size on screen)
@@ -436,10 +530,16 @@ export default function FinalizeView({
     <div className="finalize-view">
       {/* Header */}
       <div className="finalize-header">
-        <button className="finalize-back-btn" onClick={onBack}>
+        <button
+          className="finalize-back-btn"
+          onClick={onBack}
+          disabled={isCompositing || isGeneratingCollage}
+          title="Back to capture"
+        >
           <ChevronLeft size={18} />
           <span>Back</span>
         </button>
+
         <h2 className="finalize-title">Finalize</h2>
         <div className="finalize-actions">
           {/* Zoom controls */}
@@ -452,7 +552,9 @@ export default function FinalizeView({
             >
               <ZoomOut size={14} />
             </button>
-            <span className="finalize-zoom-level">{Math.round(localZoom * 100)}%</span>
+            <span className="finalize-zoom-level">
+              {Math.round(localZoom * 100)}%
+            </span>
             <button
               className="finalize-zoom-btn"
               onClick={handleZoomIn}
@@ -471,13 +573,15 @@ export default function FinalizeView({
             </button>
           </div>
           <button
-            className={`finalize-display-btn ${isDisplayingOnGuest ? 'active' : ''}`}
+            className={`finalize-display-btn ${isDisplayingOnGuest ? "active" : ""}`}
             onClick={handleToggleDisplay}
-            disabled={isCompositing || isGeneratingCollage || placedImages.size === 0}
+            disabled={
+              isCompositing || isGeneratingCollage || placedImages.size === 0
+            }
             title={
               isDisplayingOnGuest
-                ? 'Clear from display'
-                : 'Send to guest display'
+                ? "Clear from display"
+                : "Send to guest display"
             }
           >
             {isCompositing || isGeneratingCollage ? (
@@ -507,7 +611,9 @@ export default function FinalizeView({
         ) : (
           <>
             {/* Invisible spacers to allow scrolling in all directions when zoomed */}
-            {spacing > 0 && <div style={{ height: `${spacing}px`, flexShrink: 0 }} />}
+            {spacing > 0 && (
+              <div style={{ height: `${spacing}px`, flexShrink: 0 }} />
+            )}
             {/* Outer wrapper: visual size on screen (scaled down) */}
             <div
               ref={canvasRef}
@@ -516,9 +622,9 @@ export default function FinalizeView({
               style={{
                 width: `${scaledWidth}px`,
                 height: `${scaledHeight}px`,
-                position: 'relative',
-                background: '#ffffff',
-                overflow: 'visible',
+                position: "relative",
+                background: "#ffffff",
+                overflow: "visible",
               }}
             >
               {/* Inner canvas: full pixel dimensions, CSS-scaled down via transform */}
@@ -526,11 +632,11 @@ export default function FinalizeView({
                 style={{
                   width: `${canvasWidth}px`,
                   height: `${canvasHeight}px`,
-                  position: 'relative',
-                  overflow: 'hidden',
-                  borderRadius: '8px',
+                  position: "relative",
+                  overflow: "hidden",
+                  borderRadius: "8px",
                   transform: `scale(${finalScale})`,
-                  transformOrigin: 'top left',
+                  transformOrigin: "top left",
                 }}
               >
                 {/* Background layer */}
@@ -538,20 +644,26 @@ export default function FinalizeView({
                   <div
                     className="finalize-background"
                     style={{
-                      position: 'absolute',
+                      position: "absolute",
                       inset: 0,
-                      overflow: 'hidden',
+                      overflow: "hidden",
                       zIndex: 0,
                     }}
                   >
                     {isSolidColor ? (
-                      <div style={{ width: '100%', height: '100%', backgroundColor: background }} />
+                      <div
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          backgroundColor: background,
+                        }}
+                      />
                     ) : bgSrc ? (
                       <div
                         style={{
-                          width: '100%',
-                          height: '100%',
-                          position: 'relative',
+                          width: "100%",
+                          height: "100%",
+                          position: "relative",
                           transform: `
                             scale(${backgroundTransform.scale})
                             translate(${backgroundTransform.offsetX}px, ${backgroundTransform.offsetY}px)
@@ -563,10 +675,10 @@ export default function FinalizeView({
                           alt="Background"
                           draggable={false}
                           style={{
-                            width: '100%',
-                            height: '100%',
-                            objectFit: 'cover',
-                            display: 'block',
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "cover",
+                            display: "block",
                           }}
                         />
                       </div>
@@ -576,7 +688,11 @@ export default function FinalizeView({
 
                 {/* Below-frames overlay layers */}
                 {belowFrameOverlays.map((layer) => (
-                  <FinalizeOverlay key={layer.id} layer={layer} zIndex={10 + layer.layerOrder} />
+                  <FinalizeOverlay
+                    key={layer.id}
+                    layer={layer}
+                    zIndex={10 + layer.layerOrder}
+                  />
                 ))}
 
                 {/* Image zones — all in pixel coordinates, scaled by parent transform */}
@@ -600,42 +716,55 @@ export default function FinalizeView({
 
                 {/* Above-frames overlay layers */}
                 {aboveFrameOverlays.map((layer) => (
-                  <FinalizeOverlay key={layer.id} layer={layer} zIndex={61 + layer.layerOrder} />
+                  <FinalizeOverlay
+                    key={layer.id}
+                    layer={layer}
+                    zIndex={61 + layer.layerOrder}
+                  />
                 ))}
               </div>
 
               {/* Selected zone overflow - rendered outside clipped canvas to show overflow */}
-              {editingZoneId && (() => {
-                const selectedZone = frame.zones.find(z => z.id === editingZoneId);
-                const selectedPlacedImage = selectedZone ? placedImages.get(selectedZone.id) : null;
-                if (!selectedZone || !selectedPlacedImage) return null;
-                return (
-                  <div
-                    style={{
-                      position: 'absolute',
-                      top: 0,
-                      left: 0,
-                      width: `${canvasWidth}px`,
-                      height: `${canvasHeight}px`,
-                      transform: `scale(${finalScale})`,
-                      transformOrigin: 'top left',
-                      pointerEvents: 'none',
-                    }}
-                  >
-                    <FinalizeZoneOverflow
-                      key={`${selectedZone.id}-overflow`}
-                      zone={selectedZone}
-                      placedImage={selectedPlacedImage}
-                      updatePlacedImage={updatePlacedImage}
-                    />
-                  </div>
-                );
-              })()}
+              {editingZoneId &&
+                (() => {
+                  const selectedZone = frame.zones.find(
+                    (z) => z.id === editingZoneId,
+                  );
+                  const selectedPlacedImage = selectedZone
+                    ? placedImages.get(selectedZone.id)
+                    : null;
+                  if (!selectedZone || !selectedPlacedImage) return null;
+                  return (
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        width: `${canvasWidth}px`,
+                        height: `${canvasHeight}px`,
+                        transform: `scale(${finalScale})`,
+                        transformOrigin: "top left",
+                        pointerEvents: "none",
+                      }}
+                    >
+                      <FinalizeZoneOverflow
+                        key={`${selectedZone.id}-overflow`}
+                        zone={selectedZone}
+                        placedImage={selectedPlacedImage}
+                        updatePlacedImage={updatePlacedImage}
+                      />
+                    </div>
+                  );
+                })()}
 
               {/* Canvas Info Box - rendered outside scaled inner canvas for consistent sizing */}
               <div className="finalize-canvas-info">
-                <span className="canvas-frame-name">{frame.name || 'Custom'}</span>
-                <span className="canvas-dimensions">{canvasWidth} × {canvasHeight}px</span>
+                <span className="canvas-frame-name">
+                  {frame.name || "Custom"}
+                </span>
+                <span className="canvas-dimensions">
+                  {canvasWidth} × {canvasHeight}px
+                </span>
               </div>
 
               {/* Zoom hint overlay - shows when user hasn't zoomed yet */}
@@ -648,22 +777,15 @@ export default function FinalizeView({
           </>
         )}
       </div>
-
     </div>
   );
 }
 
 // Overlay layer renderer (read-only, no interaction)
-function FinalizeOverlay({
-  layer,
-  zIndex,
-}: {
-  layer: any;
-  zIndex: number;
-}) {
+function FinalizeOverlay({ layer, zIndex }: { layer: any; zIndex: number }) {
   const src = useMemo(() => {
     if (!layer.sourcePath) return null;
-    return convertFileSrc(layer.sourcePath.replace('asset://', ''));
+    return convertFileSrc(layer.sourcePath.replace("asset://", ""));
   }, [layer.sourcePath]);
 
   if (!src) return null;
@@ -673,10 +795,10 @@ function FinalizeOverlay({
   return (
     <div
       style={{
-        position: 'absolute',
+        position: "absolute",
         left: 0,
         top: 0,
-        transformOrigin: 'center center',
+        transformOrigin: "center center",
         transform: `
           translate(${t.x ?? 0}px, ${t.y ?? 0}px)
           rotate(${t.rotation ?? 0}deg)
@@ -686,10 +808,15 @@ function FinalizeOverlay({
         `,
         opacity: t.opacity ?? 1,
         zIndex,
-        pointerEvents: 'none',
+        pointerEvents: "none",
       }}
     >
-      <img src={src} alt={layer.name || 'Overlay'} draggable={false} style={{ display: 'block', maxWidth: 'none' }} />
+      <img
+        src={src}
+        alt={layer.name || "Overlay"}
+        draggable={false}
+        style={{ display: "block", maxWidth: "none" }}
+      />
     </div>
   );
 }
@@ -697,32 +824,37 @@ function FinalizeOverlay({
 // Shape helpers matching CollageCanvas ImageZone
 function getBorderRadius(zone: FrameZone): string {
   switch (zone.shape) {
-    case 'circle': return '50%';
-    case 'ellipse': return '50% / 40%';
-    case 'rounded_rect': return `${zone.borderRadius || 12}px`;
-    case 'pill': return '999px';
-    default: return '2px';
+    case "circle":
+      return "50%";
+    case "ellipse":
+      return "50% / 40%";
+    case "rounded_rect":
+      return `${zone.borderRadius || 12}px`;
+    case "pill":
+      return "999px";
+    default:
+      return "2px";
   }
 }
 
 function getClipPath(zone: FrameZone): string | undefined {
   switch (zone.shape) {
-    case 'triangle':
-      return 'polygon(50% 0%, 0% 100%, 100% 100%)';
-    case 'pentagon':
-      return 'polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)';
-    case 'hexagon':
-      return 'polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)';
-    case 'octagon':
-      return 'polygon(30% 0%, 70% 0%, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0% 70%, 0% 30%)';
-    case 'star':
-      return 'polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)';
-    case 'diamond':
-      return 'polygon(50% 0%, 78% 50%, 50% 100%, 22% 50%)';
-    case 'heart':
-      return 'polygon(50% 15%, 65% 0%, 85% 0%, 100% 15%, 100% 35%, 85% 50%, 50% 100%, 15% 50%, 0% 35%, 0% 15%, 15% 0%, 35% 0%)';
-    case 'cross':
-      return 'polygon(20% 0%, 80% 0%, 80% 20%, 100% 20%, 100% 80%, 80% 80%, 80% 100%, 20% 100%, 20% 80%, 0% 80%, 0% 20%, 20% 20%)';
+    case "triangle":
+      return "polygon(50% 0%, 0% 100%, 100% 100%)";
+    case "pentagon":
+      return "polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)";
+    case "hexagon":
+      return "polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)";
+    case "octagon":
+      return "polygon(30% 0%, 70% 0%, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0% 70%, 0% 30%)";
+    case "star":
+      return "polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)";
+    case "diamond":
+      return "polygon(50% 0%, 78% 50%, 50% 100%, 22% 50%)";
+    case "heart":
+      return "polygon(50% 15%, 65% 0%, 85% 0%, 100% 15%, 100% 35%, 85% 50%, 50% 100%, 15% 50%, 0% 35%, 0% 15%, 15% 0%, 35% 0%)";
+    case "cross":
+      return "polygon(20% 0%, 80% 0%, 80% 20%, 100% 20%, 100% 80%, 80% 80%, 80% 100%, 20% 100%, 20% 80%, 0% 80%, 0% 20%, 20% 20%)";
     default:
       return undefined;
   }
@@ -739,7 +871,12 @@ function FinalizeZoneOverflow({
   updatePlacedImage: (zoneId: string, updates: Partial<PlacedImage>) => void;
 }) {
   const imgRef = useRef<HTMLImageElement>(null);
-  const [imageSize, setImageSize] = useState({ width: 0, height: 0, left: 0, top: 0 });
+  const [imageSize, setImageSize] = useState({
+    width: 0,
+    height: 0,
+    left: 0,
+    top: 0,
+  });
   const [isZooming, setIsZooming] = useState(false);
   const [zoomStart, setZoomStart] = useState({
     x: 0,
@@ -747,14 +884,17 @@ function FinalizeZoneOverflow({
     scale: placedImage.transform.scale,
     offsetX: placedImage.transform.offsetX,
     offsetY: placedImage.transform.offsetY,
-    corner: '' as 'tl' | 'tr' | 'bl' | 'br'
+    corner: "" as "tl" | "tr" | "bl" | "br",
   });
 
-  const imgSrc = convertFileSrc(placedImage.sourceFile.replace('asset://', ''));
+  const imgSrc = convertFileSrc(placedImage.sourceFile.replace("asset://", ""));
   const t = placedImage.transform;
 
   // Handle zoom by dragging from corners
-  const handleZoomStart = (e: React.MouseEvent, corner: 'tl' | 'tr' | 'bl' | 'br') => {
+  const handleZoomStart = (
+    e: React.MouseEvent,
+    corner: "tl" | "tr" | "bl" | "br",
+  ) => {
     e.stopPropagation();
     setIsZooming(true);
     setZoomStart({
@@ -763,7 +903,7 @@ function FinalizeZoneOverflow({
       scale: placedImage.transform.scale,
       offsetX: placedImage.transform.offsetX,
       offsetY: placedImage.transform.offsetY,
-      corner
+      corner,
     });
   };
 
@@ -777,13 +917,13 @@ function FinalizeZoneOverflow({
         // Use movement for zoom sensitivity - different corners use different directions
         // Dragging AWAY from center should INCREASE scale (zoom in)
         let scaleDelta: number;
-        if (zoomStart.corner === 'br') {
+        if (zoomStart.corner === "br") {
           // Bottom-right: dragging down/right (away from center) increases scale
           scaleDelta = (deltaX + deltaY) * 0.005;
-        } else if (zoomStart.corner === 'bl') {
+        } else if (zoomStart.corner === "bl") {
           // Bottom-left: dragging down/left (away from center) increases scale
           scaleDelta = (-deltaX + deltaY) * 0.005;
-        } else if (zoomStart.corner === 'tr') {
+        } else if (zoomStart.corner === "tr") {
           // Top-right: dragging up/right (away from center) increases scale
           scaleDelta = (deltaX - deltaY) * 0.005;
         } else {
@@ -791,7 +931,10 @@ function FinalizeZoneOverflow({
           scaleDelta = (-deltaX - deltaY) * 0.005;
         }
 
-        const newScale = Math.max(0.5, Math.min(3, zoomStart.scale + scaleDelta));
+        const newScale = Math.max(
+          0.5,
+          Math.min(3, zoomStart.scale + scaleDelta),
+        );
 
         // Zoom from center - keep the same offset, just change scale
         updatePlacedImage(zone.id, {
@@ -806,12 +949,12 @@ function FinalizeZoneOverflow({
         setIsZooming(false);
       };
 
-      window.addEventListener('mousemove', handleMouseMove);
-      window.addEventListener('mouseup', handleMouseUp);
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
 
       return () => {
-        window.removeEventListener('mousemove', handleMouseMove);
-        window.removeEventListener('mouseup', handleMouseUp);
+        window.removeEventListener("mousemove", handleMouseMove);
+        window.removeEventListener("mouseup", handleMouseUp);
       };
     }
   }, [isZooming, zoomStart, zone.id, placedImage, updatePlacedImage]);
@@ -848,33 +991,38 @@ function FinalizeZoneOverflow({
           offsetY = 0;
         }
 
-        setImageSize({ width: renderWidth, height: renderHeight, left: offsetX, top: offsetY });
+        setImageSize({
+          width: renderWidth,
+          height: renderHeight,
+          left: offsetX,
+          top: offsetY,
+        });
       };
 
       updateImageSize();
-      window.addEventListener('resize', updateImageSize);
-      return () => window.removeEventListener('resize', updateImageSize);
+      window.addEventListener("resize", updateImageSize);
+      return () => window.removeEventListener("resize", updateImageSize);
     }
   }, [imgSrc]);
 
   return (
     <div
       style={{
-        position: 'absolute',
+        position: "absolute",
         left: `${zone.x}px`,
         top: `${zone.y}px`,
         width: `${zone.width}px`,
         height: `${zone.height}px`,
         transform: `rotate(${zone.rotation}deg)`,
-        pointerEvents: 'none',
+        pointerEvents: "none",
         zIndex: 50,
       }}
     >
       <div
         style={{
-          width: '100%',
-          height: '100%',
-          position: 'relative',
+          width: "100%",
+          height: "100%",
+          position: "relative",
           transform: `
             scale(${t.scale})
             translate(${t.offsetX}px, ${t.offsetY}px)
@@ -890,12 +1038,12 @@ function FinalizeZoneOverflow({
           alt="Overflow"
           draggable={false}
           style={{
-            width: '100%',
-            height: '100%',
-            objectFit: 'contain',
+            width: "100%",
+            height: "100%",
+            objectFit: "contain",
             opacity: 0.5,
-            filter: 'brightness(0.85)',
-            display: 'block',
+            filter: "brightness(0.85)",
+            display: "block",
           }}
         />
 
@@ -904,12 +1052,12 @@ function FinalizeZoneOverflow({
           <div
             className="finalize-overflow-frame"
             style={{
-              position: 'absolute',
+              position: "absolute",
               left: imageSize.left,
               top: imageSize.top,
               width: imageSize.width,
               height: imageSize.height,
-              pointerEvents: 'none',
+              pointerEvents: "none",
             }}
           />
         )}
@@ -922,40 +1070,40 @@ function FinalizeZoneOverflow({
               style={{
                 left: imageSize.left - 8,
                 top: imageSize.top - 8,
-                cursor: 'nwse-resize',
-                pointerEvents: 'auto',
+                cursor: "nwse-resize",
+                pointerEvents: "auto",
               }}
-              onMouseDown={(e) => handleZoomStart(e, 'tl')}
+              onMouseDown={(e) => handleZoomStart(e, "tl")}
             />
             <div
               className="finalize-zoom-handle"
               style={{
                 left: imageSize.left + imageSize.width - 8,
                 top: imageSize.top - 8,
-                cursor: 'nesw-resize',
-                pointerEvents: 'auto',
+                cursor: "nesw-resize",
+                pointerEvents: "auto",
               }}
-              onMouseDown={(e) => handleZoomStart(e, 'tr')}
+              onMouseDown={(e) => handleZoomStart(e, "tr")}
             />
             <div
               className="finalize-zoom-handle"
               style={{
                 left: imageSize.left - 8,
                 top: imageSize.top + imageSize.height - 8,
-                cursor: 'nesw-resize',
-                pointerEvents: 'auto',
+                cursor: "nesw-resize",
+                pointerEvents: "auto",
               }}
-              onMouseDown={(e) => handleZoomStart(e, 'bl')}
+              onMouseDown={(e) => handleZoomStart(e, "bl")}
             />
             <div
               className="finalize-zoom-handle"
               style={{
                 left: imageSize.left + imageSize.width - 8,
                 top: imageSize.top + imageSize.height - 8,
-                cursor: 'nwse-resize',
-                pointerEvents: 'auto',
+                cursor: "nwse-resize",
+                pointerEvents: "auto",
               }}
-              onMouseDown={(e) => handleZoomStart(e, 'br')}
+              onMouseDown={(e) => handleZoomStart(e, "br")}
             />
           </>
         )}
@@ -987,25 +1135,41 @@ function FinalizeZone({
   const [transformStart, setTransformStart] = useState({ x: 0, y: 0 });
   const imageRef = useRef<HTMLImageElement>(null);
   const transformContainerRef = useRef<HTMLDivElement>(null);
-  const [imageSize, setImageSize] = useState({ width: 0, height: 0, left: 0, top: 0 });
-  const [snapGuides, setSnapGuides] = useState({ horizontal: false, vertical: false, centerH: false, centerV: false });
+  const [imageSize, setImageSize] = useState({
+    width: 0,
+    height: 0,
+    left: 0,
+    top: 0,
+  });
+  const [snapGuides, setSnapGuides] = useState({
+    horizontal: false,
+    vertical: false,
+    centerH: false,
+    centerV: false,
+  });
   const SNAP_THRESHOLD = 10;
 
   const imgSrc = placedImage
-    ? convertFileSrc(placedImage.sourceFile.replace('asset://', ''))
+    ? convertFileSrc(placedImage.sourceFile.replace("asset://", ""))
     : null;
 
   const t = placedImage?.transform;
   const clipPath = getClipPath(zone);
 
   // Handle mouse down on image for panning
-  const handleImageMouseDown = useCallback((e: React.MouseEvent) => {
-    if (!placedImage) return;
-    e.stopPropagation(); // Prevent zone selection
-    setIsDraggingImage(true);
-    setDragStart({ x: e.clientX, y: e.clientY });
-    setTransformStart({ x: placedImage.transform.offsetX, y: placedImage.transform.offsetY });
-  }, [placedImage]);
+  const handleImageMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      if (!placedImage) return;
+      e.stopPropagation(); // Prevent zone selection
+      setIsDraggingImage(true);
+      setDragStart({ x: e.clientX, y: e.clientY });
+      setTransformStart({
+        x: placedImage.transform.offsetX,
+        y: placedImage.transform.offsetY,
+      });
+    },
+    [placedImage],
+  );
 
   // Set up global mouse event listeners for dragging
   useEffect(() => {
@@ -1020,7 +1184,8 @@ function FinalizeZone({
 
         // Use transform container's dimensions
         const containerWidth = transformContainerRef.current?.offsetWidth || 0;
-        const containerHeight = transformContainerRef.current?.offsetHeight || 0;
+        const containerHeight =
+          transformContainerRef.current?.offsetHeight || 0;
 
         const scale = placedImage.transform.scale;
         const scaledWidth = imageSize.width * scale;
@@ -1035,8 +1200,10 @@ function FinalizeZone({
         const imageCenterY = imageBaseCenterY + newOffsetY;
 
         // Snap to center
-        const snapToCenterH = Math.abs(imageCenterX - containerCenterX) < SNAP_THRESHOLD;
-        const snapToCenterV = Math.abs(imageCenterY - containerCenterY) < SNAP_THRESHOLD;
+        const snapToCenterH =
+          Math.abs(imageCenterX - containerCenterX) < SNAP_THRESHOLD;
+        const snapToCenterV =
+          Math.abs(imageCenterY - containerCenterY) < SNAP_THRESHOLD;
 
         if (snapToCenterH) {
           newOffsetX = containerCenterX - imageBaseCenterX;
@@ -1052,14 +1219,18 @@ function FinalizeZone({
         const imageBottom = imageBaseCenterY + scaledHeight / 2 + newOffsetY;
 
         const snapToLeft = Math.abs(imageLeft) < SNAP_THRESHOLD;
-        const snapToRight = Math.abs(imageRight - containerWidth) < SNAP_THRESHOLD;
+        const snapToRight =
+          Math.abs(imageRight - containerWidth) < SNAP_THRESHOLD;
         const snapToTop = Math.abs(imageTop) < SNAP_THRESHOLD;
-        const snapToBottom = Math.abs(imageBottom - containerHeight) < SNAP_THRESHOLD;
+        const snapToBottom =
+          Math.abs(imageBottom - containerHeight) < SNAP_THRESHOLD;
 
         if (snapToLeft) newOffsetX = -imageBaseCenterX + scaledWidth / 2;
-        if (snapToRight) newOffsetX = containerWidth - imageBaseCenterX - scaledWidth / 2;
+        if (snapToRight)
+          newOffsetX = containerWidth - imageBaseCenterX - scaledWidth / 2;
         if (snapToTop) newOffsetY = -imageBaseCenterY + scaledHeight / 2;
-        if (snapToBottom) newOffsetY = containerHeight - imageBaseCenterY - scaledHeight / 2;
+        if (snapToBottom)
+          newOffsetY = containerHeight - imageBaseCenterY - scaledHeight / 2;
 
         // Update snap guides for visual feedback
         setSnapGuides({
@@ -1080,18 +1251,33 @@ function FinalizeZone({
 
       const handleGlobalMouseUp = () => {
         setIsDraggingImage(false);
-        setSnapGuides({ horizontal: false, vertical: false, centerH: false, centerV: false });
+        setSnapGuides({
+          horizontal: false,
+          vertical: false,
+          centerH: false,
+          centerV: false,
+        });
       };
 
-      window.addEventListener('mousemove', handleGlobalMouseMove);
-      window.addEventListener('mouseup', handleGlobalMouseUp);
+      window.addEventListener("mousemove", handleGlobalMouseMove);
+      window.addEventListener("mouseup", handleGlobalMouseUp);
 
       return () => {
-        window.removeEventListener('mousemove', handleGlobalMouseMove);
-        window.removeEventListener('mouseup', handleGlobalMouseUp);
+        window.removeEventListener("mousemove", handleGlobalMouseMove);
+        window.removeEventListener("mouseup", handleGlobalMouseUp);
       };
     }
-  }, [isDraggingImage, dragStart, transformStart, placedImage, zone.id, updatePlacedImage, imageSize, SNAP_THRESHOLD, finalScale]);
+  }, [
+    isDraggingImage,
+    dragStart,
+    transformStart,
+    placedImage,
+    zone.id,
+    updatePlacedImage,
+    imageSize,
+    SNAP_THRESHOLD,
+    finalScale,
+  ]);
 
   // Measure actual rendered size of image
   useEffect(() => {
@@ -1127,21 +1313,26 @@ function FinalizeZone({
           offsetY = 0;
         }
 
-        setImageSize({ width: renderWidth, height: renderHeight, left: offsetX, top: offsetY });
+        setImageSize({
+          width: renderWidth,
+          height: renderHeight,
+          left: offsetX,
+          top: offsetY,
+        });
       };
 
       updateImageSize();
-      window.addEventListener('resize', updateImageSize);
-      return () => window.removeEventListener('resize', updateImageSize);
+      window.addEventListener("resize", updateImageSize);
+      return () => window.removeEventListener("resize", updateImageSize);
     }
   }, [placedImage, imgSrc]);
 
   return (
     <div
-      className={`finalize-zone ${isSelected ? 'selected' : ''}`}
+      className={`finalize-zone ${isSelected ? "selected" : ""}`}
       onClick={placedImage ? onClick : undefined}
       style={{
-        position: 'absolute',
+        position: "absolute",
         left: `${zone.x}px`,
         top: `${zone.y}px`,
         width: `${zone.width}px`,
@@ -1149,19 +1340,19 @@ function FinalizeZone({
         transform: `rotate(${zone.rotation}deg)`,
         borderRadius: getBorderRadius(zone),
         clipPath,
-        overflow: 'hidden',
-        cursor: placedImage ? 'pointer' : 'default',
+        overflow: "hidden",
+        cursor: placedImage ? "pointer" : "default",
         zIndex: 40,
-        border: isSelected ? '3px solid var(--accent-blue)' : 'none',
+        border: isSelected ? "3px solid var(--accent-blue)" : "none",
       }}
     >
       {placedImage && t && imgSrc ? (
         <div
           ref={transformContainerRef}
           style={{
-            width: '100%',
-            height: '100%',
-            position: 'relative',
+            width: "100%",
+            height: "100%",
+            position: "relative",
             transform: `
               scale(${t.scale})
               translate(${t.offsetX}px, ${t.offsetY}px)
@@ -1177,10 +1368,10 @@ function FinalizeZone({
             src={imgSrc}
             alt={`Photo ${index + 1}`}
             style={{
-              width: '100%',
-              height: '100%',
-              objectFit: 'contain',
-              display: 'block',
+              width: "100%",
+              height: "100%",
+              objectFit: "contain",
+              display: "block",
             }}
             draggable={false}
           />
@@ -1197,53 +1388,111 @@ function FinalizeZone({
         <div
           className="finalize-grid-overlay"
           style={{
-            position: 'absolute',
+            position: "absolute",
             inset: 0,
-            pointerEvents: 'none',
+            pointerEvents: "none",
           }}
         >
           {/* Vertical lines at 1/3 and 2/3 */}
-          <div className="finalize-grid-line finalize-grid-line-vertical" style={{ left: '33.33%' }} />
-          <div className="finalize-grid-line finalize-grid-line-vertical" style={{ left: '66.66%' }} />
+          <div
+            className="finalize-grid-line finalize-grid-line-vertical"
+            style={{ left: "33.33%" }}
+          />
+          <div
+            className="finalize-grid-line finalize-grid-line-vertical"
+            style={{ left: "66.66%" }}
+          />
           {/* Horizontal lines at 1/3 and 2/3 */}
-          <div className="finalize-grid-line finalize-grid-line-horizontal" style={{ top: '33.33%' }} />
-          <div className="finalize-grid-line finalize-grid-line-horizontal" style={{ top: '66.66%' }} />
+          <div
+            className="finalize-grid-line finalize-grid-line-horizontal"
+            style={{ top: "33.33%" }}
+          />
+          <div
+            className="finalize-grid-line finalize-grid-line-horizontal"
+            style={{ top: "66.66%" }}
+          />
         </div>
       )}
 
       {/* Snap Guides - shown during dragging */}
       {isSelected && snapGuides.centerH && (
-        <div className="snap-guide snap-guide-vertical" style={{
-          position: 'absolute',
-          left: '50%',
-          top: 0,
-          height: '100%',
-          transform: 'translateX(-50%)',
-          pointerEvents: 'none',
-          zIndex: 100,
-        }} />
+        <div
+          className="snap-guide snap-guide-vertical"
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: 0,
+            height: "100%",
+            transform: "translateX(-50%)",
+            pointerEvents: "none",
+            zIndex: 100,
+          }}
+        />
       )}
       {isSelected && snapGuides.centerV && (
-        <div className="snap-guide snap-guide-horizontal" style={{
-          position: 'absolute',
-          top: '50%',
-          left: 0,
-          width: '100%',
-          transform: 'translateY(-50%)',
-          pointerEvents: 'none',
-          zIndex: 100,
-        }} />
+        <div
+          className="snap-guide snap-guide-horizontal"
+          style={{
+            position: "absolute",
+            top: "50%",
+            left: 0,
+            width: "100%",
+            transform: "translateY(-50%)",
+            pointerEvents: "none",
+            zIndex: 100,
+          }}
+        />
       )}
       {isSelected && snapGuides.horizontal && (
         <>
-          <div className="snap-guide snap-guide-horizontal" style={{ position: 'absolute', top: 0, left: 0, width: '100%', pointerEvents: 'none', zIndex: 100 }} />
-          <div className="snap-guide snap-guide-horizontal" style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', pointerEvents: 'none', zIndex: 100 }} />
+          <div
+            className="snap-guide snap-guide-horizontal"
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              width: "100%",
+              pointerEvents: "none",
+              zIndex: 100,
+            }}
+          />
+          <div
+            className="snap-guide snap-guide-horizontal"
+            style={{
+              position: "absolute",
+              bottom: 0,
+              left: 0,
+              width: "100%",
+              pointerEvents: "none",
+              zIndex: 100,
+            }}
+          />
         </>
       )}
       {isSelected && snapGuides.vertical && (
         <>
-          <div className="snap-guide snap-guide-vertical" style={{ position: 'absolute', left: 0, top: 0, height: '100%', pointerEvents: 'none', zIndex: 100 }} />
-          <div className="snap-guide snap-guide-vertical" style={{ position: 'absolute', right: 0, top: 0, height: '100%', pointerEvents: 'none', zIndex: 100 }} />
+          <div
+            className="snap-guide snap-guide-vertical"
+            style={{
+              position: "absolute",
+              left: 0,
+              top: 0,
+              height: "100%",
+              pointerEvents: "none",
+              zIndex: 100,
+            }}
+          />
+          <div
+            className="snap-guide snap-guide-vertical"
+            style={{
+              position: "absolute",
+              right: 0,
+              top: 0,
+              height: "100%",
+              pointerEvents: "none",
+              zIndex: 100,
+            }}
+          />
         </>
       )}
     </div>

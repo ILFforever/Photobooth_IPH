@@ -2,6 +2,8 @@ import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useCamera } from '../contexts/CameraContext';
 import { getCameraSettingsService } from '../services/cameraSettingsService';
 import type { CameraStatus } from '../services/cameraWebSocket';
+import { createLogger } from '../utils/logger';
+const logger = createLogger('useCameraSettings');
 
 const API_BASE = 'http://localhost:58321';
 const DEBOUNCE_MS = 500;
@@ -86,17 +88,17 @@ export function useCameraSettings(propsShutterSpeeds?: string[]) {
   // Send camera setting to API
   const sendCameraSetting = async (setting: string, value: string) => {
     try {
-      console.log(`[API] Setting ${setting} to ${value}`);
+      logger.debug(`[API] Setting ${setting} to ${value}`);
       const response = await fetch(`${API_BASE}/api/camera/config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ setting, value })
       });
       if (!response.ok) {
-        console.error(`[API] Failed to set ${setting}:`, response.statusText);
+        logger.error(`[API] Failed to set ${setting}:`, response.statusText);
       }
     } catch (error) {
-      console.error(`[API] Error setting ${setting}:`, error);
+      logger.error(`[API] Error setting ${setting}:`, error);
     }
   };
 
@@ -200,11 +202,11 @@ export function useCameraSettings(propsShutterSpeeds?: string[]) {
     lastCameraStatusRef.current = data;
 
     if (isInitializingFromConfigRef.current) {
-      console.log('[useCameraSettings] Ignoring WebSocket status during config initialization');
+      logger.debug('[useCameraSettings] Ignoring WebSocket status during config initialization');
       return;
     }
 
-    console.log('[useCameraSettings] WebSocket status received:', data);
+    logger.debug('[useCameraSettings] WebSocket status received:', data);
     const opts = optionsRef.current;
 
     if (data.iso && opts.isoOptions.length > 0 && !isSettingLocked('iso')) {
@@ -258,7 +260,7 @@ export function useCameraSettings(propsShutterSpeeds?: string[]) {
     skipStatusApply: boolean = false,
     initialConfigValues?: { shutter?: string; aperture?: string; iso?: string; ev?: string; wb?: string; metering?: string; battery?: string }
   ) => {
-    console.log('Camera options loaded:', options, 'skipStatusApply:', skipStatusApply, 'initialConfigValues:', initialConfigValues);
+    logger.debug('Camera options loaded:', options, 'skipStatusApply:', skipStatusApply, 'initialConfigValues:', initialConfigValues);
     setCameraApertureOptions(options.aperture);
     setCameraIsoOptions(options.iso);
     setCameraShutterOptions(options.shutterspeed);
@@ -269,7 +271,7 @@ export function useCameraSettings(propsShutterSpeeds?: string[]) {
 
     if (skipStatusApply) {
       if (initialConfigValues) {
-        console.log('[handleCameraOptionsLoaded] Applying initial config values:', initialConfigValues);
+        logger.debug('[handleCameraOptionsLoaded] Applying initial config values:', initialConfigValues);
         isInitializingFromConfigRef.current = true;
         setTimeout(() => {
           isInitializingFromConfigRef.current = false;
@@ -304,7 +306,7 @@ export function useCameraSettings(propsShutterSpeeds?: string[]) {
 
     const lastStatus = lastCameraStatusRef.current;
     if (lastStatus) {
-      console.log('[handleCameraOptionsLoaded] Last status available, applying:', lastStatus);
+      logger.debug('[handleCameraOptionsLoaded] Last status available, applying:', lastStatus);
       if (lastStatus.iso && options.iso.length > 0) {
         const displayIso = cameraSettingsService.convertIsoToDisplay(lastStatus.iso);
         const idx = options.iso.findIndex(opt => opt === displayIso);
@@ -339,7 +341,7 @@ export function useCameraSettings(propsShutterSpeeds?: string[]) {
 
   // Handle config values loaded
   const handleConfigValuesLoaded = useCallback((values: { shutter?: string; aperture?: string; iso?: string; ev?: string; wb?: string; metering?: string; battery?: string }) => {
-    console.log('[useCameraSettings] Config values loaded:', values);
+    logger.debug('[useCameraSettings] Config values loaded:', values);
     isInitializingFromConfigRef.current = true;
     setTimeout(() => {
       isInitializingFromConfigRef.current = false;

@@ -5,6 +5,10 @@ import { OverlayLayer } from '../types/overlay';
 import { PlacedImage, ImageTransform } from '../types/collage';
 import { DEFAULT_TRANSFORM } from '../types/collage';
 import { applyZoneClipPath } from '../utils/canvasShapeClip';
+import { LRUCache } from '../utils/lruCache';
+import { createLogger } from '../utils/logger';
+
+const logger = createLogger('PhotoboothContext');
 
 export interface PhotoboothCanvasSize {
   width: number;
@@ -111,7 +115,7 @@ export function PhotoboothProvider({ children }: { children: ReactNode }) {
 
   // Helper: Update a placed image
   const updatePlacedImage = useCallback((zoneId: string, updates: Partial<PlacedImage>) => {
-    console.log('[updatePlacedImage] Called with zoneId:', zoneId, 'updates:', updates);
+    logger.debug('[updatePlacedImage] Called with zoneId:', zoneId, 'updates:', updates);
     setPlacedImages(prev => {
       const newMap = new Map(prev);
       const existing = newMap.get(zoneId);
@@ -119,7 +123,7 @@ export function PhotoboothProvider({ children }: { children: ReactNode }) {
         newMap.set(zoneId, { ...existing, ...updates });
         // Mark as dirty when transform changes (user moved/zoomed the image)
         if (updates.transform !== undefined) {
-          console.log('[updatePlacedImage] Transform changed, setting dirty=true');
+          logger.debug('[updatePlacedImage] Transform changed, setting dirty=true');
           setCollageIsDirty(true);
         }
       }
@@ -127,8 +131,8 @@ export function PhotoboothProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  // Image cache to avoid redundant fetches - stores HTMLImageElements by source URL
-  const imageCache = useRef<Map<string, HTMLImageElement>>(new Map());
+  // Image cache to avoid redundant fetches - LRU cache with max 500 images to prevent memory leaks
+  const imageCache = useRef<LRUCache<string, HTMLImageElement>>(new LRUCache(500));
 
   // Helper: Load an image element from a source URL (with caching)
   const loadImage = useCallback((src: string): Promise<HTMLImageElement> => {
@@ -184,13 +188,13 @@ export function PhotoboothProvider({ children }: { children: ReactNode }) {
     try {
       const frame = photoboothFrame;
       if (!frame) {
-        console.error('No photobooth frame available for export');
+        logger.error('No photobooth frame available for export');
         return null;
       }
 
       // Wait for placed images to be loaded (avoid race condition with auto-placement)
       if (placedImages.size === 0) {
-        console.warn('[export] No placed images yet, skipping export');
+        logger.warn('[export] No placed images yet, skipping export');
         return null;
       }
 
@@ -262,15 +266,24 @@ export function PhotoboothProvider({ children }: { children: ReactNode }) {
       // Load all images in parallel
       const loadedResults = await Promise.all(loadingTasks);
 
-      // Create canvas at full resolution
+      // Create canvas at upscaled resolution for better print quality.
+      // Scale up small images (short side < 1800px) by 2-3x, capped so we don't
+      // bloat already-large images.
+      // Scale canvas to ~15MP for consistent high-quality print output.
+      // scale = sqrt(target / current) preserves aspect ratio exactly.
+      // Capped at 5x to avoid extreme upscaling of very small frames.
+      const TARGET_PIXELS = 15_000_000;
+      const currentPixels = canvasWidth * canvasHeight;
+      const printScale = currentPixels >= TARGET_PIXELS ? 1 : Math.min(Math.sqrt(TARGET_PIXELS / currentPixels), 5);
       const canvas = document.createElement('canvas');
-      canvas.width = canvasWidth;
-      canvas.height = canvasHeight;
+      canvas.width = canvasWidth * printScale;
+      canvas.height = canvasHeight * printScale;
       const ctx = canvas.getContext('2d');
       if (!ctx) {
-        console.error('Failed to get canvas context');
+        logger.error('Failed to get canvas context');
         return null;
       }
+      if (printScale > 1) ctx.scale(printScale, printScale);
 
       // Process and draw background
       const bgResult = loadedResults.find(r => r.type === 'background');
@@ -400,7 +413,7 @@ export function PhotoboothProvider({ children }: { children: ReactNode }) {
       const filename = `photobooth_${Date.now()}.png`;
       return { bytes, filename };
     } catch (error) {
-      console.error('Failed to export photobooth canvas:', error);
+      logger.error('Failed to export photobooth canvas:', error);
       return null;
     }
   }, [photoboothFrame, photoboothCanvasSize, photoboothAutoMatchBackground, photoboothBackgroundDimensions, photoboothBackground, photoboothBackgroundTransform, photoboothOverlays, placedImages, loadImageWithFallback]);

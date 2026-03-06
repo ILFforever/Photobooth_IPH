@@ -1,6 +1,8 @@
 import { useState, useCallback, useRef } from 'react';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { emitTo } from '@tauri-apps/api/event';
+import { createLogger } from '../utils/logger';
+const logger = createLogger('useSecondScreen');
 
 const GUEST_DISPLAY_LABEL = 'guest-display';
 
@@ -66,7 +68,7 @@ export function useSecondScreen() {
       // Initial data will be sent when the guest display emits 'guest-display:ready'
       // after its event listeners are set up (handled in PhotoboothWorkspace)
     } catch (error) {
-      console.error('Failed to open second screen:', error);
+      logger.error('Failed to open second screen:', error);
     }
   }, []);
 
@@ -78,7 +80,7 @@ export function useSecondScreen() {
         guestWindowRef.current = null;
       }
     } catch (error) {
-      console.error('Failed to close second screen:', error);
+      logger.error('Failed to close second screen:', error);
     }
   }, []);
 
@@ -94,7 +96,9 @@ export function useSecondScreen() {
     finalizeQrData?: string | null;
   }) => {
     if (isSecondScreenOpen) {
+      logger.debug('[useSecondScreen] Emitting guest-display:update event to', GUEST_DISPLAY_LABEL);
       emitTo(GUEST_DISPLAY_LABEL, 'guest-display:update', data);
+    } else {
     }
   }, [isSecondScreenOpen]);
 

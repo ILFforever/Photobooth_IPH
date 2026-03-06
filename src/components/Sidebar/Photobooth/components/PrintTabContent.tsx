@@ -7,7 +7,7 @@ interface PrintTabContentProps {
 }
 
 export function PrintTabContent({ isPrinting, onPrint }: PrintTabContentProps) {
-  const { showRegeneratePrompt, confirmRegenerate, cancelRegenerate } = usePrintSettings();
+  const { showRegeneratePrompt, confirmRegenerate, cancelRegenerate, doublePageMode, setDoublePageMode } = usePrintSettings();
 
   return (
     <div className="finalize-tab-content">
@@ -22,6 +22,31 @@ export function PrintTabContent({ isPrinting, onPrint }: PrintTabContentProps) {
             <p>Click the print button below to open the Windows Photo Printing Wizard.</p>
             <p className="print-hint">You can select copies, borderless options, and layout in the system dialog.</p>
           </div>
+        </div>
+
+        {/* Double Page Option */}
+        <div className={`print-section double-page-section${doublePageMode ? ' is-on' : ''}`}>
+          <label className="double-page-toggle">
+            <div className="double-page-label">
+              <span className="double-page-title">Double Page</span>
+              <span className="double-page-desc">Places 2 copies side-by-side · Fuji 4×6 half-cut</span>
+            </div>
+            <div className="double-page-status">
+              <span className="double-page-switch">
+                <input
+                  type="checkbox"
+                  checked={doublePageMode}
+                  onChange={(e) => setDoublePageMode(e.target.checked)}
+                />
+                <span className="double-page-slider" />
+              </span>
+            </div>
+          </label>
+          {doublePageMode && (
+            <div className="double-page-warning">
+              Double page is active — prints will be 2× side-by-side
+            </div>
+          )}
         </div>
 
         {/* Print Action Section */}

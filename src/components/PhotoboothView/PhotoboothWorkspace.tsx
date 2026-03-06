@@ -25,6 +25,9 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useSecondScreen } from "../../hooks/useSecondScreen";
 import { imageCache } from "../../services/ImageCacheService";
 import "./PhotoboothWorkspace.css";
+import { createLogger } from '../../utils/logger';
+
+const logger = createLogger('PhotoboothWorkspace');
 
 const DAEMON_URL = 'http://localhost:58321';
 
@@ -98,7 +101,7 @@ export default function PhotoboothWorkspace() {
   const { captureError, clearCaptureError, isCameraConnected, hasEverConnected, isConnecting, setDownloading, addPhotoDownloadedListener, removePhotoDownloadedListener } = useCamera();
   const { stream: liveViewStream, hdmi, ptp } = useLiveView();
   const { showToast } = useToast();
-  const { photoboothFrame, finalizeViewMode, setFinalizeViewMode, setFinalizeEditingZoneId, placedImages } = usePhotobooth();
+  const { photoboothFrame, finalizeViewMode, setFinalizeViewMode, setFinalizeEditingZoneId, placedImages, setPlacedImages } = usePhotobooth();
   const { enqueuePhotos } = useUploadQueue();
   const { account, rootFolder } = useAuth();
   const { customSets, selectedCustomSetId } = useCustomSets();
@@ -114,6 +117,7 @@ export default function PhotoboothWorkspace() {
   const [expandedSets, setExpandedSets] = useState<Set<string>>(new Set());
   const [displayMode, setDisplayMode] = useState<DisplayMode>('center');
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null);
+  const [previousDisplayMode, setPreviousDisplayMode] = useState<DisplayMode>('center');
   const [centerBrowseIndex, setCenterBrowseIndex] = useState<number | null>(null);
   const [currentSetPhotos, setCurrentSetPhotos] = useState<CurrentSetPhoto[]>([]);
 
@@ -164,7 +168,7 @@ export default function PhotoboothWorkspace() {
 
   // Clear selected photos when session changes
   useEffect(() => {
-    console.log('[PhotoboothWorkspace] Session changed, clearing selected photos');
+    logger.debug('[PhotoboothWorkspace] Session changed, clearing selected photos');
     setSelectedPhotos(new Set());
     setSelectedPhotoIndex(null);
     setCenterBrowseIndex(null);
@@ -185,7 +189,7 @@ export default function PhotoboothWorkspace() {
       if (!currentSession && sessions.length > 0 && !hasAutoLoadedRef.current) {
         // Skip modal if there's only one empty session (just auto-created by refreshSessions)
         if (sessions.length === 1 && sessions[0].shotCount === 0) {
-          console.log('[PhotoboothWorkspace] Single empty session detected, auto-loading without modal');
+          logger.debug('[PhotoboothWorkspace] Single empty session detected, auto-loading without modal');
           hasAutoLoadedRef.current = true;
           await loadSession(sessions[0].id);
           return;
@@ -195,7 +199,7 @@ export default function PhotoboothWorkspace() {
           new Date(b.lastUsedAt).getTime() - new Date(a.lastUsedAt).getTime()
         )[0];
 
-        console.log('[PhotoboothWorkspace] Found existing sessions, showing selection modal');
+        logger.debug('[PhotoboothWorkspace] Found existing sessions, showing selection modal');
         hasAutoLoadedRef.current = true;
         setPendingSessionToLoad(latestSession);
         setShowSessionSelectModal(true);
@@ -221,7 +225,7 @@ export default function PhotoboothWorkspace() {
     autoCount,
     onPreviewLoaded: () => {
       // Called when entering waitingForPreview state
-      console.log('[PhotoboothWorkspace] Entering waitingForPreview state');
+      logger.debug('[PhotoboothWorkspace] Entering waitingForPreview state');
     },
     onCaptureStart: () => setDownloading(true),
   });
@@ -289,7 +293,7 @@ export default function PhotoboothWorkspace() {
         // Preload all images in background for better performance
         const imageUrls = loadedPhotos.map(p => p.thumbnailUrl).filter(Boolean);
         imageCache.preloadImages(imageUrls, 8).catch(err => {
-          console.warn('[PhotoboothWorkspace] Some images failed to preload:', err);
+          logger.warn('[PhotoboothWorkspace] Some images failed to preload:', err);
         });
       } else {
         // Clear if new session has no photos
@@ -303,30 +307,30 @@ export default function PhotoboothWorkspace() {
 
   // Handle photo_downloaded events from WebSocket
   const handlePhotoDownloaded = useCallback(async (event: PhotoDownloadedEvent) => {
-    console.log('[PhotoboothWorkspace::handlePhotoDownloaded] START');
-    console.log('[PhotoboothWorkspace::handlePhotoDownloaded] event:', event);
+    logger.debug('[PhotoboothWorkspace::handlePhotoDownloaded] START');
+    logger.debug('[PhotoboothWorkspace::handlePhotoDownloaded] event:', event);
 
     // Immediately advance the sequence state machine (adds placeholder + moves to review/next)
     // This decouples state progression from the slower download pipeline
     sequence.notifyCaptureComplete();
 
     const filename = event.file_path.split('/').pop() || event.file_path;
-    console.log('[PhotoboothWorkspace::handlePhotoDownloaded] extracted filename:', filename);
+    logger.debug('[PhotoboothWorkspace::handlePhotoDownloaded] extracted filename:', filename);
 
     if (!workingFolder) {
       // Show warning toast if working folder is not set
-      console.warn('[PhotoboothWorkspace::handlePhotoDownloaded] Working folder not set, cannot save photo');
+      logger.warn('[PhotoboothWorkspace::handlePhotoDownloaded] Working folder not set, cannot save photo');
       showToast('No Working Folder Set', 'warning', 5000, 'Select a folder in Photobooth settings');
       return;
     }
 
     try {
       let sessionId = currentSession?.id;
-      console.log('[PhotoboothWorkspace::handlePhotoDownloaded] initial sessionId:', sessionId);
+      logger.debug('[PhotoboothWorkspace::handlePhotoDownloaded] initial sessionId:', sessionId);
 
       // Auto-create session if none exists
       if (!sessionId) {
-        console.log('[PhotoboothWorkspace::handlePhotoDownloaded] No active session - auto-creating new session');
+        logger.debug('[PhotoboothWorkspace::handlePhotoDownloaded] No active session - auto-creating new session');
 
         // Find the highest numbered session to increment (from folder names like "Test_004")
         let nextNumber = 1;
@@ -344,7 +348,7 @@ export default function PhotoboothWorkspace() {
         }
 
         const sessionName = `Session ${nextNumber}`;
-        console.log('[PhotoboothWorkspace] Creating session:', sessionName);
+        logger.debug('[PhotoboothWorkspace] Creating session:', sessionName);
 
         // Create the new session using the backend command
         const newSession = await invoke<{ id: string; name: string; folderName: string }>('create_photobooth_session', {
@@ -353,14 +357,14 @@ export default function PhotoboothWorkspace() {
         });
 
         sessionId = newSession.id;
-        console.log('[PhotoboothWorkspace::handlePhotoDownloaded] Created session:', sessionId);
+        logger.debug('[PhotoboothWorkspace::handlePhotoDownloaded] Created session:', sessionId);
 
         // Load the newly created session as current
         await loadSession(sessionId);
-        console.log('[PhotoboothWorkspace::handlePhotoDownloaded] Loaded new session');
+        logger.debug('[PhotoboothWorkspace::handlePhotoDownloaded] Loaded new session');
       }
 
-      console.log('[PhotoboothWorkspace::handlePhotoDownloaded] Calling download_photo_from_daemon with:', {
+      logger.debug('[PhotoboothWorkspace::handlePhotoDownloaded] Calling download_photo_from_daemon with:', {
         daemonUrl: DAEMON_URL,
         filename,
         folderPath: workingFolder,
@@ -380,7 +384,7 @@ export default function PhotoboothWorkspace() {
         photoNamingScheme,
       });
 
-      console.log('[PhotoboothWorkspace::handlePhotoDownloaded] Photo saved, session updated:', updatedSession);
+      logger.debug('[PhotoboothWorkspace::handlePhotoDownloaded] Photo saved, session updated:', updatedSession);
       setPtbSession(updatedSession);
 
       // PRIORITY 1: Show full-res photo on guest display immediately (do this first!)
@@ -391,7 +395,7 @@ export default function PhotoboothWorkspace() {
       const photoPath = `${workingFolder}/${folderName}/${customFilename}`;
       const photoUrl = convertFileSrc(photoPath);
 
-      console.log('[PhotoboothWorkspace::handlePhotoDownloaded] Showing photo on guest display immediately');
+      logger.debug('[PhotoboothWorkspace::handlePhotoDownloaded] Showing photo on guest display immediately');
 
       // Reset flag for new photo
       previewTimerStartedRef.current = false;
@@ -412,7 +416,7 @@ export default function PhotoboothWorkspace() {
 
       // Start manual review mode if not in automatic sequence
       if (!sequence.isActive) {
-        console.log('[PhotoboothWorkspace::handlePhotoDownloaded] Manual capture - starting manual review mode');
+        logger.debug('[PhotoboothWorkspace::handlePhotoDownloaded] Manual capture - starting manual review mode');
         sequence.startManualReview();
       }
 
@@ -431,11 +435,11 @@ export default function PhotoboothWorkspace() {
           // Replace the placeholder with the real photo
           const updated = [...prev];
           updated[placeholderIndex] = newPhoto;
-          console.log('[PhotoboothWorkspace::handlePhotoDownloaded] Replaced placeholder at index:', placeholderIndex);
+          logger.debug('[PhotoboothWorkspace::handlePhotoDownloaded] Replaced placeholder at index:', placeholderIndex);
           return updated;
         }
         // If no placeholder found, append the new photo
-        console.log('[PhotoboothWorkspace::handlePhotoDownloaded] No placeholder found, appending photo');
+        logger.debug('[PhotoboothWorkspace::handlePhotoDownloaded] No placeholder found, appending photo');
         return [...prev, newPhoto];
       });
 
@@ -450,13 +454,13 @@ export default function PhotoboothWorkspace() {
         photos: updatedSession.photos,
         googleDriveMetadata: updatedSession.googleDriveMetadata || { uploadedImages: [] },
       }, customFilename);
-      console.log('[PhotoboothWorkspace::handlePhotoDownloaded] Session state updated directly');
+      logger.debug('[PhotoboothWorkspace::handlePhotoDownloaded] Session state updated directly');
 
       // PRIORITY 3: Auto-upload to Google Drive (non-blocking)
       // Only if user is logged in, Drive folder is configured, AND "Upload all images" is enabled
       if (qrUploadEnabled && account && updatedSession.googleDriveMetadata?.folderId && qrUploadAllImages) {
         const driveFolderId = updatedSession.googleDriveMetadata.folderId;
-        console.log('[PhotoboothWorkspace::handlePhotoDownloaded] Auto-uploading to Drive folder:', driveFolderId);
+        logger.debug('[PhotoboothWorkspace::handlePhotoDownloaded] Auto-uploading to Drive folder:', driveFolderId);
 
         // Check if photo was already uploaded
         try {
@@ -472,30 +476,30 @@ export default function PhotoboothWorkspace() {
               filename: customFilename,
               localPath: photoPath
             }], driveFolderId).catch(err => {
-              console.error('[PhotoboothWorkspace::handlePhotoDownloaded] Upload queue error:', err);
+              logger.error('[PhotoboothWorkspace::handlePhotoDownloaded] Upload queue error:', err);
             });
-            console.log('[PhotoboothWorkspace::handlePhotoDownloaded] Photo queued for immediate upload:', customFilename);
+            logger.debug('[PhotoboothWorkspace::handlePhotoDownloaded] Photo queued for immediate upload:', customFilename);
           } else {
-            console.log('[PhotoboothWorkspace::handlePhotoDownloaded] Photo already uploaded, skipping:', customFilename);
+            logger.debug('[PhotoboothWorkspace::handlePhotoDownloaded] Photo already uploaded, skipping:', customFilename);
           }
         } catch (error) {
-          console.error('[PhotoboothWorkspace::handlePhotoDownloaded] Upload check error:', error);
+          logger.error('[PhotoboothWorkspace::handlePhotoDownloaded] Upload check error:', error);
         }
       } else {
         if (!account) {
-          console.log('[PhotoboothWorkspace::handlePhotoDownloaded] Skipping auto-upload - Not logged in to Google Drive');
+          logger.debug('[PhotoboothWorkspace::handlePhotoDownloaded] Skipping auto-upload - Not logged in to Google Drive');
         } else if (!updatedSession.googleDriveMetadata?.folderId) {
-          console.log('[PhotoboothWorkspace::handlePhotoDownloaded] Skipping auto-upload - Drive folder not configured for this session');
+          logger.debug('[PhotoboothWorkspace::handlePhotoDownloaded] Skipping auto-upload - Drive folder not configured for this session');
         } else if (!qrUploadAllImages) {
-          console.log('[PhotoboothWorkspace::handlePhotoDownloaded] Skipping auto-upload - "Selected Collage Photos Only" mode (will upload on finalize)');
+          logger.debug('[PhotoboothWorkspace::handlePhotoDownloaded] Skipping auto-upload - "Selected Collage Photos Only" mode (will upload on finalize)');
         }
       }
 
-      console.log('[PhotoboothWorkspace::handlePhotoDownloaded] END - photo displayed immediately');
+      logger.debug('[PhotoboothWorkspace::handlePhotoDownloaded] END - photo displayed immediately');
     } catch (error) {
-      console.error('[PhotoboothWorkspace::handlePhotoDownloaded] ERROR:', error);
+      logger.error('[PhotoboothWorkspace::handlePhotoDownloaded] ERROR:', error);
     }
-    console.log('[PhotoboothWorkspace::handlePhotoDownloaded] END');
+    logger.debug('[PhotoboothWorkspace::handlePhotoDownloaded] END');
   }, [workingFolder, currentSession, sessions, updateCurrentSessionFromDownload, loadSession, sequence.notifyCaptureComplete, photoReviewTime, updateGuestDisplay, currentSetPhotos, selectedPhotoIndex, displayMode, account, qrUploadAllImages, enqueuePhotos]);
 
   // Subscribe to photo_downloaded events
@@ -511,7 +515,7 @@ export default function PhotoboothWorkspace() {
     const prevState = prevSequenceStateRef.current;
     const currentState = sequence.sequenceState;
 
-    console.log('[PhotoboothWorkspace] Preview hide check - prevState:', prevState, 'currentState:', currentState, 'showCapturePreview:', showCapturePreview, 'reviewCountdown:', sequence.reviewCountdown);
+    logger.debug('[PhotoboothWorkspace] Preview hide check - prevState:', prevState, 'currentState:', currentState, 'showCapturePreview:', showCapturePreview, 'reviewCountdown:', sequence.reviewCountdown);
 
     // Hide preview when leaving review/waitingForPreview, OR when sequence ends (complete/idle)
     const wasInReview = prevState === 'review' || prevState === 'waitingForPreview';
@@ -519,7 +523,7 @@ export default function PhotoboothWorkspace() {
     const sequenceEnded = (currentState === 'complete' || currentState === 'idle') && prevState !== currentState;
 
     if ((wasInReview && !isNowInReview || sequenceEnded) && showCapturePreview) {
-      console.log('[PhotoboothWorkspace] Review ended, hiding preview');
+      logger.debug('[PhotoboothWorkspace] Review ended, hiding preview');
       previewTimerStartedRef.current = false;
       setShowCapturePreview(false);
       setCapturedPhotoUrl(null);
@@ -542,7 +546,7 @@ export default function PhotoboothWorkspace() {
     const prev = prevManualPhaseRef.current;
     const current = sequence.manualPhase;
     if ((prev === 'review' || prev === 'waiting') && current === 'idle' && showCapturePreview) {
-      console.log('[PhotoboothWorkspace] Manual review ended, hiding preview');
+      logger.debug('[PhotoboothWorkspace] Manual review ended, hiding preview');
       previewTimerStartedRef.current = false;
       setShowCapturePreview(false);
       setCapturedPhotoUrl(null);
@@ -575,19 +579,19 @@ export default function PhotoboothWorkspace() {
 
   // Called when capture preview image has finished loading
   const handleCapturePreviewLoad = useCallback(() => {
-    console.log('[PhotoboothWorkspace] handleCapturePreviewLoad called - sequenceState:', sequence.sequenceState, 'previewTimerStartedRef:', previewTimerStartedRef.current);
+    logger.debug('[PhotoboothWorkspace] handleCapturePreviewLoad called - sequenceState:', sequence.sequenceState, 'previewTimerStartedRef:', previewTimerStartedRef.current);
 
     // Only start timer once (either from main window or guest display, whoever loads first)
     if (previewTimerStartedRef.current) {
-      console.log('[PhotoboothWorkspace] Preview timer already started, ignoring');
+      logger.debug('[PhotoboothWorkspace] Preview timer already started, ignoring');
       return;
     }
 
-    console.log('[PhotoboothWorkspace] Capture preview image loaded, starting review countdown');
+    logger.debug('[PhotoboothWorkspace] Capture preview image loaded, starting review countdown');
     previewTimerStartedRef.current = true;
 
     // Both manual and automatic captures use the sequence state machine
-    console.log('[PhotoboothWorkspace] Calling sequence.startReviewCountdown()');
+    logger.debug('[PhotoboothWorkspace] Calling sequence.startReviewCountdown()');
     sequence.startReviewCountdown();
   }, [sequence.startReviewCountdown]);
 
@@ -637,12 +641,12 @@ export default function PhotoboothWorkspace() {
       }
 
       const sessionName = `Session ${nextNumber}`;
-      console.log('[PhotoboothWorkspace] Creating next session:', sessionName);
+      logger.debug('[PhotoboothWorkspace] Creating next session:', sessionName);
 
       // Use createNewSession from context which includes Drive folder creation
       const newSession = await createNewSession(sessionName);
 
-      console.log('[PhotoboothWorkspace] Created and switching to session:', newSession.id);
+      logger.debug('[PhotoboothWorkspace] Created and switching to session:', newSession.id);
 
       // Load the new session
       await loadSession(newSession.id);
@@ -650,13 +654,16 @@ export default function PhotoboothWorkspace() {
       // Clear current photos for the new session
       setCurrentSetPhotos([]);
     } catch (error) {
-      console.error('[PhotoboothWorkspace] Error creating next session:', error);
+      logger.error('[PhotoboothWorkspace] Error creating next session:', error);
     }
   };
 
   // Handler for finalizing current session — switch to finalize view
   const handleFinalizeSession = async () => {
     setFinalizeViewMode('finalize');
+    // Store current display mode and switch guest display to finalize mode
+    setPreviousDisplayMode(displayMode);
+    setDisplayMode('finalize');
 
     // Generate QR code from session's Drive folder link if available
     const folderLink = currentSession?.googleDriveMetadata?.folderLink;
@@ -665,7 +672,7 @@ export default function PhotoboothWorkspace() {
         const qrBase64 = await invoke<string>('generate_qr_code', { url: folderLink });
         setSessionQrData(qrBase64);
       } catch (err) {
-        console.error('[PhotoboothWorkspace] Failed to generate QR code:', err);
+        logger.error('[PhotoboothWorkspace] Failed to generate QR code:', err);
         setSessionQrData(null);
       }
     } else {
@@ -682,11 +689,11 @@ export default function PhotoboothWorkspace() {
 
         if (qrUploadAllImages) {
           // Upload all photos from current session
-          console.log('[PhotoboothWorkspace::handleFinalizeSession] Uploading all session photos to Drive');
+          logger.debug('[PhotoboothWorkspace::handleFinalizeSession] Uploading all session photos to Drive');
           photoFilenames = currentSetPhotos.map(photo => photo.id);
         } else {
           // Upload only selected photos
-          console.log('[PhotoboothWorkspace::handleFinalizeSession] Uploading selected photos to Drive');
+          logger.debug('[PhotoboothWorkspace::handleFinalizeSession] Uploading selected photos to Drive');
 
           // Check if we have placed images (on finalize screen) or selected photos (on capture screen)
           if (placedImages.size > 0) {
@@ -706,11 +713,11 @@ export default function PhotoboothWorkspace() {
         }
 
         if (photoFilenames.length === 0) {
-          console.log('[PhotoboothWorkspace::handleFinalizeSession] No photos to upload');
+          logger.debug('[PhotoboothWorkspace::handleFinalizeSession] No photos to upload');
           return;
         }
 
-        console.log('[PhotoboothWorkspace::handleFinalizeSession] Found photos to upload:', photoFilenames);
+        logger.debug('[PhotoboothWorkspace::handleFinalizeSession] Found photos to upload:', photoFilenames);
 
         // Build full photo objects with local paths
         const photosToUpload = [];
@@ -728,28 +735,49 @@ export default function PhotoboothWorkspace() {
             const localPath = `${workingFolder}/${sessionFolderName}/${filename}`;
             photosToUpload.push({ filename, localPath });
           } else {
-            console.log('[PhotoboothWorkspace::handleFinalizeSession] Already uploaded:', filename);
+            logger.debug('[PhotoboothWorkspace::handleFinalizeSession] Already uploaded:', filename);
           }
         }
 
         if (photosToUpload.length > 0) {
-          console.log(`[PhotoboothWorkspace::handleFinalizeSession] Queueing ${photosToUpload.length} photos for upload`);
+          logger.debug(`[PhotoboothWorkspace::handleFinalizeSession] Queueing ${photosToUpload.length} photos for upload`);
           await enqueuePhotos(currentSession.id, photosToUpload, driveFolderId);
         } else {
-          console.log('[PhotoboothWorkspace::handleFinalizeSession] All photos already uploaded');
+          logger.debug('[PhotoboothWorkspace::handleFinalizeSession] All photos already uploaded');
         }
       } catch (error) {
-        console.error('[PhotoboothWorkspace::handleFinalizeSession] Upload error:', error);
+        logger.error('[PhotoboothWorkspace::handleFinalizeSession] Upload error:', error);
       }
     } else {
-      console.log('[PhotoboothWorkspace::handleFinalizeSession] Skipping upload - Drive not configured or account mismatch');
+      logger.debug('[PhotoboothWorkspace::handleFinalizeSession] Skipping upload - Drive not configured or account mismatch');
     }
   };
 
   const handleBackToCapture = () => {
+    logger.debug('[handleBackToCapture] BACK BUTTON CLICKED');
+    logger.debug('[handleBackToCapture] previousDisplayMode:', previousDisplayMode);
+    logger.debug('[handleBackToCapture] isSecondScreenOpen:', isSecondScreenOpen);
+
+    // Clear placed images cache and image cache when exiting finalize view
+    setPlacedImages(new Map());
+    imageCache.clearCache();
+
     setFinalizeViewMode('capture');
     setFinalizeEditingZoneId(null);
     setSessionQrData(null);
+
+    // Restore guest display to previous mode and clear finalize image
+    setDisplayMode(previousDisplayMode);
+
+    // Explicitly update the display mode on guest display
+    updateDisplayMode(previousDisplayMode);
+
+    // Clear the finalize image and QR data
+    updateGuestDisplay({
+      displayMode: previousDisplayMode,
+      finalizeImageUrl: null,
+      finalizeQrData: null,
+    });
   };
 
   // Get selected photos in order (preserving capture order)
@@ -805,7 +833,11 @@ export default function PhotoboothWorkspace() {
       }
 
       const sessionName = `Session ${nextNumber}`;
-      console.log('[PhotoboothWorkspace] Creating new session:', sessionName);
+      logger.debug('[PhotoboothWorkspace] Creating new session:', sessionName);
+
+      // Clear placed images cache and image cache when creating new session
+      setPlacedImages(new Map());
+      imageCache.clearCache();
 
       const newSession = await createNewSession(sessionName);
 
@@ -818,7 +850,7 @@ export default function PhotoboothWorkspace() {
       setShowSessionSelectModal(false);
       setPendingSessionToLoad(null);
     } catch (error) {
-      console.error('[PhotoboothWorkspace] Error creating new session:', error);
+      logger.error('[PhotoboothWorkspace] Error creating new session:', error);
     }
   };
 
@@ -860,9 +892,12 @@ export default function PhotoboothWorkspace() {
 
   // Sync display mode to guest display
   useEffect(() => {
-    updateDisplayMode(displayMode);
+    // Don't sync finalize mode - only FinalizeView should control that
+    if (displayMode !== 'finalize') {
+      updateDisplayMode(displayMode);
+    }
   }, [displayMode, updateDisplayMode]);
-
+  
   // Sync selected photo index to guest display
   useEffect(() => {
     selectPhoto(selectedPhotoIndex);
@@ -915,14 +950,14 @@ export default function PhotoboothWorkspace() {
         }),
         listen('guest-display:preview-loaded', () => {
           // Guest display has finished loading the preview image, start countdown
-          console.log('[PhotoboothWorkspace] Guest display preview loaded');
+          logger.debug('[PhotoboothWorkspace] Guest display preview loaded');
           handleCapturePreviewLoad();
         }),
         listen('guest-display:ready', () => {
           // Guest display listeners are ready — send full current state
           // Note: displayMode is NOT sent here — the guest display already has it from the URL param,
           // and sending it here can cause a race condition that resets the mode
-          console.log('[PhotoboothWorkspace] Guest display ready, sending full state');
+          logger.debug('[PhotoboothWorkspace] Guest display ready, sending full state');
           emitTo('guest-display', 'guest-display:mode', displayModeRef.current);
           emitTo('guest-display', 'guest-display:update', {
             currentSetPhotos: currentSetPhotosRef.current,

@@ -27,9 +27,13 @@ import { QRSidebar } from "./components/Sidebar/QR";
 import { PhotoboothSidebar } from "./components/Sidebar/Photobooth";
 import QRView from "./components/QRView/QRView";
 import PhotoboothWorkspace from "./components/PhotoboothView/PhotoboothWorkspace";
+import { createLogger } from './utils/logger';
 import "./App.css";
 
 type AppMode = 'photobooth' | 'collage' | 'qr';
+
+const logger = createLogger('App');
+
 
 interface SystemRequirements {
   virtualbox_installed: boolean;
@@ -151,7 +155,7 @@ function App() {
           setShowRequirementsModal(true);
         }
       } catch (e) {
-        console.error('Failed to check system requirements:', e);
+        logger.error('Failed to check system requirements:', e);
       }
       setRequirementsChecked(true);
     };

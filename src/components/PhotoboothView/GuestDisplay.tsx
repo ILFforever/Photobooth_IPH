@@ -2,6 +2,9 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { emit } from '@tauri-apps/api/event';
 import DisplayContent from "./DisplayContent";
+import { createLogger } from '../../utils/logger';
+
+const logger = createLogger('GuestDisplay');
 
 export type { UnlistenFn };
 
@@ -27,6 +30,7 @@ interface PhotoState {
   finalizeQrData: string | null;
 }
 
+// Helper function to convert base64 string to Blob (used by HDMI)
 function base64ToBlob(b64: string, mime: string): Blob {
   const byteChars = atob(b64);
   const byteArray = new Uint8Array(byteChars.length);
@@ -34,6 +38,12 @@ function base64ToBlob(b64: string, mime: string): Blob {
     byteArray[i] = byteChars.charCodeAt(i);
   }
   return new Blob([byteArray], { type: mime });
+}
+
+// Helper function to convert number array (from Tauri) to Blob (used by PTP)
+function arrayToBlob(arr: number[], mime: string): Blob {
+  const uint8Array = new Uint8Array(arr);
+  return new Blob([uint8Array], { type: mime });
 }
 
 export default function GuestDisplay() {
@@ -116,7 +126,7 @@ export default function GuestDisplay() {
       unlisten = await listen<string>('hdmi-frame', (event) => {
         hdmiFrameCountRef.current++;
         if (hdmiFrameCountRef.current === 1) {
-          console.log('[GuestDisplay] ✓ First HDMI frame received');
+          logger.debug('[GuestDisplay] ✓ First HDMI frame received');
         }
 
         const blob = base64ToBlob(event.payload, 'image/jpeg');
@@ -150,13 +160,14 @@ export default function GuestDisplay() {
     let unlisten: UnlistenFn | null = null;
 
     const setupPtpListener = async () => {
-      unlisten = await listen<string>('ptp-frame', (event) => {
+      unlisten = await listen<number[]>('ptp-frame', (event) => {
         ptpFrameCountRef.current++;
         if (ptpFrameCountRef.current === 1) {
-          console.log('[GuestDisplay] ✓ First PTP frame received');
+          logger.debug('[GuestDisplay] ✓ First PTP frame received (binary mode)');
         }
 
-        const blob = base64ToBlob(event.payload, 'image/jpeg');
+        // Convert number array directly to Blob (no base64 decoding needed - 10x faster)
+        const blob = arrayToBlob(event.payload, 'image/jpeg');
         const url = URL.createObjectURL(blob);
 
         // Revoke previous URL to prevent memory leak
@@ -193,11 +204,11 @@ export default function GuestDisplay() {
 
             // Handle capture preview trigger
             if (payload.showCapturePreview === true && payload.capturedPhotoUrl) {
-              console.log('[GuestDisplay] Setting capture preview with URL:', payload.capturedPhotoUrl);
+              logger.debug('[GuestDisplay] Setting capture preview with URL:', payload.capturedPhotoUrl);
               capturedPhotoUrlRef.current = payload.capturedPhotoUrl;
               clearPreviewTimer();
             } else if (payload.showCapturePreview === false) {
-              console.log('[GuestDisplay] Clearing capture preview');
+              logger.debug('[GuestDisplay] Clearing capture preview');
               // Explicitly clearing preview
               clearPreviewTimer();
               capturedPhotoUrlRef.current = null;
@@ -227,7 +238,7 @@ export default function GuestDisplay() {
 
     setupListeners().then(() => {
       // Notify main window that we're ready to receive state
-      console.log('[GuestDisplay] Listeners ready, requesting initial state');
+      logger.debug('[GuestDisplay] Listeners ready, requesting initial state');
       emit('guest-display:ready');
     });
 
@@ -303,7 +314,7 @@ export default function GuestDisplay() {
 
   // Called when capture preview image has finished loading
   const handleCapturePreviewLoad = useCallback(() => {
-    console.log('[GuestDisplay] Capture preview image loaded, notifying main window');
+    logger.debug('[GuestDisplay] Capture preview image loaded, notifying main window');
     emit(CAPTURE_PREVIEW_LOADED_EVENT);
   }, []);
 

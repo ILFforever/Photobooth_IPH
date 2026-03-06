@@ -2,6 +2,9 @@ import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import { useCollage } from "../../contexts/CollageContext";
+import { createLogger } from '../../utils/logger';
+
+const logger = createLogger('CustomCanvasDialog');
 
 type Unit = 'px' | 'mm' | 'cm' | 'in';
 
@@ -143,9 +146,8 @@ export default function CustomCanvasDialog({ isOpen, onClose }: CustomCanvasDial
     // Save to appdata using dedicated command
     try {
       await invoke('save_custom_canvas_size', { canvas: newCanvas });
-      console.log('Custom canvas saved:', newCanvas);
     } catch (error) {
-      console.error('Failed to save custom canvas:', error);
+      logger.error('Failed to save custom canvas:', error);
     }
 
     // Reset form
