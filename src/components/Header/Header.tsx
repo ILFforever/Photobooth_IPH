@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { useAuth } from "../../contexts/AuthContext";
+import { useAuth } from "../../contexts";
 import Icon from "@mdi/react";
 import {
   mdiLockOutline,

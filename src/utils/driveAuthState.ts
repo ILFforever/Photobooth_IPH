@@ -1,4 +1,4 @@
-import type { GoogleDriveMetadata } from '../contexts/PhotoboothSettingsContext';
+import type { GoogleDriveMetadata } from '../contexts';
 import type { GoogleAccount } from '../types/qr';
 
 /**

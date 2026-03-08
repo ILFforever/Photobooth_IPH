@@ -134,7 +134,7 @@ function DisplayStrip({
               <LoadingSegmentDigit />
               <LoadingSegmentDigit />
             </>
-          ) : sequenceState === 'preCountdown' || sequenceState === 'betweenPhotos' ? (
+          ) : sequenceState === 'preCountdown' ? (
             <>
               <SevenSegmentDigit value={0} dash />
               <SevenSegmentDigit value={0} dash />
@@ -195,8 +195,8 @@ function LEDBar({ isAutoRunning, isPaused }: LEDBarProps) {
 }
 
 interface ControlButtonsProps {
-  delayBetweenPhotos: number;
-  setDelayBetweenPhotos: (value: number) => void;
+  onIntervalUp: () => void;
+  onIntervalDown: () => void;
   isActive: boolean;
   isAutoRunning: boolean;
   isPaused: boolean;
@@ -211,8 +211,8 @@ interface ControlButtonsProps {
 }
 
 function ControlButtons({
-  delayBetweenPhotos,
-  setDelayBetweenPhotos,
+  onIntervalUp,
+  onIntervalDown,
   isActive,
   isAutoRunning,
   isPaused,
@@ -245,10 +245,10 @@ function ControlButtons({
       <div className="control-group">
         <div className="control-label">INTERVAL</div>
         <div className="button-row">
-          <button className="ctrl-btn" onClick={() => setDelayBetweenPhotos(Math.min(10, delayBetweenPhotos + 1))}>
+          <button className="ctrl-btn" onClick={onIntervalUp}>
             <span>▲</span>
           </button>
-          <button className="ctrl-btn" onClick={() => setDelayBetweenPhotos(Math.max(1, delayBetweenPhotos - 1))}>
+          <button className="ctrl-btn" onClick={onIntervalDown}>
             <span>▼</span>
           </button>
         </div>
@@ -303,7 +303,6 @@ interface PhotoboothControlsProps {
   manualReviewCountdown: number;
 
   // Settings
-  delayBetweenPhotos: number;
   autoCount: number;
 
   // Connection state
@@ -311,7 +310,8 @@ interface PhotoboothControlsProps {
   hasWorkingFolder: boolean;
 
   // Actions
-  setDelayBetweenPhotos: (value: number) => void;
+  onIntervalUp: () => void;
+  onIntervalDown: () => void;
   onToggleActive: () => void;
   onPause: () => void;
   onStopIfActive: () => void;
@@ -335,11 +335,11 @@ export function PhotoboothControls({
   isPaused,
   manualPhase,
   manualReviewCountdown,
-  delayBetweenPhotos,
   autoCount,
   isCameraConnected,
   hasWorkingFolder,
-  setDelayBetweenPhotos,
+  onIntervalUp,
+  onIntervalDown,
   onToggleActive,
   onPause,
   onStopIfActive,
@@ -366,8 +366,8 @@ export function PhotoboothControls({
         <LEDBar isAutoRunning={isAutoRunning} isPaused={isPaused} />
 
         <ControlButtons
-          delayBetweenPhotos={delayBetweenPhotos}
-          setDelayBetweenPhotos={setDelayBetweenPhotos}
+          onIntervalUp={onIntervalUp}
+          onIntervalDown={onIntervalDown}
           isActive={isActive}
           isAutoRunning={isAutoRunning}
           isPaused={isPaused}

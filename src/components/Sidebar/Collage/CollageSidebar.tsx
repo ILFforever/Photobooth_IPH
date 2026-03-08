@@ -1,10 +1,10 @@
 import { motion } from "framer-motion";
 import { WorkingFolderGallery } from "../../WorkingFolder/WorkingFolderGallery";
-import ImageManipulator from "../../Canvas/ImageManipulator";
+import { ImageManipulator } from "../../Canvas";
 import { FrameCreator } from "../FrameCreator";
 import { CustomSetsSidebar } from "../CustomSets";
 import { LayersSidebar } from "../Layers";
-import { useCollage } from "../../../contexts/CollageContext";
+import { useCollage } from "../../../contexts";
 import "./CollageSidebar.css";
 import Icon from "@mdi/react";
 import { mdiFolderOutline, mdiPencilOutline, mdiImageOutline, mdiLayersOutline, mdiContentSaveOutline, mdiFileExportOutline } from "@mdi/js";

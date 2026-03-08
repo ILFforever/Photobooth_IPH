@@ -3,26 +3,26 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Image as ImageIcon, ExternalLink, Camera, Grid3x3, Layers, Plus, FolderOpen
 } from "lucide-react";
-import { usePhotoboothSettings, type PhotoboothSessionInfo } from "../../contexts/PhotoboothSettingsContext";
-import { usePhotoboothSequence } from "../../hooks/usePhotoboothSequence";
-import { useCamera } from "../../contexts/CameraContext";
-import { useLiveView } from "../../contexts/LiveViewContext";
-import { usePhotobooth } from "../../contexts/PhotoboothContext";
-import { useToast } from "../../contexts/ToastContext";
-import { useUploadQueue } from "../../contexts/UploadQueueContext";
-import { useAuth } from "../../contexts/AuthContext";
-import { useCustomSets } from "../../hooks/useCustomSets";
+import { usePhotoboothSettings, type PhotoboothSessionInfo } from "../../contexts";
+import { usePhotoboothSequence } from "../../hooks";
+import { useCamera } from "../../contexts";
+import { useLiveView } from "../../contexts";
+import { usePhotobooth } from "../../contexts";
+import { useToast } from "../../contexts";
+import { useUploadQueue } from "../../contexts";
+import { useAuth } from "../../contexts";
+import { useCustomSets } from "../../hooks";
 import { getDriveAuthState, areUploadsEnabled } from "../../utils/driveAuthState";
 import { PhotoboothControls } from "./PhotoboothControls";
 import DisplayContent from "./DisplayContent";
 import CurrentSetPhotoStrip from "./CurrentSetPhotoStrip";
-import PhotoSessionsSidebar from "./PhotoSessionsSidebar";
+import { PhotoSessionsSidebar } from "../Sidebar/Sessions";
 import FinalizeView from "./FinalizeView";
 import { type PhotoDownloadedEvent } from "../../services/cameraWebSocket";
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { listen, emitTo, type UnlistenFn } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { useSecondScreen } from "../../hooks/useSecondScreen";
+import { useSecondScreen } from "../../hooks";
 import { imageCache } from "../../services/ImageCacheService";
 import "./PhotoboothWorkspace.css";
 import { createLogger } from '../../utils/logger';
@@ -86,7 +86,6 @@ export default function PhotoboothWorkspace() {
     timerDelay,
     autoCount,
     delayBetweenPhotos,
-    setDelayBetweenPhotos,
     photoReviewTime,
     workingFolder,
     photoNamingScheme,
@@ -977,14 +976,27 @@ export default function PhotoboothWorkspace() {
   }, [handleCapturePreviewLoad]);
 
   // Handle navigation clicks for DisplayContent
-  const handleNavClick = (direction: 'prev' | 'next') => {
-    if (selectedPhotoIndex === null) return;
-    const totalPhotos = currentSetPhotos.length || 6;
-    const newIndex = direction === 'prev'
-      ? Math.max(0, selectedPhotoIndex - 1)
-      : Math.min(totalPhotos - 1, selectedPhotoIndex + 1);
-    setSelectedPhotoIndex(newIndex);
-  };
+  const handleNavClick = useCallback((direction: 'prev' | 'next') => {
+    setSelectedPhotoIndex(prev => {
+      if (prev === null) return null;
+      const totalPhotos = currentSetPhotos.length || 6;
+      return direction === 'prev'
+        ? Math.max(0, prev - 1)
+        : Math.min(totalPhotos - 1, prev + 1);
+    });
+  }, [currentSetPhotos.length]);
+
+  // Stable callbacks for DisplayContent (avoids breaking React.memo)
+  const handleExitFullscreen = useCallback(() => setSelectedPhotoIndex(null), []);
+  const handleCenterPhotoClick = useCallback((index: number) => setCenterBrowseIndex(index), []);
+  const handleCenterBack = useCallback(() => setCenterBrowseIndex(null), []);
+  const handleCenterNavClick = useCallback((direction: 'prev' | 'next') => {
+    setCenterBrowseIndex(prev => {
+      if (prev === null) return null;
+      if (direction === 'prev') return Math.max(0, prev - 1);
+      return Math.min(currentSetPhotos.length - 1, prev + 1);
+    });
+  }, [currentSetPhotos.length]);
 
   return (
     <div className="photobooth-workspace">
@@ -1064,9 +1076,9 @@ export default function PhotoboothWorkspace() {
                   currentSetPhotos={currentSetPhotos}
                   selectedPhotoIndex={selectedPhotoIndex}
                   onPhotoDoubleClick={setSelectedPhotoIndex}
-                  onExitFullscreen={() => setSelectedPhotoIndex(null)}
-                  liveViewStream={liveViewStream}
-                  hdmiStreamUrl={hdmi.frameUrl || ptp.frameUrl}
+                  onExitFullscreen={handleExitFullscreen}
+                  liveViewStream={displayMode === 'single' || displayMode === 'center' ? liveViewStream : null}
+                  hdmiStreamUrl={displayMode === 'single' || displayMode === 'center' ? (hdmi.frameUrl || ptp.frameUrl) : null}
                   onNavClick={handleNavClick}
                   showGridOverlay={true}
                   showRecentPhotos={true}
@@ -1075,15 +1087,9 @@ export default function PhotoboothWorkspace() {
                   capturedPhotoUrl={capturedPhotoUrl}
                   onCapturePreviewLoad={handleCapturePreviewLoad}
                   centerBrowseIndex={centerBrowseIndex}
-                  onCenterPhotoClick={(index) => setCenterBrowseIndex(index)}
-                  onCenterBack={() => setCenterBrowseIndex(null)}
-                  onCenterNavClick={(direction) => {
-                    setCenterBrowseIndex(prev => {
-                      if (prev === null) return null;
-                      if (direction === 'prev') return Math.max(0, prev - 1);
-                      return Math.min(currentSetPhotos.length - 1, prev + 1);
-                    });
-                  }}
+                  onCenterPhotoClick={handleCenterPhotoClick}
+                  onCenterBack={handleCenterBack}
+                  onCenterNavClick={handleCenterNavClick}
                 />
               </div>
             </div>
@@ -1114,11 +1120,11 @@ export default function PhotoboothWorkspace() {
             isPaused={sequence.isPaused}
             manualPhase={sequence.manualPhase}
             manualReviewCountdown={sequence.manualReviewCountdown}
-            delayBetweenPhotos={delayBetweenPhotos}
             autoCount={autoCount}
             isCameraConnected={isCameraConnected}
             hasWorkingFolder={!!workingFolder}
-            setDelayBetweenPhotos={setDelayBetweenPhotos}
+            onIntervalUp={() => sequence.adjustCountdown(3)}
+            onIntervalDown={() => sequence.adjustCountdown(-3)}
             onToggleActive={() => setAutoRunActive(!sequence.isAutoRunning)}
             onPause={sequence.togglePause}
             onStopIfActive={sequence.stopIfActive}

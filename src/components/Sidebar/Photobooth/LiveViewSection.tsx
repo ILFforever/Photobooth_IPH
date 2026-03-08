@@ -12,8 +12,8 @@ import {
 } from "lucide-react";
 import "./PhotoboothSidebar.css";
 import { useState, useRef, useEffect } from "react";
-import FFmpegDownloadModal from "../../Modals/FFmpegDownloadModal";
-import { useLiveView } from "../../../contexts/LiveViewContext";
+import { FFmpegDownloadModal } from "../../Modals";
+import { useLiveView } from "../../../contexts";
 import { emit, listen } from "@tauri-apps/api/event";
 
 type CollapsibleSection =

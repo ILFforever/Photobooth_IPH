@@ -396,6 +396,9 @@
   gap: 8px;
   padding: 16px;
   overflow-y: auto;
+  /* Hide scrollbar */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
   /* Allow auto-rows when scrollable */
   grid-auto-rows: 1fr;
 }
@@ -407,17 +410,7 @@
 }
 
 .grid-display::-webkit-scrollbar {
-  width: 6px;
-}
-
-.grid-display::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 3px;
-}
-
-.grid-display::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 3px;
+  display: none; /* Chrome, Safari, Opera */
 }
 
 .grid-display::-webkit-scrollbar-thumb:hover {

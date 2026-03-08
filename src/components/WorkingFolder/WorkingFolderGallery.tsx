@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useDrag } from 'react-dnd';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { useWorkingFolder } from '../../contexts/WorkingFolderContext';
+import { useWorkingFolder } from '../../contexts';
 import { WorkingImage } from '../../types/assets';
 import './WorkingFolderGallery.css';
 import { createLogger } from '../../utils/logger';

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { invoke } from '@tauri-apps/api/core';
-import { useCollage } from '../../../contexts/CollageContext';
+import { useCollage } from '../../../contexts';
 import { Frame, FrameZone, FrameShape } from '../../../types/frame';
 import { generateFrameId } from '../../../utils/frameTemplates';
 import './FrameCreator.css';

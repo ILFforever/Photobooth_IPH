@@ -1,7 +1,7 @@
 import { Layers, Camera, Image as ImageIcon, Grid3x3, ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
 import { mdiFlashTriangleOutline } from '@mdi/js';
 import Icon from '@mdi/react';
-import { useCallback, useRef, useState } from "react";
+import { memo, useCallback, useRef, useState } from "react";
 
 type DisplayMode = 'single' | 'center' | 'canvas' | 'finalize';
 
@@ -37,7 +37,7 @@ interface DisplayContentProps {
   onCenterNavClick?: (direction: 'prev' | 'next') => void;
 }
 
-export default function DisplayContent({
+export default memo(function DisplayContent({
   displayMode,
   currentSetPhotos,
   selectedPhotoIndex,
@@ -446,4 +446,4 @@ export default function DisplayContent({
     default:
       return null;
   }
-}
+})

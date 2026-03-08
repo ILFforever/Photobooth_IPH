@@ -17,6 +17,7 @@ export interface CameraStatus {
   ev?: string;
   wb?: string;
   metering?: string; // Metering mode (e.g., "Multi", "Spot", "Average", "Center" for Fuji)
+  lens?: string; // Lens name from camera
 }
 
 export interface PhotoDownloadedEvent {

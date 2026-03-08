@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { useCollage } from '../../../contexts/CollageContext';
+import { useCollage } from '../../../contexts';
 import { LayerPosition } from '../../../types/overlay';
 import { LayerSection } from './LayerSection';
 import { OverlayPropertiesPanel } from '../FrameCreator';
-import { ImportOverlaysModal } from '../../Modals/ImportOverlaysModal';
+import { ImportOverlaysModal } from '../../Modals';
 import './LayersSidebar.css';
 
 export function LayersSidebar() {

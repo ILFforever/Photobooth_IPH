@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { OverlayLayer as OverlayLayerType, BlendMode, LayerPosition } from '../../../types/overlay';
-import { useCollage } from '../../../contexts/CollageContext';
+import { useCollage } from '../../../contexts';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import Icon from '@mdi/react';
 import {

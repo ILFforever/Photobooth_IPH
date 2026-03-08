@@ -144,6 +144,8 @@ pub fn run() {
             get_custom_set,
             delete_custom_set,
             duplicate_custom_set,
+            export_custom_set,
+            import_custom_set,
             // Photobooth Sessions
             load_ptb_workspace,
             save_ptb_workspace,

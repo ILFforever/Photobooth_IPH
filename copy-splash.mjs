@@ -27,9 +27,6 @@ writeFileSync(splashDest, splashContent);
 const logoSource = join(__dirname, 'src', 'assets', 'images', 'IPH.png');
 const logoDest = join(__dirname, 'dist', 'src', 'assets', 'images', 'IPH.png');
 
-if (existsSync(logoSource)) {
+if (existsSync(logoSource)) 
   copyFileSync(logoSource, logoDest);
-  logger.debug('Copied IPH.png to dist/src/assets/images/');
-} else {
-  logger.debug('IPH.png not found, skipping...');
-}
+

@@ -7,13 +7,14 @@ import {
   ZoomOut,
   RotateCcw,
 } from "lucide-react";
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import * as fs from "@tauri-apps/plugin-fs";
 import { emitTo } from "@tauri-apps/api/event";
 import { Frame, FrameZone } from "../../types/frame";
 import { PlacedImage } from "../../types/collage";
-import { usePhotobooth } from "../../contexts/PhotoboothContext";
+import { usePhotobooth } from "../../contexts";
 import { autoPlacePhotos, PhotoForPlacement } from "../../utils/autoPlacement";
-import { useToast } from "../../contexts/ToastContext";
+import { useToast } from "../../contexts";
 import "./FinalizeView.css";
 import { createLogger } from '../../utils/logger';
 
@@ -413,6 +414,8 @@ export default function FinalizeView({
     const justOpened = !isSecondScreenOpen;
     if (justOpened) {
       openSecondScreen();
+      // Prevent the auto-trigger effect from firing again once isCompositing → false
+      autoTriggerRef.current = true;
     }
 
     setIsCompositing(true);
@@ -442,19 +445,14 @@ export default function FinalizeView({
         ).join("");
         const filename = `Collage_${randomStr}.png`;
 
-        await invoke("save_file_to_session_folder", {
-          folderPath: workingFolder,
-          sessionId: sessionFolderName,
-          filename,
-          fileData: Array.from(exportResult.bytes),
-        });
-
+        // Save to session folder using FS plugin (much faster than Rust IPC)        
+        const sessionPath = `${workingFolder}/${sessionFolderName}`;     
+        await fs.mkdir(sessionPath, { recursive: true });
+        await fs.writeFile(`${sessionPath}/${filename}`, exportResult.bytes);
         setCurrentCollageFilename(filename);
-        setIsGeneratingCollage(false);
-        const filePath = `${workingFolder}/${sessionFolderName}/${filename}`;
-        imageUrl = convertFileSrc(filePath);
+        const newFilePath = `${workingFolder}/${sessionFolderName}/${filename}`; 
+        imageUrl = convertFileSrc(newFilePath);      
       }
-
       const displayData = {
         displayMode: "finalize" as const,
         finalizeImageUrl: imageUrl,
@@ -474,9 +472,9 @@ export default function FinalizeView({
       setIsDisplayingOnGuest(true);
     } catch (err) {
       logger.error("[FinalizeView] Failed to composite frame:", err);
-      setIsGeneratingCollage(false);
     } finally {
       setIsCompositing(false);
+      setIsGeneratingCollage(false);
     }
   }, [
     isDisplayingOnGuest,
@@ -501,6 +499,14 @@ export default function FinalizeView({
       handleToggleDisplay();
     }
   }, [isSecondScreenOpen, isCompositing, isGeneratingCollage, placedImages.size, handleToggleDisplay]);
+
+  // Update guest display when QR data arrives after initial display was sent
+  useEffect(() => {
+    if (isDisplayingOnGuest && qrData) {
+      logger.debug('[FinalizeView] QR data arrived, updating guest display');
+      updateGuestDisplay({ finalizeQrData: qrData });
+    }
+  }, [qrData, isDisplayingOnGuest, updateGuestDisplay]);
 
   // Sorted overlay layers for rendering
   const belowFrameOverlays = useMemo(

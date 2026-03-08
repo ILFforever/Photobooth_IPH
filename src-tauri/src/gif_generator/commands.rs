@@ -481,8 +481,8 @@ pub async fn generate_slideshow_video(
 
         // Run ffmpeg
         let ffmpeg_path = ffmpeg_sidecar::ffmpeg_path();
-        let output = Command::new(&ffmpeg_path)
-            .args([
+        let mut cmd = Command::new(&ffmpeg_path);
+        cmd.args([
                 "-y",
                 "-f",
                 "concat",
@@ -501,7 +501,16 @@ pub async fn generate_slideshow_video(
                 "-crf",
                 &crf_value.to_string(),
                 &output_path.to_string_lossy(),
-            ])
+            ]);
+
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            cmd.creation_flags(CREATE_NO_WINDOW);
+        }
+
+        let output = cmd
             .output()
             .map_err(|e| {
                 format!(

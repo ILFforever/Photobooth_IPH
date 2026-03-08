@@ -4,7 +4,7 @@ import "./QRSidebar.css";
 import type { GoogleAccount, NoPreviewImage, UploadProgress } from "../../../types/qr";
 import Icon from "@mdi/react";
 import { mdiRocketLaunch, mdiCheckCircle, mdiFolder, mdiMagnify, mdiUpload, mdiLockOpen, mdiQrcode, mdiAlert, mdiHistory } from "@mdi/js";
-import HistoryModal from "../../Modals/HistoryModal";
+import { HistoryModal } from "../../Modals";
 import { formatDate } from "../../../utils/format";
 
 interface QRSidebarProps {

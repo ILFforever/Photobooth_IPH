@@ -1,8 +1,8 @@
 import { useState, useMemo } from 'react';
 import { save } from '@tauri-apps/plugin-dialog';
-import { invoke } from '@tauri-apps/api/core';
-import { useCollage } from '../../../contexts/CollageContext';
-import { useToast } from '../../../contexts/ToastContext';
+import * as fs from '@tauri-apps/plugin-fs';
+import { useCollage } from '../../../contexts';
+import { useToast } from '../../../contexts';
 import Icon from '@mdi/react';
 import { mdiFileExportOutline, mdiImageOutline, mdiLayers, mdiCheckCircle, mdiAlertCircle } from '@mdi/js';
 import './ExportSidebar.css';
@@ -65,10 +65,7 @@ export function ExportSidebar() {
 
       if (!filePath) return; // User cancelled
 
-      await invoke('save_file_to_path', {
-        filePath,
-        fileData: Array.from(exportResult.bytes),
-      });
+      await fs.writeFile(filePath, exportResult.bytes);
 
       showToast('Exported', 'success', 3000, `Saved to ${filePath}`);
     } catch (error) {

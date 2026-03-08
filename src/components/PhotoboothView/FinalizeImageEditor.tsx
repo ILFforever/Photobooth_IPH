@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { X, Plus, Minus } from "lucide-react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { PlacedImage, ImageTransform, DEFAULT_TRANSFORM } from "../../types/collage";
-import { usePhotobooth } from "../../contexts/PhotoboothContext";
+import { usePhotobooth } from "../../contexts";
 import "./FinalizeImageEditor.css";
 
 interface FinalizeImageEditorProps {

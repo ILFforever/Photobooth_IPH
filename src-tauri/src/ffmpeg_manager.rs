@@ -26,7 +26,7 @@ pub fn ffmpeg_executable_path() -> Result<PathBuf, String> {
     let dir = ffmpeg_dir()?;
 
     #[cfg(windows)]
-    let mut exe = dir.join("ffmpeg.exe");
+    let exe = dir.join("ffmpeg.exe");
 
     #[cfg(not(windows))]
     let mut exe = dir.join("ffmpeg");
@@ -157,8 +157,17 @@ pub async fn get_ffmpeg_version() -> Result<String, String> {
 
     let exe_path = ffmpeg_executable_path()?;
 
-    let output = std::process::Command::new(&exe_path)
-        .arg("-version")
+    let mut cmd = std::process::Command::new(&exe_path);
+    cmd.arg("-version");
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let output = cmd
         .output()
         .map_err(|e| format!("Failed to run ffmpeg: {}", e))?;
 

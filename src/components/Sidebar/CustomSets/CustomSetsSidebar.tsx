@@ -1,13 +1,21 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
+import { save, open } from '@tauri-apps/plugin-dialog';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useCollage } from '../../../contexts/CollageContext';
+import { Download, Upload, Play, Trash2, X, CheckCircle, AlertCircle } from 'lucide-react';
+import { useCollage } from '../../../contexts';
 import { CustomSet, CustomSetPreview } from '../../../types/customSet';
 import { Background } from '../../../types/background';
 import './CustomSetsSidebar.css';
 import { createLogger } from '../../../utils/logger';
 
 const logger = createLogger('CustomSetsSidebar');
+
+interface Toast {
+  id: number;
+  message: string;
+  type: 'success' | 'error';
+}
 interface SetPreviewData extends CustomSetPreview {
   previewInfo?: {
     canvasSize: string;
@@ -24,6 +32,15 @@ export function CustomSetsSidebar() {
   const [newSetDescription, setNewSetDescription] = useState('');
   const [saving, setSaving] = useState(false);
   const [deletingSetId, setDeletingSetId] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [exportingId, setExportingId] = useState<string | null>(null);
+  const [toasts, setToasts] = useState<Toast[]>([]);
+
+  const showToast = useCallback((message: string, type: 'success' | 'error') => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
+  }, []);
 
   const {
     currentFrame,
@@ -42,6 +59,7 @@ export function CustomSetsSidebar() {
     overlays,
     setOverlays,
     setSelectedCustomSetName,
+    setBackgrounds,
   } = useCollage();
 
   useEffect(() => {
@@ -83,12 +101,12 @@ export function CustomSetsSidebar() {
 
   const handleCreateSet = async () => {
     if (!newSetName.trim()) {
-      alert('Please enter a name for the custom set');
+      showToast('Please enter a name for the custom set', 'error');
       return;
     }
 
     if (!currentFrame || !canvasSize || !background) {
-      alert('Please select a frame, canvas size, and background before creating a set');
+      showToast('Please select a frame, canvas size, and background first', 'error');
       return;
     }
 
@@ -172,7 +190,7 @@ export function CustomSetsSidebar() {
         await loadCustomSets();
       } catch (error) {
         logger.error('Failed to save custom set:', error);
-        alert('Failed to save custom set: ' + error);
+        showToast('Failed to save custom set: ' + error, 'error');
       } finally {
         setSaving(false);
       }
@@ -221,7 +239,7 @@ export function CustomSetsSidebar() {
       await loadCustomSets();
     } catch (error) {
       logger.error('Failed to save custom set:', error);
-      alert('Failed to save custom set: ' + error);
+      showToast('Failed to save custom set: ' + error, 'error');
     } finally {
       setSaving(false);
     }
@@ -243,7 +261,76 @@ export function CustomSetsSidebar() {
       });
 
       setCurrentFrame(set.frame);
-      setBackground(set.background.value);
+
+      // Persist the background into the backgrounds system if it's an image
+      // This ensures it appears in load_backgrounds and survives page refreshes
+      if (set.background.background_type === 'image') {
+        const bgFilePath = set.background.value.replace('asset://', '');
+
+        // Check if this background already exists in the persisted backgrounds
+        const existingBgs = await invoke<Background[]>('load_backgrounds');
+        const alreadyPersisted = existingBgs.some(bg => {
+          // Compare by normalized path
+          const normalize = (p: string) => {
+            try {
+              return decodeURIComponent(p)
+                .replace('asset://', '')
+                .replace(/\\/g, '/')
+                .toLowerCase();
+            } catch { return p.replace('asset://', '').replace(/\\/g, '/').toLowerCase(); }
+          };
+          return normalize(bg.value) === normalize(set.background.value);
+        });
+
+        if (alreadyPersisted) {
+          // Already in backgrounds system, just reload and set
+          setBackgrounds(existingBgs);
+          const matchedBg = existingBgs.find(bg => {
+            const normalize = (p: string) => {
+              try {
+                return decodeURIComponent(p)
+                  .replace('asset://', '')
+                  .replace(/\\/g, '/')
+                  .toLowerCase();
+              } catch { return p.replace('asset://', '').replace(/\\/g, '/').toLowerCase(); }
+            };
+            return normalize(bg.value) === normalize(set.background.value);
+          });
+          const bgValue = (matchedBg || set.background).value.startsWith('asset://')
+            ? convertFileSrc((matchedBg || set.background).value.replace('asset://', ''))
+            : (matchedBg || set.background).value;
+          setBackground(bgValue);
+        } else {
+          // Import into backgrounds system for persistence
+          try {
+            const importedBg = await invoke<Background>('import_background', {
+              filePath: bgFilePath,
+              name: set.background.name || set.name,
+            });
+            const updatedBgs = await invoke<Background[]>('load_backgrounds');
+            setBackgrounds(updatedBgs);
+            const bgValue = importedBg.value.startsWith('asset://')
+              ? convertFileSrc(importedBg.value.replace('asset://', ''))
+              : importedBg.value;
+            setBackground(bgValue);
+          } catch (importErr) {
+            logger.warn('Failed to persist background, using temporary:', importErr);
+            // Fallback: add to array without persistence
+            const bgValue = set.background.value.startsWith('asset://')
+              ? convertFileSrc(set.background.value.replace('asset://', ''))
+              : set.background.value;
+            setBackground(bgValue);
+            const bgAlreadyExists = backgrounds.some(bg => bg.id === set.background.id);
+            if (!bgAlreadyExists) {
+              setBackgrounds([...backgrounds, set.background]);
+            }
+          }
+        }
+      } else {
+        // Non-image background (color/gradient) - just set directly
+        const bgValue = set.background.value;
+        setBackground(bgValue);
+      }
 
       setBackgroundTransform({
         scale: set.backgroundTransform.scale,
@@ -284,7 +371,7 @@ export function CustomSetsSidebar() {
       logger.debug('Custom set loaded successfully');
     } catch (error) {
       logger.error('Failed to load custom set:', error);
-      alert('Failed to load custom set: ' + error);
+      showToast('Failed to load custom set: ' + error, 'error');
     }
   };
 
@@ -295,7 +382,7 @@ export function CustomSetsSidebar() {
       await loadCustomSets();
     } catch (error) {
       logger.error('Failed to delete custom set:', error);
-      alert('Failed to delete custom set: ' + error);
+      showToast('Failed to delete custom set: ' + error, 'error');
     }
   };
 
@@ -305,6 +392,91 @@ export function CustomSetsSidebar() {
 
   const cancelDelete = () => {
     setDeletingSetId(null);
+  };
+
+  const handleExportSet = async (set: SetPreviewData) => {
+    try {
+      setExportingId(set.id);
+
+      // Get the set name for the default filename
+      const sanitizedName = set.name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      const defaultFilename = `${sanitizedName}.ptbs`;
+
+      // Open save dialog
+      const filePath = await save({
+        title: 'Export Custom Set',
+        defaultPath: defaultFilename,
+        filters: [
+          {
+            name: 'Photobooth Set',
+            extensions: ['ptbs']
+          }
+        ]
+      });
+
+      if (!filePath) {
+        // User cancelled
+        setExportingId(null);
+        return;
+      }
+
+      // Call the export command
+      await invoke('export_custom_set', {
+        setId: set.id,
+        filePath: filePath
+      });
+
+      logger.info(`Exported custom set "${set.name}" to ${filePath}`);
+      showToast(`"${set.name}" exported`, 'success');
+    } catch (error) {
+      logger.error('Failed to export custom set:', error);
+      showToast('Failed to export: ' + error, 'error');
+    } finally {
+      setExportingId(null);
+    }
+  };
+
+  const handleImportSet = async () => {
+    try {
+      setImporting(true);
+
+      // Open file dialog
+      const selected = await open({
+        title: 'Import Custom Set',
+        multiple: false,
+        filters: [
+          {
+            name: 'Photobooth Set',
+            extensions: ['ptbs']
+          }
+        ]
+      });
+
+      if (!selected || typeof selected !== 'string') {
+        // User cancelled or invalid selection
+        setImporting(false);
+        return;
+      }
+
+      // Call the import command
+      const importedSet = await invoke<CustomSet>('import_custom_set', {
+        filePath: selected
+      });
+
+      logger.info(`Imported custom set "${importedSet.name}"`);
+      showToast(`"${importedSet.name}" imported`, 'success');
+
+      // Reload the sets list
+      await loadCustomSets();
+
+      // Automatically load/apply the imported set
+      await handleLoadSet(importedSet.id);
+    } catch (error) {
+      logger.error('Failed to import custom set:', error);
+      showToast('Failed to import: ' + error, 'error');
+    } finally {
+      setImporting(false);
+    }
   };
 
   return (
@@ -326,6 +498,18 @@ export function CustomSetsSidebar() {
         >
           Save Current Setup
         </button>
+
+        <div className="custom-sets-actions-row">
+          <button
+            className="import-set-button"
+            onClick={handleImportSet}
+            disabled={importing}
+            title="Import a set from a .ptbs file"
+          >
+            <Download size={15} />
+            {importing ? 'Importing...' : 'Import Set'}
+          </button>
+        </div>
 
         {loading ? (
           <div className="custom-sets-loading">Loading sets...</div>
@@ -388,9 +572,9 @@ export function CustomSetsSidebar() {
                       <button
                         className="cancel-delete-button"
                         onClick={cancelDelete}
-                        title="Cancel delete"
+                        title="Cancel"
                       >
-                        Cancel
+                        <X size={13} />
                       </button>
                     </>
                   ) : (
@@ -400,14 +584,24 @@ export function CustomSetsSidebar() {
                         onClick={() => handleLoadSet(set.id)}
                         title="Load this set"
                       >
+                        <Play size={13} />
                         Load
+                      </button>
+                      <button
+                        className="export-set-button"
+                        onClick={() => handleExportSet(set)}
+                        disabled={exportingId === set.id}
+                        title="Export as .ptbs file"
+                      >
+                        <Upload size={13} />
+                        Export
                       </button>
                       <button
                         className="delete-set-button"
                         onClick={() => confirmDelete(set.id)}
                         title="Delete this set"
                       >
-                        Delete
+                        <Trash2 size={13} />
                       </button>
                     </>
                   )}
@@ -418,6 +612,22 @@ export function CustomSetsSidebar() {
           </div>
         )}
       </div>
+
+      {/* Toast notifications */}
+      <AnimatePresence>
+        {toasts.map(toast => (
+          <motion.div
+            key={toast.id}
+            className={`custom-sets-toast custom-sets-toast--${toast.type}`}
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 30 }}
+          >
+            {toast.type === 'success' ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
+            <span>{toast.message}</span>
+          </motion.div>
+        ))}
+      </AnimatePresence>
 
       <AnimatePresence>
         {showCreateDialog && (

@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { GoogleAccount, DriveFolder } from "../../contexts/AuthContext";
+import { GoogleAccount, DriveFolder } from "../../contexts";
 
 interface EmptyStateProps {
   account: GoogleAccount | null;

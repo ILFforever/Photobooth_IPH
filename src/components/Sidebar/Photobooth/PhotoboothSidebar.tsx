@@ -5,37 +5,38 @@ import { CameraSection } from "./CameraSection";
 import { LiveViewSection } from "./LiveViewSection";
 import { ImageQuality } from "./ImageQuality";
 import { FocusSettings } from "./FocusSettings";
-import ConnectionLostModal from "../../Modals/ConnectionLostModal";
-import ConfirmDialog from "../../Modals/ConfirmDialog";
-import FolderPickerModal from "../../Modals/FolderPickerModal";
-import { useCamera } from "../../../contexts/CameraContext";
-import { useVM } from "../../../contexts/VMContext";
-import { usePhotoboothSettings } from "../../../contexts/PhotoboothSettingsContext";
-import { useToast } from "../../../contexts/ToastContext";
-import { usePhotobooth } from "../../../contexts/PhotoboothContext";
-import { usePrintSettings } from "../../../contexts/PrintSettingsContext";
-import { useAuth } from "../../../contexts/AuthContext";
-import { useDriveFolderPicker } from "../../../hooks/useDriveFolderPicker";
-import { useVmLogs } from "../../../hooks/useVmLogs";
-import { useCameraSettings } from "../../../hooks/useCameraSettings";
-import { useCustomSets } from "../../../hooks/useCustomSets";
+import { ConnectionLostModal } from "../../Modals";
+import { ConfirmDialog } from "../../Modals";
+import { FolderPickerModal } from "../../Modals";
+import { useCamera, useVM, usePhotoboothSettings,useToast} from "../../../contexts";
+import { usePhotobooth } from "../../../contexts/";
+import { usePrintSettings } from "../../../contexts/";
+import { useAuth } from "../../../contexts/";
+import { useDriveFolderPicker } from "../../../hooks/";
+import { useVmLogs } from "../../../hooks/";
+import { useCameraSettings } from "../../../hooks/";
+import { useCustomSets } from "../../../hooks/";
 import type { ConnectionState } from "../../../types/connection";
 import {
   EditTabContent,
-  VmLogsModal,
-  LedInfoModal,
+  GifSettingsSection,
+  GifTabContent,
+  PrintTabContent,
+  QrSettingsSection,
+  QrTabContent,
+} from "./tabs";
+import {
+  ConnectionInfoSection,
   CustomSetsSection,
-  WorkingFolderSection,
   NamingSchemeSection,
   PhotoboothSettingsSection,
-  QrSettingsSection,
+  WorkingFolderSection,
+} from "./sections";
+import {
+  LedInfoModal,
   QrInfoModal,
-  PrintTabContent,
-  QrTabContent,
-  GifTabContent,
-  GifSettingsSection,
-  ConnectionInfoSection,
-} from "./components";
+  VmLogsModal,
+} from "./modals";
 import "./PhotoboothSidebar.css";
 import { createLogger } from '../../../utils/logger';
 const logger = createLogger('PhotoboothSidebar');

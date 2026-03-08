@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { GoogleDriveMetadata } from "../contexts/PhotoboothSettingsContext";
+import type { GoogleDriveMetadata } from "../contexts";
 
 /**
  * Generate a random folder name for Google Drive session uploads

@@ -40,11 +40,7 @@ function base64ToBlob(b64: string, mime: string): Blob {
   return new Blob([byteArray], { type: mime });
 }
 
-// Helper function to convert number array (from Tauri) to Blob (used by PTP)
-function arrayToBlob(arr: number[], mime: string): Blob {
-  const uint8Array = new Uint8Array(arr);
-  return new Blob([uint8Array], { type: mime });
-}
+// arrayToBlob removed — PTP now uses base64 (same as HDMI) via 'ptp-frame-b64' event
 
 export default function GuestDisplay() {
   // Initialize with window label's initial state from main window (if available)
@@ -69,6 +65,11 @@ export default function GuestDisplay() {
   const prevUrlRef = useRef<string | null>(null);
   const hdmiFrameCountRef = useRef(0);
   const ptpFrameCountRef = useRef(0);
+
+  // Ref tracks whether the current display mode shows the live view.
+  // Used inside event listeners to skip expensive blob creation + state
+  // updates when the live view isn't visible (canvas / finalize modes).
+  const showsLiveViewRef = useRef(true);
 
   // Capture preview timer - auto-switch back to live view after photoReviewTime
   const previewTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -125,9 +126,9 @@ export default function GuestDisplay() {
     const setupHdmiListener = async () => {
       unlisten = await listen<string>('hdmi-frame', (event) => {
         hdmiFrameCountRef.current++;
-        if (hdmiFrameCountRef.current === 1) {
-          logger.debug('[GuestDisplay] ✓ First HDMI frame received');
-        }
+
+        // Skip expensive blob creation + state update when live view isn't visible
+        if (!showsLiveViewRef.current) return;
 
         const blob = base64ToBlob(event.payload, 'image/jpeg');
         const url = URL.createObjectURL(blob);
@@ -160,14 +161,14 @@ export default function GuestDisplay() {
     let unlisten: UnlistenFn | null = null;
 
     const setupPtpListener = async () => {
-      unlisten = await listen<number[]>('ptp-frame', (event) => {
+      unlisten = await listen<string>('ptp-frame-b64', (event) => {
         ptpFrameCountRef.current++;
-        if (ptpFrameCountRef.current === 1) {
-          logger.debug('[GuestDisplay] ✓ First PTP frame received (binary mode)');
-        }
 
-        // Convert number array directly to Blob (no base64 decoding needed - 10x faster)
-        const blob = arrayToBlob(event.payload, 'image/jpeg');
+        // Skip expensive blob creation + state update when live view isn't visible
+        if (!showsLiveViewRef.current) return;
+
+        // Same path as HDMI — base64 → blob → objectURL
+        const blob = base64ToBlob(event.payload, 'image/jpeg');
         const url = URL.createObjectURL(blob);
 
         // Revoke previous URL to prevent memory leak
@@ -249,6 +250,9 @@ export default function GuestDisplay() {
 
   const { currentSetPhotos, selectedPhotoIndex, displayMode, showCapturePreview, capturedPhotoUrl, finalizeImageUrl, finalizeQrData } = photoState;
 
+  // Keep ref in sync so frame listeners can check without re-subscribing
+  showsLiveViewRef.current = displayMode === 'single' || displayMode === 'center';
+
   // Handle keyboard navigation for fullscreen mode
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -329,7 +333,28 @@ export default function GuestDisplay() {
         <div className="preview-content">
           {showCountdownOverlay && (
             <div className="countdown-overlay">
-              <span className="countdown-number">{countdown.value}</span>
+              <div className="countdown-look-up">
+                <svg className="countdown-arrow" viewBox="0 0 40 16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="2 14 20 2 38 14" />
+                </svg>
+                <span>Look up at the camera</span>
+              </div>
+              <div className="countdown-circle">
+                <svg className="countdown-leader-svg" viewBox="0 0 100 100">
+                  {/* Outer ring */}
+                  <circle cx="50" cy="50" r="48" fill="none" stroke="rgba(255,255,255,0.8)" strokeWidth="1.2" />
+                  {/* Middle ring */}
+                  <circle cx="50" cy="50" r="38" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="0.8" />
+                  {/* Inner ring */}
+                  <circle cx="50" cy="50" r="28" fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth="0.6" />
+                  {/* Crosshairs */}
+                  <line x1="50" y1="2" x2="50" y2="98" stroke="rgba(255,255,255,0.45)" strokeWidth="0.6" />
+                  <line x1="2" y1="50" x2="98" y2="50" stroke="rgba(255,255,255,0.45)" strokeWidth="0.6" />
+                  {/* Sweeping hand */}
+                  <line className="countdown-hand" x1="50" y1="50" x2="50" y2="3" />
+                </svg>
+                <span className="countdown-number">{countdown.value}</span>
+              </div>
             </div>
           )}
           <DisplayContent

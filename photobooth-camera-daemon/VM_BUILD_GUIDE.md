@@ -19,7 +19,7 @@ The VM is a minimal Buildroot Linux that runs inside VirtualBox. It contains:
 | Architecture | **x86_64** |
 | Toolchain | GCC 12.4.0, GLIBC |
 | Init system | **Custom /init script** (not BusyBox init) |
-| Camera Lib | **libgphoto2** (patched for cross-compile) |
+| Camera Lib | **libgphoto2 2.5.33** (patched for cross-compile) |
 
 ## Prerequisites
 

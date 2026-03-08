@@ -415,13 +415,14 @@ pub fn check_virtualbox_installed() -> (bool, Option<String>) {
             }
 
             match cmd.output() {
-                Ok(output) => {
+                Ok(output) if output.status.success() => {
                     let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
                     return (true, Some(version));
                 }
-                Err(_) => {
-                    // Found VBoxManage but couldn't run it - still consider VirtualBox installed
-                    return (true, None);
+                _ => {
+                    // VBoxManage exists but can't run successfully - installer may still be in progress
+                    // Don't consider installed until it can actually execute
+                    continue;
                 }
             }
         }
