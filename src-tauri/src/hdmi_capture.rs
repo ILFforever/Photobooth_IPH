@@ -44,7 +44,7 @@ const HEALTHY_RUN_SECS: f64 = 5.0;
 
 /// List DirectShow video capture devices via FFmpeg.
 #[tauri::command]
-pub async fn list_capture_devices(app: AppHandle) -> Result<Vec<CaptureDevice>, String> {
+pub async fn list_capture_devices(_app: AppHandle) -> Result<Vec<CaptureDevice>, String> {
     // Check if FFmpeg exists before running
     crate::ffmpeg_manager::ensure_ffmpeg_exists()?;
 

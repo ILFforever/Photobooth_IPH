@@ -375,6 +375,21 @@ pub async fn download_vm_update(url: &str, version: Option<&str>, window: Option
     // Drop file to flush before rename
     drop(file);
 
+    // Stop the VM before replacing the ISO (it may have the file locked)
+    if let Some(vbox) = find_vbox_manage() {
+        log_file!("[UPDATE] Stopping VM before ISO replacement...");
+        let result = run_command_silent(&vbox, &["controlvm", "PhotoboothLinux", "poweroff"]);
+        match &result {
+            Ok(out) if out.status.success() => log_file!("[UPDATE] VM powered off successfully"),
+            Ok(out) => log_file!("[UPDATE] VM poweroff exited with status {} (may already be off): {}", out.status, String::from_utf8_lossy(&out.stderr).trim()),
+            Err(e) => log_file!("[UPDATE] VM poweroff command failed: {}", e),
+        }
+        // Give VirtualBox a moment to release the file lock
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    } else {
+        log_file!("[UPDATE] VBoxManage not found, skipping VM stop before ISO replacement");
+    }
+
     // Replace old ISO with new one
     std::fs::rename(&temp_path, &output_path)
         .map_err(|e| format!("Failed to replace VM ISO: {}", e))?;
@@ -392,43 +407,90 @@ pub async fn download_vm_update(url: &str, version: Option<&str>, window: Option
     Ok(output_path.display().to_string())
 }
 
-/// Check if VirtualBox is installed by looking for VBoxManage.exe
-pub fn check_virtualbox_installed() -> (bool, Option<String>) {
-    // Check common installation paths for VBoxManage.exe
-    let common_paths = vec![
+/// Find VBoxManage.exe - checks registry first, then falls back to common paths
+pub fn find_vbox_manage() -> Option<String> {
+    // Try registry first: HKLM\SOFTWARE\Oracle\VirtualBox -> InstallDir
+    #[cfg(windows)]
+    {
+        use windows::core::PCWSTR;
+        use windows::Win32::System::Registry::{RegOpenKeyExW, RegQueryValueExW, RegCloseKey, HKEY_LOCAL_MACHINE, KEY_READ, REG_SZ};
+        use windows::Win32::Foundation::ERROR_SUCCESS;
+
+        let key_path: Vec<u16> = "SOFTWARE\\Oracle\\VirtualBox\0".encode_utf16().collect();
+        let mut hkey = windows::Win32::System::Registry::HKEY::default();
+        let result = unsafe {
+            RegOpenKeyExW(HKEY_LOCAL_MACHINE, PCWSTR(key_path.as_ptr()), 0, KEY_READ, &mut hkey)
+        };
+        if result == ERROR_SUCCESS {
+            let value_name: Vec<u16> = "InstallDir\0".encode_utf16().collect();
+            let mut buf = vec![0u16; 512];
+            let mut buf_size = (buf.len() * 2) as u32;
+            let mut reg_type = 0u32;
+            let mut reg_type_typed = windows::Win32::System::Registry::REG_VALUE_TYPE(reg_type);
+            let query_result = unsafe {
+                RegQueryValueExW(hkey, PCWSTR(value_name.as_ptr()), None, Some(&mut reg_type_typed), Some(buf.as_mut_ptr() as *mut u8), Some(&mut buf_size))
+            };
+            reg_type = reg_type_typed.0;
+            unsafe { let _ = RegCloseKey(hkey); };
+            if query_result == ERROR_SUCCESS && reg_type == REG_SZ.0 {
+                let len = (buf_size / 2).saturating_sub(1) as usize; // strip null terminator
+                let install_dir = String::from_utf16_lossy(&buf[..len]);
+                let exe = std::path::Path::new(install_dir.trim_end_matches('\\'))
+                    .join("VBoxManage.exe");
+                if exe.exists() {
+                    log_file!("[VBOX] Found VBoxManage via registry: {}", exe.display());
+                    return Some(exe.to_string_lossy().into_owned());
+                } else {
+                    log_file!("[VBOX] Registry points to '{}' but VBoxManage.exe not found there", install_dir);
+                }
+            } else {
+                log_file!("[VBOX] Registry key found but InstallDir query failed");
+            }
+        } else {
+            log_file!("[VBOX] VirtualBox registry key not found, falling back to common paths");
+        }
+    }
+
+    // Fallback: common install paths
+    let common_paths = [
         r"C:\Program Files\Oracle\VirtualBox\VBoxManage.exe",
         r"C:\Program Files (x86)\Oracle\VirtualBox\VBoxManage.exe",
         r"C:\VirtualBox\VBoxManage.exe",
     ];
-
-    for path in common_paths {
-        if std::path::Path::new(path).exists() {
-            // Try to get version by running VBoxManage (without showing console window)
-            let mut cmd = std::process::Command::new(path);
-            cmd.args(&["--version"]);
-
-            #[cfg(windows)]
-            {
-                // Hide console window on Windows
-                const CREATE_NO_WINDOW: u32 = 0x08000000;
-                cmd.creation_flags(CREATE_NO_WINDOW);
-            }
-
-            match cmd.output() {
-                Ok(output) if output.status.success() => {
-                    let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                    return (true, Some(version));
-                }
-                _ => {
-                    // VBoxManage exists but can't run successfully - installer may still be in progress
-                    // Don't consider installed until it can actually execute
-                    continue;
-                }
-            }
+    match common_paths.iter().find(|p| std::path::Path::new(p).exists()) {
+        Some(p) => {
+            log_file!("[VBOX] Found VBoxManage at common path: {}", p);
+            Some(p.to_string())
+        }
+        None => {
+            log_file!("[VBOX] VBoxManage.exe not found in any known location");
+            None
         }
     }
+}
 
-    (false, None)
+/// Check if VirtualBox is installed by looking for VBoxManage.exe
+pub fn check_virtualbox_installed() -> (bool, Option<String>) {
+    let Some(path) = find_vbox_manage() else {
+        return (false, None);
+    };
+
+    let mut cmd = std::process::Command::new(&path);
+    cmd.args(&["--version"]);
+
+    #[cfg(windows)]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    match cmd.output() {
+        Ok(output) if output.status.success() => {
+            let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            (true, Some(version))
+        }
+        _ => (false, None),
+    }
 }
 
 /// Check for bundled VirtualBox installer
@@ -1173,7 +1235,6 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
     log_file!("=== STARTING INITIALIZATION ===");
 
     const VM_NAME: &str = "PhotoboothLinux";
-    const VBOX_MANAGE: &str = r"C:\Program Files\Oracle\VirtualBox\VBoxManage.exe";
     const DAEMON_URL: &str = "http://localhost:58321/api/health";
     const HEALTH_TIMEOUT_MS: u64 = 2000;
     const MAX_BOOT_WAIT_SECS: u64 = 30;
@@ -1218,24 +1279,28 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
         "message": "Checking VirtualBox installation..."
     }));
 
-    if !std::path::Path::new(VBOX_MANAGE).exists() {
-        log_file!(" VirtualBox not found - skipping VM");
-        let _ = window.emit("init-progress", serde_json::json!({
-            "step": 2,
-            "total_steps": 6,
-            "message": "VirtualBox not found - camera features unavailable"
-        }));
-        let _ = window.emit("init-complete", ());
-        return Ok("Initialization complete (VirtualBox not installed - camera features disabled)".to_string());
-    }
+    let vbox_manage = match find_vbox_manage() {
+        Some(path) => path,
+        None => {
+            log_file!(" VirtualBox not found - skipping VM");
+            let _ = window.emit("init-progress", serde_json::json!({
+                "step": 2,
+                "total_steps": 6,
+                "message": "VirtualBox not found - camera features unavailable"
+            }));
+            let _ = window.emit("init-complete", ());
+            return Ok("Initialization complete (VirtualBox not installed - camera features disabled)".to_string());
+        }
+    };
 
     // Step 3: Check if VM exists, auto-create if missing
     log_file!(" Step 3: VM check");
     log_file!(" Checking if VM exists...");
+    let vbox_manage_clone = vbox_manage.clone();
     let vm_check_result = tokio::time::timeout(
         Duration::from_secs(3),
         tokio::task::spawn_blocking(move || {
-            run_command_silent(VBOX_MANAGE, &["list", "vms"])
+            run_command_silent(&vbox_manage_clone, &["list", "vms"])
         })
     ).await;
 
@@ -1251,7 +1316,7 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
 
     if !vm_exists {
         log_file!(" VM not found - attempting auto-creation from ISO");
-        match create_vm_from_iso(VBOX_MANAGE, VM_NAME, &window) {
+        match create_vm_from_iso(&vbox_manage, VM_NAME, &window) {
             Ok(()) => {
                 log_file!(" VM auto-created successfully");
             }
@@ -1285,7 +1350,7 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
 
                 if deleted {
                     // Try creating again after deletion
-                    match create_vm_from_iso(VBOX_MANAGE, VM_NAME, &window) {
+                    match create_vm_from_iso(&vbox_manage, VM_NAME, &window) {
                         Ok(()) => {
                             log_file!(" VM created successfully after cleanup");
                         }
@@ -1378,7 +1443,7 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
         "message": "Checking VM state..."
     }));
 
-    let showvminfo_output = run_command_silent(VBOX_MANAGE, &["showvminfo", VM_NAME]);
+    let showvminfo_output = run_command_silent(&vbox_manage, &["showvminfo", VM_NAME]);
     let vm_state = match &showvminfo_output {
         Ok(output) => {
             let info = String::from_utf8_lossy(&output.stdout);
@@ -1409,7 +1474,7 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
             "message": "VM is running - shutting down..."
         }));
 
-        let _ = run_command_silent(VBOX_MANAGE, &["controlvm", VM_NAME, "poweroff"]);
+        let _ = run_command_silent(&vbox_manage, &["controlvm", VM_NAME, "poweroff"]);
         log_file!(" Powered off running VM");
     } else if is_aborted {
         let _ = window.emit("init-progress", serde_json::json!({
@@ -1439,7 +1504,7 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
         "message": "Releasing VM lock..."
     }));
 
-    match wait_for_vm_unlocked(VBOX_MANAGE, VM_NAME, 20).await {
+    match wait_for_vm_unlocked(&vbox_manage, VM_NAME, 20).await {
         Ok(true) => {
             log_file!(" VM unlocked successfully");
             // Add a small delay to ensure VirtualBox fully releases the lock
@@ -1470,7 +1535,7 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
     }
 
     // Optimize AHCI port count
-    let _ = run_command_silent(VBOX_MANAGE, &["storagectl", VM_NAME, "--name", "SATA", "--portcount", "2"]);
+    let _ = run_command_silent(&vbox_manage, &["storagectl", VM_NAME, "--name", "SATA", "--portcount", "2"]);
 
     // Start VM headless with retry logic for lock errors
     let _ = window.emit("init-progress", serde_json::json!({
@@ -1486,7 +1551,7 @@ pub async fn initialize_app(window: tauri::Window) -> Result<String, String> {
     let mut start_error = String::new();
 
     for attempt in 0..3 {
-        let start_output = run_command_silent(VBOX_MANAGE, &["startvm", VM_NAME, "--type", "headless"]);
+        let start_output = run_command_silent(&vbox_manage, &["startvm", VM_NAME, "--type", "headless"]);
 
         match start_output {
             Ok(output) if output.status.success() => {

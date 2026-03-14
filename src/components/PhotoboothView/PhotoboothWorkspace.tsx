@@ -12,6 +12,7 @@ import { useToast } from "../../contexts";
 import { useUploadQueue } from "../../contexts";
 import { useAuth } from "../../contexts";
 import { useCustomSets } from "../../hooks";
+import { useCollageUpload } from "../../hooks/useCollageUpload";
 import { getDriveAuthState, areUploadsEnabled } from "../../utils/driveAuthState";
 import { PhotoboothControls } from "./PhotoboothControls";
 import DisplayContent from "./DisplayContent";
@@ -104,6 +105,7 @@ export default function PhotoboothWorkspace() {
   const { enqueuePhotos } = useUploadQueue();
   const { account, rootFolder } = useAuth();
   const { customSets, selectedCustomSetId } = useCustomSets();
+  const { uploadCollage } = useCollageUpload();
 
   // Get the selected set name from the custom sets
   const selectedSetName = customSets.find(s => s.id === selectedCustomSetId)?.name ?? null;
@@ -752,6 +754,12 @@ export default function PhotoboothWorkspace() {
     }
   };
 
+  // Handler for uploading the final collage to Google Drive (uses shared hook)
+  const handleUploadCollage = useCallback(async () => {
+    if (!currentSession?.googleDriveMetadata) return;
+    await uploadCollage(currentSession, workingFolder!, sessions, currentSession.googleDriveMetadata);
+  }, [currentSession, workingFolder, sessions, uploadCollage]);
+
   const handleBackToCapture = () => {
     logger.debug('[handleBackToCapture] BACK BUTTON CLICKED');
     logger.debug('[handleBackToCapture] previousDisplayMode:', previousDisplayMode);
@@ -1170,6 +1178,7 @@ export default function PhotoboothWorkspace() {
                 isSecondScreenOpen={isSecondScreenOpen}
                 openSecondScreen={openSecondScreen}
                 qrData={sessionQrData}
+                onDisplayShown={handleUploadCollage}
               />
             </motion.div>
           )}

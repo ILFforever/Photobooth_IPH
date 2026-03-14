@@ -46,10 +46,17 @@ pub struct CameraManager {
 
 impl CameraManager {
     pub fn new() -> Self {
+        // Find VBoxManage using the helper function
+        let vbox_manage_path = crate::system_requirements::find_vbox_manage()
+            .unwrap_or_else(|| {
+                // Fallback to default path if not found
+                r"C:\Program Files\Oracle\VirtualBox\VBoxManage.exe".to_string()
+            });
+
         Self {
             attached_cameras: Arc::new(Mutex::new(HashMap::new())),
             vm_name: "PhotoboothLinux".to_string(),
-            vbox_manage_path: r"C:\Program Files\Oracle\VirtualBox\VBoxManage.exe".to_string(),
+            vbox_manage_path,
         }
     }
 

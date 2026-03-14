@@ -342,14 +342,14 @@ export default function GuestDisplay() {
               <div className="countdown-circle">
                 <svg className="countdown-leader-svg" viewBox="0 0 100 100">
                   {/* Outer ring */}
-                  <circle cx="50" cy="50" r="48" fill="none" stroke="rgba(255,255,255,0.8)" strokeWidth="1.2" />
+                  <circle cx="50" cy="50" r="48" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="1.2" />
                   {/* Middle ring */}
-                  <circle cx="50" cy="50" r="38" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="0.8" />
+                  <circle cx="50" cy="50" r="38" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="0.8" />
                   {/* Inner ring */}
-                  <circle cx="50" cy="50" r="28" fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth="0.6" />
+                  <circle cx="50" cy="50" r="28" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="0.6" />
                   {/* Crosshairs */}
-                  <line x1="50" y1="2" x2="50" y2="98" stroke="rgba(255,255,255,0.45)" strokeWidth="0.6" />
-                  <line x1="2" y1="50" x2="98" y2="50" stroke="rgba(255,255,255,0.45)" strokeWidth="0.6" />
+                  <line x1="50" y1="2" x2="50" y2="98" stroke="rgba(255,255,255,0.1)" strokeWidth="0.6" />
+                  <line x1="2" y1="50" x2="98" y2="50" stroke="rgba(255,255,255,0.1)" strokeWidth="0.6" />
                   {/* Sweeping hand */}
                   <line className="countdown-hand" x1="50" y1="50" x2="50" y2="3" />
                 </svg>

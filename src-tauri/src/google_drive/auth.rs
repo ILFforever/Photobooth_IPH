@@ -39,6 +39,7 @@ pub async fn google_login(
         {
             Box::pin(async move {
                 // Use Tauri's shell plugin instead of open::that for better browser compatibility
+                #[allow(deprecated)]
                 let _ = self.app.shell().open(url, None);
                 if need_code {
                     yup_oauth2::authenticator_delegate::DefaultInstalledFlowDelegate

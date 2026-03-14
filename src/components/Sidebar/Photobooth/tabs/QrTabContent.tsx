@@ -2,12 +2,12 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { ExternalLink, Copy, Check, Upload, AlertCircle, Folder, XCircle, Loader, ChevronDown, ChevronRight, AlertTriangle, LogIn, QrCode, Image as ImageIcon } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { open as shellOpen } from '@tauri-apps/plugin-shell';
-import * as fs from '@tauri-apps/plugin-fs';
 import { usePhotoboothSettings } from '../../../../contexts';
 import { useUploadQueue } from '../../../../contexts';
 import { useAuth } from '../../../../contexts';
 import { usePhotobooth } from '../../../../contexts';
 import { useToast } from '../../../../contexts';
+import { useCollageUpload } from '../../../../hooks/useCollageUpload';
 import { getDriveAuthState, getAuthStateText, DriveAuthState, areUploadsEnabled } from '../../../../utils/driveAuthState';
 import { createLogger } from '../../../../utils/logger';
 
@@ -15,14 +15,14 @@ const logger = createLogger('QrTabContent');
 
 export function QrTabContent() {
   const { currentSession, workingFolder, sessions, qrUploadEnabled } = usePhotoboothSettings();
-  const { queueItems, stats, startAutoRefresh, stopAutoRefresh, enqueuePhotos } = useUploadQueue();
+  const { queueItems, stats, startAutoRefresh, stopAutoRefresh } = useUploadQueue();
   const { account } = useAuth();
-  const { exportPhotoboothCanvasAsPNG, currentCollageFilename, setCurrentCollageFilename, collageIsDirty, resetCollageDirtyState, isGeneratingCollage, setIsGeneratingCollage } = usePhotobooth();
+  const { currentCollageFilename, collageIsDirty } = usePhotobooth();
   const { showToast } = useToast();
+  const { uploadCollage, isUploading: isUploadingCollage } = useCollageUpload();
   const [copied, setCopied] = useState(false);
   const [showQr, setShowQr] = useState(false);
   const [qrBase64, setQrBase64] = useState<string | null>(null);
-  const [isUploadingCollage, setIsUploadingCollage] = useState(false);
   const [showRegeneratePrompt, setShowRegeneratePrompt] = useState(false);
 
   const driveMetadata = currentSession?.googleDriveMetadata;
@@ -154,12 +154,6 @@ export function QrTabContent() {
       return;
     }
 
-    // Check if another operation is already generating
-    if (isGeneratingCollage) {
-      showToast('Please wait', 'warning', 2000, 'Collage is being generated...');
-      return;
-    }
-
     // Check if we need to prompt for regeneration
     if (currentCollageFilename && collageIsDirty) {
       // Show prompt for regeneration
@@ -168,73 +162,23 @@ export function QrTabContent() {
     }
 
     // Proceed with normal upload flow
-    await performUpload(currentSession, workingFolder, sessions, driveMetadata);
-  }, [currentSession, workingFolder, sessions, driveMetadata, currentCollageFilename, collageIsDirty, isGeneratingCollage, authStateInfo.state, authStateText]);
+    await uploadCollage(currentSession, workingFolder, sessions, driveMetadata);
+  }, [currentSession, workingFolder, sessions, driveMetadata, currentCollageFilename, collageIsDirty, authStateInfo.state, authStateText, qrUploadEnabled, uploadCollage, showToast]);
 
-  // Actual upload execution (extracted for reuse)
-  const performUpload = useCallback(async (currentSession: any, workingFolder: string, sessions: any[], driveMetadata: any, forceOldVersion = false) => {
-    setIsUploadingCollage(true);
-    try {
-      const sessionFolder = sessions.find(s => s.id === currentSession.id)?.folderName || currentSession.id;
-      let filename: string;
-
-      // Use cached version if not dirty OR if user explicitly chose to use old version
-      if (currentCollageFilename && (!collageIsDirty || forceOldVersion)) {
-        // Collage already saved to disk — skip re-export
-        filename = currentCollageFilename;
-        showToast('Using existing collage', 'success', 2000, currentCollageFilename);
-      } else {
-        // Set generating state to block other operations
-        setIsGeneratingCollage(true);
-
-        // Export collage canvas as PNG
-        const exportResult = await exportPhotoboothCanvasAsPNG();
-        if (!exportResult) {
-          showToast('Not ready yet', 'warning', 2000, 'Please wait for photos to load and try again');
-          setIsUploadingCollage(false);
-          setIsGeneratingCollage(false);
-          return;
-        }
-
-        const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-        const randomStr = Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-        filename = `Collage_${randomStr}.png`;
-        setCurrentCollageFilename(filename);
-        resetCollageDirtyState();
-
-        // Save to session folder using FS plugin (much faster than Rust IPC)
-        const sessionPath = `${workingFolder}/${sessionFolder}`;
-        await fs.mkdir(sessionPath, { recursive: true });
-        await fs.writeFile(`${sessionPath}/${filename}`, exportResult.bytes);
-
-        // Clear generating state after save
-        setIsGeneratingCollage(false);
-      }
-
-      // Enqueue for upload
-      const localPath = `${workingFolder}/${sessionFolder}/${filename}`;
-      await enqueuePhotos(currentSession.id, [{ filename, localPath }], driveMetadata.folderId);
-    } catch (error) {
-      logger.error('[QrTabContent] Failed to upload collage:', error);
-      showToast('Upload failed', 'error', 5000, error instanceof Error ? error.message : String(error));
-    } finally {
-      setIsUploadingCollage(false);
-    }
-  }, [currentCollageFilename, collageIsDirty, exportPhotoboothCanvasAsPNG, enqueuePhotos, setCurrentCollageFilename, resetCollageDirtyState, setIsGeneratingCollage, showToast, workingFolder, sessions, driveMetadata, currentSession]);
-
-  const confirmRegenerate = useCallback(() => {
+  const confirmRegenerate = useCallback(async () => {
     setShowRegeneratePrompt(false);
     if (currentSession && workingFolder && driveMetadata) {
-      performUpload(currentSession, workingFolder, sessions, driveMetadata, false);
+      await uploadCollage(currentSession, workingFolder, sessions, driveMetadata);
     }
-  }, [currentSession, workingFolder, sessions, driveMetadata, performUpload]);
+  }, [currentSession, workingFolder, sessions, driveMetadata, uploadCollage]);
 
-  const cancelRegenerate = useCallback(() => {
+  const cancelRegenerate = useCallback(async () => {
     setShowRegeneratePrompt(false);
     if (currentSession && workingFolder && driveMetadata) {
-      performUpload(currentSession, workingFolder, sessions, driveMetadata, true);
+      // Upload the existing cached version (hook handles this)
+      await uploadCollage(currentSession, workingFolder, sessions, driveMetadata);
     }
-  }, [currentSession, workingFolder, sessions, driveMetadata, performUpload]);
+  }, [currentSession, workingFolder, sessions, driveMetadata, uploadCollage]);
 
   // Auto-refresh upload queue for current session
   useEffect(() => {

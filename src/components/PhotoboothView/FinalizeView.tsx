@@ -53,6 +53,8 @@ interface FinalizeViewProps {
   openSecondScreen: () => void;
   /** Base64 PNG QR code data (optional, from upload result) */
   qrData?: string | null;
+  /** Optional callback triggered after collage is displayed on second screen */
+  onDisplayShown?: () => void | Promise<void>;
 }
 
 export default function FinalizeView({
@@ -65,6 +67,7 @@ export default function FinalizeView({
   isSecondScreenOpen,
   openSecondScreen,
   qrData = null,
+  onDisplayShown,
 }: FinalizeViewProps) {
   const {
     photoboothBackground: background,
@@ -85,12 +88,14 @@ export default function FinalizeView({
     isGeneratingCollage,
     setIsGeneratingCollage,
     setCollageIsDirty,
+    collageIsDirty,
   } = usePhotobooth();
   const { showToast } = useToast();
 
   const [isDisplayingOnGuest, setIsDisplayingOnGuest] = useState(false);
   const [isCompositing, setIsCompositing] = useState(false);
   const [hasEverZoomed, setHasEverZoomed] = useState(false);
+  const [displayedImageIsDirty, setDisplayedImageIsDirty] = useState(false);
   const canvasRef = useRef<HTMLDivElement>(null);
   const autoTriggerRef = useRef(false); // Track if we've auto-triggered send to display
 
@@ -389,7 +394,8 @@ export default function FinalizeView({
 
   // Toggle display on guest screen
   const handleToggleDisplay = useCallback(async () => {
-    if (isDisplayingOnGuest) {
+    if (isDisplayingOnGuest && !displayedImageIsDirty) {
+      // Clear the display if not dirty
       updateGuestDisplay({
         displayMode: "center",
         finalizeImageUrl: null,
@@ -422,7 +428,7 @@ export default function FinalizeView({
     try {
       let imageUrl: string;
 
-      if (currentCollageFilename) {
+      if (currentCollageFilename && !displayedImageIsDirty) {
         // Collage already saved to disk by print/QR — load directly
         const filePath = `${workingFolder}/${sessionFolderName}/${currentCollageFilename}`;
         imageUrl = convertFileSrc(filePath);
@@ -433,7 +439,7 @@ export default function FinalizeView({
           currentCollageFilename,
         );
       } else {
-        // First time: composite, save to disk, then use file URL
+        // First time or dirty: composite, save to disk, then use file URL
         setIsGeneratingCollage(true);
         const exportResult = await exportPhotoboothCanvasAsPNG();
         if (!exportResult) throw new Error("Export returned null");
@@ -445,13 +451,16 @@ export default function FinalizeView({
         ).join("");
         const filename = `Collage_${randomStr}.png`;
 
-        // Save to session folder using FS plugin (much faster than Rust IPC)        
-        const sessionPath = `${workingFolder}/${sessionFolderName}`;     
+        // Save to session folder using FS plugin (much faster than Rust IPC)
+        const sessionPath = `${workingFolder}/${sessionFolderName}`;
         await fs.mkdir(sessionPath, { recursive: true });
         await fs.writeFile(`${sessionPath}/${filename}`, exportResult.bytes);
         setCurrentCollageFilename(filename);
-        const newFilePath = `${workingFolder}/${sessionFolderName}/${filename}`; 
-        imageUrl = convertFileSrc(newFilePath);      
+        const newFilePath = `${workingFolder}/${sessionFolderName}/${filename}`;
+        imageUrl = convertFileSrc(newFilePath);
+
+        // Reset dirty state after regenerating
+        setCollageIsDirty(false);
       }
       const displayData = {
         displayMode: "finalize" as const,
@@ -470,6 +479,15 @@ export default function FinalizeView({
         updateGuestDisplay(displayData);
       }
       setIsDisplayingOnGuest(true);
+
+      // Trigger callback after successfully displaying on guest screen
+      if (onDisplayShown) {
+        try {
+          await onDisplayShown();
+        } catch (err) {
+          logger.error('[FinalizeView] Error in onDisplayShown callback:', err);
+        }
+      }
     } catch (err) {
       logger.error("[FinalizeView] Failed to composite frame:", err);
     } finally {
@@ -478,6 +496,7 @@ export default function FinalizeView({
     }
   }, [
     isDisplayingOnGuest,
+    displayedImageIsDirty,
     isSecondScreenOpen,
     updateGuestDisplay,
     openSecondScreen,
@@ -487,8 +506,10 @@ export default function FinalizeView({
     sessionFolderName,
     exportPhotoboothCanvasAsPNG,
     setCurrentCollageFilename,
+    setCollageIsDirty,
     isGeneratingCollage,
     showToast,
+    onDisplayShown,
   ]);
 
   // Auto-send to guest display on mount if second screen is already open
@@ -507,6 +528,16 @@ export default function FinalizeView({
       updateGuestDisplay({ finalizeQrData: qrData });
     }
   }, [qrData, isDisplayingOnGuest, updateGuestDisplay]);
+
+  // Track if the displayed image becomes dirty after being sent
+  useEffect(() => {
+    if (isDisplayingOnGuest && collageIsDirty) {
+      setDisplayedImageIsDirty(true);
+    } else if (!isDisplayingOnGuest || !collageIsDirty) {
+      // Reset when display is cleared OR when collage is no longer dirty (after update)
+      setDisplayedImageIsDirty(false);
+    }
+  }, [isDisplayingOnGuest, collageIsDirty]);
 
   // Sorted overlay layers for rendering
   const belowFrameOverlays = useMemo(
@@ -579,13 +610,15 @@ export default function FinalizeView({
             </button>
           </div>
           <button
-            className={`finalize-display-btn ${isDisplayingOnGuest ? "active" : ""}`}
+            className={`finalize-display-btn ${isDisplayingOnGuest ? "active" : ""} ${displayedImageIsDirty ? "dirty" : ""}`}
             onClick={handleToggleDisplay}
             disabled={
               isCompositing || isGeneratingCollage || placedImages.size === 0
             }
             title={
-              isDisplayingOnGuest
+              displayedImageIsDirty
+                ? "Update display with latest changes"
+                : isDisplayingOnGuest
                 ? "Clear from display"
                 : "Send to guest display"
             }
@@ -594,6 +627,11 @@ export default function FinalizeView({
               <>
                 <span className="finalize-spinner" />
                 <span>Compositing...</span>
+              </>
+            ) : displayedImageIsDirty ? (
+              <>
+                <Monitor size={16} />
+                <span>Update Display</span>
               </>
             ) : isDisplayingOnGuest ? (
               <>

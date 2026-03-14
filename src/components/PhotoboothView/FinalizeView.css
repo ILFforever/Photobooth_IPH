@@ -86,6 +86,17 @@
   background: #1a1a1a;
 }
 
+.finalize-display-btn.dirty {
+  background: #f59e0b;
+  border-color: #f59e0b;
+  color: #fff;
+}
+
+.finalize-display-btn.dirty:hover:not(:disabled) {
+  background: #d97706;
+  border-color: #d97706;
+}
+
 .finalize-display-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
