@@ -8,7 +8,7 @@ pub async fn list_drive_folders(
     parent_id: Option<String>,
 ) -> Result<Vec<DriveFolder>, String> {
     let auth = {
-        let auth_guard = state.auth.lock().unwrap();
+        let auth_guard = state.auth.lock().map_err(|e| format!("State lock poisoned: {}", e))?;
         auth_guard.as_ref().ok_or("Not logged in")?.clone()
     };
 
@@ -101,7 +101,7 @@ pub async fn create_drive_folder(
     state: State<'_, AppState>,
 ) -> Result<DriveFolder, String> {
     let auth = {
-        let auth_guard = state.auth.lock().unwrap();
+        let auth_guard = state.auth.lock().map_err(|e| format!("State lock poisoned: {}", e))?;
         auth_guard.as_ref().ok_or("Not logged in")?.clone()
     };
 
@@ -132,7 +132,7 @@ pub async fn create_drive_folder(
         .supports_all_drives(true)
         .upload(
             std::io::Cursor::new(empty_body),
-            "application/vnd.google-apps.folder".parse().unwrap(),
+            "application/vnd.google-apps.folder".parse().expect("valid MIME type"),
         )
         .await
         .map_err(|e| format!("Failed to create folder: {}", e))?;
@@ -149,13 +149,13 @@ pub async fn set_root_folder(
     folder: DriveFolder,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    *state.root_folder.lock().unwrap() = Some(folder);
+    *state.root_folder.lock().map_err(|e| format!("State lock poisoned: {}", e))? = Some(folder);
     Ok(())
 }
 
 #[tauri::command]
 pub async fn get_root_folder(state: State<'_, AppState>) -> Result<Option<DriveFolder>, String> {
-    Ok(state.root_folder.lock().unwrap().clone())
+    Ok(state.root_folder.lock().map_err(|e| format!("State lock poisoned: {}", e))?.clone())
 }
 
 #[tauri::command]
@@ -164,7 +164,7 @@ pub async fn delete_drive_folder(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let auth = {
-        let auth_guard = state.auth.lock().unwrap();
+        let auth_guard = state.auth.lock().map_err(|e| format!("State lock poisoned: {}", e))?;
         auth_guard.as_ref().ok_or("Not logged in")?.clone()
     };
 
@@ -194,7 +194,7 @@ pub async fn share_drive_folder(
     state: State<'_, AppState>,
 ) -> Result<String, String> {
     let auth = {
-        let auth_guard = state.auth.lock().unwrap();
+        let auth_guard = state.auth.lock().map_err(|e| format!("State lock poisoned: {}", e))?;
         auth_guard.as_ref().ok_or("Not logged in")?.clone()
     };
 

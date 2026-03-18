@@ -69,10 +69,8 @@ export function usePhotoboothSequence(config: SequenceConfig): UsePhotoboothSequ
   const capturingRef = useRef(false);
   const photoNumberRef = useRef(1);
 
-  // Keep ref in sync with React state
-  useEffect(() => {
-    sequenceStateRef.current = sequenceState;
-  }, [sequenceState]);
+  // Assign during render so ref is never one render behind
+  sequenceStateRef.current = sequenceState;
 
   const isActive = sequenceState !== 'idle' && sequenceState !== 'complete';
 

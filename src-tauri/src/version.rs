@@ -3,14 +3,14 @@
 
 /// Embedded app version - update this when releasing a new app build
 /// Format: MAJOR.MINOR.PATCH (e.g., "1.0.13")
-pub const APP_VERSION: &str = "1.5.2";
+pub const APP_VERSION: &str = "1.5.6";
 
 /// Application display name
 pub const APP_NAME: &str = "Photobooth IPH";
 
 /// Short name for UI
 pub const APP_SHORT_NAME: &str = "IPH Photobooth";
-
+ 
 /// Company name
 pub const COMPANY_NAME: &str = "Intania Production House";
 

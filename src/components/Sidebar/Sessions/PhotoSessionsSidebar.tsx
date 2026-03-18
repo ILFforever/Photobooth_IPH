@@ -1,10 +1,9 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState, useCallback, useRef } from "react";
-import { ChevronDown, ChevronRight, Calendar, Clock, Image as ImageIcon, Folder, Trash2, Unlink, X, Info, Download, Camera, Aperture, Zap } from "lucide-react";
+import { ChevronDown, ChevronRight, Calendar, Clock, Image as ImageIcon, Folder, Trash2, Unlink, Info, Camera, Aperture } from "lucide-react";
 import { type PhotoboothSessionInfo } from "../../../contexts";
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
-import { useToast } from "../../../contexts";
-import { usePhotoboothSettings } from "../../../contexts";
+import { useToast, useWorkspaceSettings, usePhotoboothSession } from "../../../contexts";
 import { useUploadQueue } from "../../../contexts";
 import { UploadQueueStatus } from "./UploadQueueStatus";
 import { UploadStatus } from "../../../types/uploadQueue";
@@ -67,7 +66,8 @@ export default function PhotoSessionsSidebar({
   currentSessionId,
 }: PhotoSessionsSidebarProps) {
   const { showToast } = useToast();
-  const { workingFolder, createDriveFolderForSession, deleteDriveFolderForSession, deleteSession, deleteSessionPhoto } = usePhotoboothSettings();
+  const { workingFolder } = useWorkspaceSettings();
+  const { createDriveFolderForSession, deleteDriveFolderForSession, deleteSession, deleteSessionPhoto } = usePhotoboothSession();
   const { queueItems, getSessionQueue, retryUpload, cancelUpload, startAutoRefresh, stopAutoRefresh } = useUploadQueue();
   const [deleteConfirmSessionId, setDeleteConfirmSessionId] = useState<string | null>(null);
   const [deleteDriveConfirmSessionId, setDeleteDriveConfirmSessionId] = useState<string | null>(null);
@@ -809,30 +809,36 @@ export default function PhotoSessionsSidebar({
               className="modal-content photo-info-modal"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="photo-info-header">
-                <h3>Photo Information</h3>
-                <button
-                  className="modal-close-btn"
-                  onClick={() => setShowPhotoInfoModal(null)}
-                >
-                  <X size={18} />
-                </button>
-              </div>
-              <div className="photo-info-content">
-                {loadingExif ? (
-                  <div className="photo-info-loading">
-                    <span className="spinner-small"></span>
-                    <span>Loading photo info...</span>
+              {loadingExif ? (
+                <div className="photo-info-loading">
+                  <span className="spinner-small"></span>
+                  <span>Loading photo info...</span>
+                </div>
+              ) : photoExifData ? (
+                <div className="photo-info-two-columns">
+                  {/* Left - Full Photo */}
+                  <div className="photo-info-preview">
+                    {workingFolder && (
+                      <img
+                        src={convertFileSrc(`${workingFolder}/${showPhotoInfoModal.sessionId}/${showPhotoInfoModal.filename}`)}
+                        alt="Preview"
+                        className="photo-preview-image"
+                        onError={() => logger.error('Failed to load photo:', showPhotoInfoModal.filename)}
+                      />
+                    )}
                   </div>
-                ) : photoExifData ? (
-                  <div className="photo-info-two-columns">
-                    {/* Left Column - Camera & Exposure */}
-                    <div className="photo-info-left">
+
+                  {/* Right - Metadata */}
+                  <div className="photo-info-meta">
+                    <div className="photo-info-meta-header">
+                      <span>Photo Information</span>
+                    </div>
+                    <div className="photo-info-meta-body">
                       {/* Camera Section */}
                       {(photoExifData.make || photoExifData.model) && (
                         <>
                           <div className="photo-info-section-title">
-                            <Camera size={14} />
+                            <Camera size={13} />
                             <span>Camera</span>
                           </div>
                           <div className="photo-info-section">
@@ -856,7 +862,7 @@ export default function PhotoSessionsSidebar({
                       {(photoExifData.iso || photoExifData.aperture || photoExifData.shutterSpeed || photoExifData.focalLength) && (
                         <>
                           <div className="photo-info-section-title">
-                            <Aperture size={14} />
+                            <Aperture size={13} />
                             <span>Exposure</span>
                           </div>
                           <div className="photo-info-section">
@@ -887,28 +893,12 @@ export default function PhotoSessionsSidebar({
                           </div>
                         </>
                       )}
-                    </div>
 
-                    {/* Right Column - File Info */}
-                    <div className="photo-info-right">
+                      {/* File Section */}
                       <div className="photo-info-section-title">
-                        <ImageIcon size={14} />
+                        <ImageIcon size={13} />
                         <span>File</span>
                       </div>
-                      {/* Photo Preview */}
-                      {showPhotoInfoModal.thumbnailPath && (
-                        <div className="photo-info-preview">
-                          <img
-                            src={convertFileSrc(showPhotoInfoModal.thumbnailPath.replace('asset://', ''))}
-                            alt="Preview"
-                            className="photo-preview-image"
-                            onError={() => {
-                              logger.error('Failed to load thumbnail:', showPhotoInfoModal.thumbnailPath);
-                              logger.error('Converted path:', convertFileSrc(showPhotoInfoModal.thumbnailPath.replace('asset://', '')));
-                            }}
-                          />
-                        </div>
-                      )}
                       <div className="photo-info-section">
                         <div className="photo-info-row">
                           <span className="photo-info-label">Filename</span>
@@ -918,7 +908,7 @@ export default function PhotoSessionsSidebar({
                           <div className="photo-info-row">
                             <span className="photo-info-label">Dimensions</span>
                             <span className="photo-info-value">
-                              {photoExifData.imageWidth} × {photoExifData.imageHeight} px
+                              {photoExifData.imageWidth} × {photoExifData.imageHeight}
                             </span>
                           </div>
                         )}
@@ -944,22 +934,22 @@ export default function PhotoSessionsSidebar({
                         </div>
                       </div>
                     </div>
+                    <div className="photo-info-meta-footer">
+                      <button
+                        className="btn-secondary"
+                        onClick={() => setShowPhotoInfoModal(null)}
+                      >
+                        Close
+                      </button>
+                    </div>
                   </div>
-                ) : (
-                  <div className="photo-info-loading">
-                    <span className="spinner-small"></span>
-                    <span>Loading photo info...</span>
-                  </div>
-                )}
-              </div>
-              <div className="photo-info-actions">
-                <button
-                  className="btn-secondary"
-                  onClick={() => setShowPhotoInfoModal(null)}
-                >
-                  Close
-                </button>
-              </div>
+                </div>
+              ) : (
+                <div className="photo-info-loading">
+                  <span className="spinner-small"></span>
+                  <span>Loading photo info...</span>
+                </div>
+              )}
             </motion.div>
           </motion.div>
         )}

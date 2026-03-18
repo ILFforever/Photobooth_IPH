@@ -1,7 +1,8 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef, ReactNode } from "react";
 import { useToast } from "../system";
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
-import { usePhotoboothSettings } from './PhotoboothSettingsContext';
+import { useWorkspaceSettings } from './PhotoboothWorkspaceSettingsContext';
+import { usePhotoboothSession } from './PhotoboothSessionContext';
 import { useCollage } from "../collage";
 import { usePhotobooth } from './PhotoboothContext';
 import { createLogger } from '../../utils/logger';
@@ -26,7 +27,8 @@ const PrintSettingsContext = createContext<PrintSettingsContextType | undefined>
 
 export function PrintSettingsProvider({ children }: { children: ReactNode }) {
   const { showToast } = useToast();
-  const { workingFolder, currentSession, sessions } = usePhotoboothSettings();
+  const { workingFolder } = useWorkspaceSettings();
+  const { currentSession, sessions } = usePhotoboothSession();
   const { exportCanvasAsPNG } = useCollage();
   const { exportPhotoboothCanvasAsPNG, finalizeViewMode, currentCollageFilename, setCurrentCollageFilename, collageIsDirty, resetCollageDirtyState, isGeneratingCollage, setIsGeneratingCollage } = usePhotobooth();
 

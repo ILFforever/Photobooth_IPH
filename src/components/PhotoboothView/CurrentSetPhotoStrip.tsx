@@ -1,5 +1,5 @@
 import { ChevronRight, Image as ImageIcon, Check, FileCheck } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 
 interface CurrentSetPhoto {
   id: string;
@@ -20,7 +20,7 @@ interface CurrentSetPhotoStripProps {
   onFinalize: () => void;
 }
 
-export default function CurrentSetPhotoStrip({
+export default memo(function CurrentSetPhotoStrip({
   currentSetPhotos,
   selectedPhotos,
   setName,
@@ -119,4 +119,4 @@ export default function CurrentSetPhotoStrip({
       </div>
     </div>
   );
-}
+});

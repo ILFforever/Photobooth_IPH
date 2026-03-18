@@ -176,7 +176,7 @@ export function WorkingFolderGallery() {
       const elapsed = now - lastActiveTimeRef.current;
 
       if (elapsed > 2000 && loadedImagesMap.size > 0) {
-        setRefreshTrigger(refreshTrigger + 1);
+        setRefreshTrigger(prev => prev + 1);
       }
 
       lastActiveTimeRef.current = now;
@@ -190,35 +190,32 @@ export function WorkingFolderGallery() {
         cancelAnimationFrame(rafIdRef.current);
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadedImagesMap.size, refreshTrigger]);
+  }, [loadedImagesMap.size]);
 
   // Force refresh when component mounts
   useEffect(() => {
     if (loadedImagesMap.size > 0) {
-      setRefreshTrigger(refreshTrigger + 1);
+      setRefreshTrigger(prev => prev + 1);
     }
     lastActiveTimeRef.current = Date.now();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadedImagesMap.size]);
 
   // Visibility change handler
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && loadedImagesMap.size > 0) {
-        setRefreshTrigger(refreshTrigger + 1);
+      if (document.visibilityState === 'visible' && loadedImagesMapRef.current.size > 0) {
+        setRefreshTrigger(prev => prev + 1);
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Window focus handler
   useEffect(() => {
     const handleFocus = () => {
       if (loadedImagesMapRef.current.size > 0) {
-        setRefreshTrigger(refreshTriggerRef.current + 1);
+        setRefreshTrigger(prev => prev + 1);
       }
     };
     window.addEventListener('focus', handleFocus);

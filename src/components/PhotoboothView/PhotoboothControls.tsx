@@ -324,7 +324,7 @@ interface PhotoboothControlsProps {
   getScrambledDigit: (offset: number, stopTick: number) => number;
 }
 
-export function PhotoboothControls({
+export const PhotoboothControls = memo(function PhotoboothControls({
   sequenceState,
   currentCountdown,
   reviewCountdown,
@@ -388,4 +388,4 @@ export function PhotoboothControls({
       </div>
     </div>
   );
-}
+});

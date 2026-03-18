@@ -69,7 +69,7 @@ pub async fn google_login(
         .await
         .map_err(|e| format!("Failed to create authenticator: {}", e))?;
 
-    //Dont fucking touch scopes
+    // WARNING: These scopes are required for all Drive features to work. Do not modify.
     let all_scopes = &[
         "https://www.googleapis.com/auth/drive",
         "https://www.googleapis.com/auth/drive.meet.readonly",
@@ -104,8 +104,8 @@ pub async fn google_login(
         picture: user_info["picture"].as_str().map(|s| s.to_string()),
     };
 
-    *state.auth.lock().unwrap() = Some(auth);
-    *state.account.lock().unwrap() = Some(account.clone());
+    *state.auth.lock().map_err(|e| format!("State lock poisoned: {}", e))? = Some(auth);
+    *state.account.lock().map_err(|e| format!("State lock poisoned: {}", e))? = Some(account.clone());
 
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.set_focus();
@@ -119,8 +119,8 @@ pub async fn google_logout(
     state: State<'_, AppState>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
-    *state.auth.lock().unwrap() = None;
-    *state.account.lock().unwrap() = None;
+    *state.auth.lock().map_err(|e| format!("State lock poisoned: {}", e))? = None;
+    *state.account.lock().map_err(|e| format!("State lock poisoned: {}", e))? = None;
 
     let app_data_dir = app
         .path()
@@ -218,5 +218,5 @@ pub async fn check_cached_account(
 
 #[tauri::command]
 pub async fn get_account(state: State<'_, AppState>) -> Result<Option<GoogleAccount>, String> {
-    Ok(state.account.lock().unwrap().clone())
+    Ok(state.account.lock().map_err(|e| format!("State lock poisoned: {}", e))?.clone())
 }

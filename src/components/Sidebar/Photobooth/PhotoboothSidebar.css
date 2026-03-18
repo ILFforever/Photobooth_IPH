@@ -1653,7 +1653,7 @@
   border-radius: 8px;
   padding: 8px;
   margin-top: 4px;
-  animation: slideDown 0.15s ease;
+  animation: fadeIn 0.15s ease;
 }
 
 .setting-control-header {

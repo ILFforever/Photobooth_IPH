@@ -6,7 +6,7 @@ import { convertFileSrc } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { FFmpegDownloadModal } from '../../../Modals';
 import { usePhotobooth } from '../../../../contexts';
-import { usePhotoboothSettings, type LastGeneratedMedia } from '../../../../contexts';
+import { useWorkspaceSettings, usePhotoboothSession, type LastGeneratedMedia } from '../../../../contexts';
 import { useUploadQueue } from '../../../../contexts';
 import { useAuth } from '../../../../contexts';
 import { useToast } from '../../../../contexts';
@@ -73,11 +73,8 @@ function PhotoGrid({
 
 export function GifTabContent() {
   const { placedImages, finalizeViewMode } = usePhotobooth();
-  const {
-    workingFolder, sessions, currentSession, lastGeneratedMedia,
-    setLastGif, setLastVideo, clearLastGenerated,
-    autoGifEnabled, autoGifFormat, autoGifPhotoSource,
-  } = usePhotoboothSettings();
+  const { workingFolder, autoGifEnabled, autoGifFormat, autoGifPhotoSource } = useWorkspaceSettings();
+  const { sessions, currentSession, lastGeneratedMedia, setLastGif, setLastVideo, clearLastGenerated } = usePhotoboothSession();
   const { showToast } = useToast();
   const { account } = useAuth();
   const { enqueuePhotos } = useUploadQueue();

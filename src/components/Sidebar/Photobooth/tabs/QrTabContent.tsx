@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { ExternalLink, Copy, Check, Upload, AlertCircle, Folder, XCircle, Loader, ChevronDown, ChevronRight, AlertTriangle, LogIn, QrCode, Image as ImageIcon } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { open as shellOpen } from '@tauri-apps/plugin-shell';
-import { usePhotoboothSettings } from '../../../../contexts';
+import { useWorkspaceSettings, usePhotoboothSession } from '../../../../contexts';
 import { useUploadQueue } from '../../../../contexts';
 import { useAuth } from '../../../../contexts';
 import { usePhotobooth } from '../../../../contexts';
@@ -14,7 +14,8 @@ import { createLogger } from '../../../../utils/logger';
 const logger = createLogger('QrTabContent');
 
 export function QrTabContent() {
-  const { currentSession, workingFolder, sessions, qrUploadEnabled } = usePhotoboothSettings();
+  const { workingFolder, qrUploadEnabled } = useWorkspaceSettings();
+  const { currentSession, sessions } = usePhotoboothSession();
   const { queueItems, stats, startAutoRefresh, stopAutoRefresh } = useUploadQueue();
   const { account } = useAuth();
   const { currentCollageFilename, collageIsDirty } = usePhotobooth();

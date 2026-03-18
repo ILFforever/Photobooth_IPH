@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { usePhotobooth, useUploadQueue, useAuth, usePhotoboothSettings, useToast } from "../contexts";
+import { usePhotobooth, useUploadQueue, useAuth, useWorkspaceSettings, useToast } from "../contexts";
 import * as fs from "@tauri-apps/plugin-fs";
 import { createLogger } from "../utils/logger";
 
@@ -17,7 +17,7 @@ export function useCollageUpload() {
   } = usePhotobooth();
   const { enqueuePhotos } = useUploadQueue();
   const { account } = useAuth();
-  const { qrUploadEnabled } = usePhotoboothSettings();
+  const { qrUploadEnabled } = useWorkspaceSettings();
   const { showToast } = useToast();
 
   const [isUploading, setIsUploading] = useState(false);

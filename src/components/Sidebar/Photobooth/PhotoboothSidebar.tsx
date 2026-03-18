@@ -8,7 +8,7 @@ import { FocusSettings } from "./FocusSettings";
 import { ConnectionLostModal } from "../../Modals";
 import { ConfirmDialog } from "../../Modals";
 import { FolderPickerModal } from "../../Modals";
-import { useCamera, useVM, usePhotoboothSettings,useToast} from "../../../contexts";
+import { useCamera, useVM, useCaptureTiming, useWorkspaceSettings, useToast } from "../../../contexts";
 import { usePhotobooth } from "../../../contexts/";
 import { usePrintSettings } from "../../../contexts/";
 import { useAuth } from "../../../contexts/";
@@ -78,19 +78,8 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
   const customSetsHook = useCustomSets();
 
   // Photobooth settings
-  const {
-    autoCount, setAutoCount,
-    timerDelay, setTimerDelay,
-    delayBetweenPhotos, setDelayBetweenPhotos,
-    photoReviewTime, setPhotoReviewTime,
-    workingFolder, setWorkingFolder,
-    photoNamingScheme, setPhotoNamingScheme,
-    qrUploadEnabled, setQrUploadEnabled,
-    qrUploadAllImages, setQrUploadAllImages,
-    autoGifEnabled, setAutoGifEnabled,
-    autoGifFormat, setAutoGifFormat,
-    autoGifPhotoSource, setAutoGifPhotoSource,
-  } = usePhotoboothSettings();
+  const { autoCount, setAutoCount, timerDelay, setTimerDelay, delayBetweenPhotos, setDelayBetweenPhotos, photoReviewTime, setPhotoReviewTime } = useCaptureTiming();
+  const { workingFolder, setWorkingFolder, photoNamingScheme, setPhotoNamingScheme, qrUploadEnabled, setQrUploadEnabled, qrUploadAllImages, setQrUploadAllImages, autoGifEnabled, setAutoGifEnabled, autoGifFormat, setAutoGifFormat, autoGifPhotoSource, setAutoGifPhotoSource } = useWorkspaceSettings();
 
   const { printCollage, isPrinting } = usePrintSettings();
 

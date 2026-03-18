@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, useCallback, type ReactNode } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { createLogger } from '../../utils/logger';
 
@@ -20,6 +20,7 @@ const USB_ATTACH_INTERVAL = 1000; // Check every 1 second
 
 export function VMProvider({ children }: { children: ReactNode }) {
   const [isVmOnline, setIsVmOnline] = useState(false);
+  const isAttachingRef = useRef(false);
 
   const checkVmStatus = useCallback(async () => {
     try {
@@ -49,10 +50,14 @@ export function VMProvider({ children }: { children: ReactNode }) {
     if (!isVmOnline) return;
 
     const intervalId = setInterval(async () => {
+      if (isAttachingRef.current) return;
+      isAttachingRef.current = true;
       try {
         await invoke('attach_all_cameras');
       } catch (error) {
         logger.warn('USB auto-attach failed:', error);
+      } finally {
+        isAttachingRef.current = false;
       }
     }, USB_ATTACH_INTERVAL);
 

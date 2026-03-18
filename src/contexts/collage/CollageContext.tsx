@@ -6,7 +6,6 @@ import { applyZoneClipPath } from '../../utils/canvasShapeClip';
 import { Background } from '../../types/background';
 import { OverlayLayer, LayerPosition, DEFAULT_OVERLAY_TRANSFORM } from '../../types/overlay';
 import { createLogger } from '../../utils/logger';
-import { LRUCache } from '../../utils/lruCache';
 
 const logger = createLogger('CollageContext');
 // Panel type for FloatingFrameSelector
@@ -153,8 +152,14 @@ export function CollageProvider({ children }: { children: ReactNode }) {
   // FloatingFrameSelector panel state
   const [openFloatingPanel, setOpenFloatingPanel] = useState<FloatingPanelType>(null);
 
-  // Image cache to avoid redundant fetches - LRU cache with max 500 images to prevent memory leaks
-  const imageCache = useRef<LRUCache<string, HTMLImageElement>>(new LRUCache(500));
+  // Bitmap cache for export (GPU-accelerated ImageBitmap)
+  const bitmapCache = useRef<Map<string, ImageBitmap>>(new Map());
+  useEffect(() => {
+    return () => {
+      bitmapCache.current.forEach(bitmap => bitmap.close());
+      bitmapCache.current.clear();
+    };
+  }, []);
 
   // Load backgrounds and settings on mount
   useEffect(() => {
@@ -258,107 +263,142 @@ export function CollageProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const captureCanvasThumbnail = async (): Promise<string | null> => {
+  const captureCanvasThumbnail = useCallback(async (): Promise<string | null> => {
     try {
-      const canvasElement = document.querySelector('.collage-canvas') as HTMLElement;
-      if (!canvasElement) {
-        logger.error('Canvas element not found');
-        return null;
+      const frame = currentFrame;
+      if (!frame) { logger.error('No frame for thumbnail'); return null; }
+
+      const canvasWidth = autoMatchBackground && backgroundDimensions ? backgroundDimensions.width : canvasSize?.width ?? frame.width;
+      const canvasHeight = autoMatchBackground && backgroundDimensions ? backgroundDimensions.height : canvasSize?.height ?? frame.height;
+
+      // Compute inline to avoid temporal dead zone (these consts are defined later in the component)
+      const isSolidColor = background ? /^#([0-9A-F]{3}){1,2}$/i.test(background) : false;
+      const bgSrc = (background && !isSolidColor && !background.startsWith('http') && !background.startsWith('data:'))
+        ? convertFileSrc(background.replace('asset://', ''))
+        : background?.startsWith('http') || background?.startsWith('data:') ? background : null;
+
+      // Render at thumbnail resolution (max 400px wide)
+      const thumbScale = Math.min(400 / canvasWidth, 1);
+      const canvas = document.createElement('canvas');
+      canvas.width = canvasWidth * thumbScale;
+      canvas.height = canvasHeight * thumbScale;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return null;
+      ctx.scale(thumbScale, thumbScale);
+
+      // 1. Background
+      if (background) {
+        if (isSolidColor) {
+          ctx.fillStyle = background;
+          ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+        } else if (bgSrc) {
+          try {
+            const bitmap = await loadImageAsBitmap(bgSrc);
+            if (bitmap) {
+              const bgAspect = bitmap.width / bitmap.height;
+              const canvasAspect = canvasWidth / canvasHeight;
+              let drawW: number, drawH: number;
+              if (bgAspect > canvasAspect) { drawH = canvasHeight; drawW = canvasHeight * bgAspect; }
+              else { drawW = canvasWidth; drawH = canvasWidth / bgAspect; }
+              ctx.save();
+              ctx.translate(canvasWidth / 2, canvasHeight / 2);
+              ctx.scale(backgroundTransform.scale, backgroundTransform.scale);
+              ctx.translate(backgroundTransform.offsetX, backgroundTransform.offsetY);
+              ctx.drawImage(bitmap, -drawW / 2, -drawH / 2, drawW, drawH);
+              ctx.restore();
+            } else {
+              ctx.fillStyle = '#000';
+              ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+            }
+          } catch {
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+          }
+        }
+      } else {
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, canvasWidth, canvasHeight);
       }
 
-      // Import html2canvas dynamically
-      const html2canvas = (await import('html2canvas')).default;
+      // 2. Below-frames overlays
+      const belowOverlays = overlays.filter(o => o.position === 'below-frames' && o.visible).sort((a, b) => a.layerOrder - b.layerOrder);
+      for (const layer of belowOverlays) {
+        try {
+          const bitmap = await loadImageAsBitmap(convertFileSrc(layer.sourcePath.replace('asset://', '')));
+          if (!bitmap) continue;
+          const t = layer.transform;
+          ctx.save();
+          ctx.globalAlpha = t.opacity ?? 1;
+          ctx.translate((t.x ?? 0) + bitmap.width / 2, (t.y ?? 0) + bitmap.height / 2);
+          ctx.rotate(((t.rotation ?? 0) * Math.PI) / 180);
+          ctx.scale((t.scale ?? 1) * (t.flipHorizontal ? -1 : 1), (t.scale ?? 1) * (t.flipVertical ? -1 : 1));
+          ctx.drawImage(bitmap, -bitmap.width / 2, -bitmap.height / 2);
+          ctx.restore();
+        } catch { /* skip */ }
+      }
 
-      // Capture the canvas at a smaller scale for thumbnail
-      const canvas = await html2canvas(canvasElement, {
-        scale: 0.3, // Reduce size for thumbnail
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: null,
-        logging: false,
-      });
+      // 3. Zone placeholders — no images, just a subtle fill showing the layout
+      for (const zone of frame.zones) {
+        ctx.save();
+        ctx.translate(zone.x + zone.width / 2, zone.y + zone.height / 2);
+        if (zone.rotation) ctx.rotate((zone.rotation * Math.PI) / 180);
+        applyZoneClipPath(ctx, zone);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+        ctx.fillRect(-zone.width / 2, -zone.height / 2, zone.width, zone.height);
+        ctx.restore();
+      }
 
-      // Convert to base64 data URL
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-      return dataUrl;
+      // 4. Above-frames overlays
+      const aboveOverlays = overlays.filter(o => o.position === 'above-frames' && o.visible).sort((a, b) => a.layerOrder - b.layerOrder);
+      for (const layer of aboveOverlays) {
+        try {
+          const bitmap = await loadImageAsBitmap(convertFileSrc(layer.sourcePath.replace('asset://', '')));
+          if (!bitmap) continue;
+          const t = layer.transform;
+          ctx.save();
+          ctx.globalAlpha = t.opacity ?? 1;
+          ctx.translate((t.x ?? 0) + bitmap.width / 2, (t.y ?? 0) + bitmap.height / 2);
+          ctx.rotate(((t.rotation ?? 0) * Math.PI) / 180);
+          ctx.scale((t.scale ?? 1) * (t.flipHorizontal ? -1 : 1), (t.scale ?? 1) * (t.flipVertical ? -1 : 1));
+          ctx.drawImage(bitmap, -bitmap.width / 2, -bitmap.height / 2);
+          ctx.restore();
+        } catch { /* skip */ }
+      }
+
+      return canvas.toDataURL('image/jpeg', 0.85);
     } catch (error) {
       logger.error('Failed to capture canvas thumbnail:', error);
       return null;
     }
-  };
+  // loadImageAsBitmap is stable ([] deps) so safe to omit; isSolidColor/bgSrc are computed inline
+  }, [currentFrame, canvasSize, autoMatchBackground, backgroundDimensions, background, backgroundTransform, overlays]);
 
-  // Helper: Load an image element from a source URL (with caching)
-  const loadImage = useCallback((src: string): Promise<HTMLImageElement> => {
-    // Check cache first
-    const cached = imageCache.current.get(src);
-    if (cached && cached.complete) {
-      return Promise.resolve(cached);
-    }
-
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = () => {
-        imageCache.current.set(src, img);
-        resolve(img);
-      };
-      img.onerror = reject;
-      img.src = src;
-    });
-  }, []);
-
-  // Helper: Load an image with fetch+objectURL fallback for CORS
-  const loadImageWithFallback = useCallback(async (src: string): Promise<HTMLImageElement> => {
-    // Check cache first
-    const cached = imageCache.current.get(src);
-    if (cached && cached.complete) {
-      return cached;
-    }
-
-    // Also cache the fetch variant
-    const fetchKey = `fetch:${src}`;
-    const fetchCached = imageCache.current.get(fetchKey);
-    if (fetchCached && fetchCached.complete) {
-      return fetchCached;
-    }
-
+  // Helper: Load an image as ImageBitmap (GPU-accelerated, parallel-friendly)
+  const loadImageAsBitmap = useCallback(async (src: string): Promise<ImageBitmap | null> => {
+    const cached = bitmapCache.current.get(src);
+    if (cached) return cached;
     try {
-      return await loadImage(src);
+      const response = await fetch(src);
+      const blob = await response.blob();
+      const bitmap = await createImageBitmap(blob);
+      bitmapCache.current.set(src, bitmap);
+      return bitmap;
     } catch {
-      const resp = await fetch(src);
-      const blob = await resp.blob();
-      const url = URL.createObjectURL(blob);
-      const img = await loadImage(url);
-      // Cache with fetch key so subsequent loads don't create new object URLs
-      imageCache.current.set(fetchKey, img);
-      URL.revokeObjectURL(url);
-      return img;
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = async () => {
+          try {
+            const bitmap = await createImageBitmap(img);
+            bitmapCache.current.set(src, bitmap);
+            resolve(bitmap);
+          } catch { resolve(null); }
+        };
+        img.onerror = () => resolve(null);
+        img.src = src;
+      });
     }
-  }, [loadImage]);
-
-  // Helper: Draw an overlay layer onto a canvas context
-  const drawOverlayLayer = useCallback(async (ctx: CanvasRenderingContext2D, layer: OverlayLayer) => {
-    try {
-      const overlaySrc = convertFileSrc(layer.sourcePath.replace('asset://', ''));
-      const img = await loadImageWithFallback(overlaySrc);
-      ctx.save();
-      ctx.globalAlpha = layer.transform.opacity ?? 1;
-      const lx = layer.transform.x ?? 0;
-      const ly = layer.transform.y ?? 0;
-      const lScale = layer.transform.scale ?? 1;
-      const lRotation = layer.transform.rotation ?? 0;
-      ctx.translate(lx + (img.naturalWidth * lScale) / 2, ly + (img.naturalHeight * lScale) / 2);
-      ctx.rotate((lRotation * Math.PI) / 180);
-      ctx.scale(
-        lScale * (layer.transform.flipHorizontal ? -1 : 1),
-        lScale * (layer.transform.flipVertical ? -1 : 1)
-      );
-      ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
-      ctx.restore();
-    } catch (err) {
-      logger.warn('Failed to draw overlay layer, skipping:', layer.sourcePath, err);
-    }
-  }, [loadImageWithFallback]);
+  }, []);
 
   // Helper: Check if background is a solid color
   const isSolidColor = background ? /^#([0-9A-F]{3}){1,2}$/i.test(background) : false;
@@ -372,65 +412,97 @@ export function CollageProvider({ children }: { children: ReactNode }) {
 
   // Export canvas as full-resolution PNG
   const exportCanvasAsPNG = useCallback(async (): Promise<{ bytes: Uint8Array; filename: string } | null> => {
+    const startTime = performance.now();
     try {
       const frame = currentFrame;
-      if (!frame) {
-        logger.error('No frame available for export');
-        return null;
-      }
+      if (!frame) { logger.error('No frame available for export'); return null; }
 
-      // Calculate canvas dimensions
       const canvasWidth = autoMatchBackground && backgroundDimensions ? backgroundDimensions.width : canvasSize?.width ?? frame.width;
       const canvasHeight = autoMatchBackground && backgroundDimensions ? backgroundDimensions.height : canvasSize?.height ?? frame.height;
 
-      // Scale canvas to target resolution for consistent high-quality print output.
-      // Target: ~15MP (sufficient for 4x6" at 300+ DPI, larger formats at 200+ DPI).
-      // Formula: scale = sqrt(target / current) preserves aspect ratio exactly.
-      // Capped at 5x to avoid extreme upscaling of very small frames.
-      const PRINT_EXPORT_CONFIG = {
-        targetPixels: 15_000_000,  // Target output resolution (~15MP)
-        maxUpscale: 5,              // Maximum upscale factor to prevent artifacts
-      } as const;
-      const currentPixels = canvasWidth * canvasHeight;
-      const printScale = currentPixels >= PRINT_EXPORT_CONFIG.targetPixels
-        ? 1
-        : Math.min(Math.sqrt(PRINT_EXPORT_CONFIG.targetPixels / currentPixels), PRINT_EXPORT_CONFIG.maxUpscale);
-      const canvas = document.createElement('canvas');
-      canvas.width = canvasWidth * printScale;
-      canvas.height = canvasHeight * printScale;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        logger.error('Failed to get canvas context');
-        return null;
-      }
-      if (printScale > 1) ctx.scale(printScale, printScale);
+      type BitmapItem = { type: string; layer?: OverlayLayer; zone?: FrameZone; placed?: PlacedImage; bitmap?: ImageBitmap | null };
+      const bitmapPromises: Array<{ type: string; promise: Promise<ImageBitmap | null> }> = [];
 
-      // 1. Draw background
+      // Background
+      if (background && !isSolidColor && bgSrc) {
+        bitmapPromises.push({ type: 'background', promise: loadImageAsBitmap(bgSrc).catch(() => null) });
+      }
+
+      // Overlays
+      const belowOverlays = overlays.filter(o => o.position === 'below-frames' && o.visible).sort((a, b) => a.layerOrder - b.layerOrder);
+      const aboveOverlays = overlays.filter(o => o.position === 'above-frames' && o.visible).sort((a, b) => a.layerOrder - b.layerOrder);
+      for (const layer of belowOverlays) {
+        bitmapPromises.push({ type: `below-overlay:${layer.id}`, promise: loadImageAsBitmap(convertFileSrc(layer.sourcePath.replace('asset://', ''))).catch(() => null) });
+      }
+      for (const layer of aboveOverlays) {
+        bitmapPromises.push({ type: `above-overlay:${layer.id}`, promise: loadImageAsBitmap(convertFileSrc(layer.sourcePath.replace('asset://', ''))).catch(() => null) });
+      }
+
+      // Zone images
+      for (const zone of frame.zones) {
+        const placed = placedImages.get(zone.id);
+        if (placed) {
+          bitmapPromises.push({ type: `zone:${zone.id}`, promise: loadImageAsBitmap(convertFileSrc(placed.sourceFile.replace('asset://', ''))).catch(() => null) });
+        }
+      }
+
+      // Load all in parallel
+      const loadedBitmaps: BitmapItem[] = await Promise.all(
+        bitmapPromises.map(async (item) => {
+          const bitmap = await item.promise;
+          const result: BitmapItem = { type: item.type, bitmap };
+          if (item.type.startsWith('below-overlay:')) {
+            result.layer = belowOverlays.find(l => item.type.endsWith(l.id));
+          } else if (item.type.startsWith('above-overlay:')) {
+            result.layer = aboveOverlays.find(l => item.type.endsWith(l.id));
+          } else if (item.type.startsWith('zone:')) {
+            const zoneId = item.type.split(':')[1];
+            result.zone = frame.zones.find(z => z.id === zoneId);
+            result.placed = placedImages.get(zoneId);
+          }
+          return result;
+        })
+      );
+      logger.debug(`[export] Loaded ${loadedBitmaps.length} bitmaps in ${(performance.now() - startTime).toFixed(0)}ms`);
+
+      const currentPixels = canvasWidth * canvasHeight;
+      const printScale = currentPixels >= 15_000_000 ? 1 : Math.min(Math.sqrt(15_000_000 / currentPixels), 5);
+
+      let canvas: HTMLCanvasElement | OffscreenCanvas;
+      let ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
+      if ('OffscreenCanvas' in window && printScale > 1.5) {
+        const offscreen = new OffscreenCanvas(canvasWidth * printScale, canvasHeight * printScale);
+        canvas = offscreen;
+        ctx = offscreen.getContext('2d') as OffscreenCanvasRenderingContext2D;
+      } else {
+        canvas = document.createElement('canvas');
+        canvas.width = canvasWidth * printScale;
+        canvas.height = canvasHeight * printScale;
+        ctx = (canvas as HTMLCanvasElement).getContext('2d', { willReadFrequently: true });
+      }
+      if (!ctx) { logger.error('Failed to get canvas context'); return null; }
+      if (printScale > 1 && 'scale' in ctx) (ctx as CanvasRenderingContext2D).scale(printScale, printScale);
+
+      // 1. Background
       if (background) {
         if (isSolidColor) {
           ctx.fillStyle = background;
           ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-        } else if (bgSrc) {
-          try {
-            const bgImg = await loadImageWithFallback(bgSrc);
+        } else {
+          const bgBitmap = loadedBitmaps.find(b => b.type === 'background')?.bitmap;
+          if (bgBitmap) {
+            const bgAspect = bgBitmap.width / bgBitmap.height;
+            const canvasAspect = canvasWidth / canvasHeight;
+            let drawW: number, drawH: number;
+            if (bgAspect > canvasAspect) { drawH = canvasHeight; drawW = canvasHeight * bgAspect; }
+            else { drawW = canvasWidth; drawH = canvasWidth / bgAspect; }
             ctx.save();
             ctx.translate(canvasWidth / 2, canvasHeight / 2);
             ctx.scale(backgroundTransform.scale, backgroundTransform.scale);
             ctx.translate(backgroundTransform.offsetX, backgroundTransform.offsetY);
-            const bgAspect = bgImg.naturalWidth / bgImg.naturalHeight;
-            const canvasAspect = canvasWidth / canvasHeight;
-            let drawW: number, drawH: number;
-            if (bgAspect > canvasAspect) {
-              drawH = canvasHeight;
-              drawW = canvasHeight * bgAspect;
-            } else {
-              drawW = canvasWidth;
-              drawH = canvasWidth / bgAspect;
-            }
-            ctx.drawImage(bgImg, -drawW / 2, -drawH / 2, drawW, drawH);
+            ctx.drawImage(bgBitmap, -drawW / 2, -drawH / 2, drawW, drawH);
             ctx.restore();
-          } catch (err) {
-            logger.warn('Failed to load background image, using black fallback:', err);
+          } else {
             ctx.fillStyle = '#000';
             ctx.fillRect(0, 0, canvasWidth, canvasHeight);
           }
@@ -440,77 +512,68 @@ export function CollageProvider({ children }: { children: ReactNode }) {
         ctx.fillRect(0, 0, canvasWidth, canvasHeight);
       }
 
-      // 2. Draw below-frames overlay layers
-      const belowOverlays = overlays
-        .filter(o => o.position === 'below-frames' && o.visible)
-        .sort((a, b) => a.layerOrder - b.layerOrder);
+      // Helper: draw a single overlay bitmap with correct transform
+      const drawOverlayBitmap = (bitmap: ImageBitmap, layer: OverlayLayer) => {
+        const t = layer.transform;
+        ctx!.save();
+        ctx!.globalAlpha = t.opacity ?? 1;
+        ctx!.translate((t.x ?? 0) + bitmap.width / 2, (t.y ?? 0) + bitmap.height / 2);
+        ctx!.rotate(((t.rotation ?? 0) * Math.PI) / 180);
+        ctx!.scale((t.scale ?? 1) * (t.flipHorizontal ? -1 : 1), (t.scale ?? 1) * (t.flipVertical ? -1 : 1));
+        ctx!.drawImage(bitmap, -bitmap.width / 2, -bitmap.height / 2);
+        ctx!.restore();
+      };
+
+      // 2. Below-frames overlays (in order)
       for (const layer of belowOverlays) {
-        await drawOverlayLayer(ctx, layer);
+        const item = loadedBitmaps.find(b => b.type === `below-overlay:${layer.id}`);
+        if (item?.bitmap && item.layer) drawOverlayBitmap(item.bitmap, item.layer);
       }
 
-      // 3. Draw zones with placed images
-      for (const zone of frame.zones) {
-        const placed = placedImages.get(zone.id);
-        if (!placed) continue;
-
-        let img: HTMLImageElement;
-        try {
-          img = await loadImageWithFallback(convertFileSrc(placed.sourceFile.replace('asset://', '')));
-        } catch (err) {
-          logger.warn('Failed to load placed image, skipping zone:', zone.id, err);
-          continue;
-        }
-
+      // 3. Zone images
+      for (const item of loadedBitmaps) {
+        if (!item.type.startsWith('zone:') || !item.bitmap || !item.zone || !item.placed) continue;
+        const { zone, placed, bitmap } = item;
         const t = placed.transform;
         ctx.save();
         ctx.translate(zone.x + zone.width / 2, zone.y + zone.height / 2);
         if (zone.rotation) ctx.rotate((zone.rotation * Math.PI) / 180);
-        applyZoneClipPath(ctx, zone);
+        applyZoneClipPath(ctx as CanvasRenderingContext2D, zone);
         ctx.translate(t.offsetX, t.offsetY);
         if (t.rotation) ctx.rotate((t.rotation * Math.PI) / 180);
-        ctx.scale(
-          t.scale * (t.flipHorizontal ? -1 : 1),
-          t.scale * (t.flipVertical ? -1 : 1)
-        );
-        const imgAspect = img.naturalWidth / img.naturalHeight;
+        ctx.scale(t.scale * (t.flipHorizontal ? -1 : 1), t.scale * (t.flipVertical ? -1 : 1));
+        const imgAspect = bitmap.width / bitmap.height;
         const zoneAspect = zone.width / zone.height;
         let drawW: number, drawH: number;
-        if (imgAspect > zoneAspect) {
-          drawW = zone.width;
-          drawH = zone.width / imgAspect;
-        } else {
-          drawH = zone.height;
-          drawW = zone.height * imgAspect;
-        }
-        ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
+        if (imgAspect > zoneAspect) { drawW = zone.width; drawH = zone.width / imgAspect; }
+        else { drawH = zone.height; drawW = zone.height * imgAspect; }
+        ctx.drawImage(bitmap, -drawW / 2, -drawH / 2, drawW, drawH);
         ctx.restore();
       }
 
-      // 4. Draw above-frames overlay layers
-      const aboveOverlays = overlays
-        .filter(o => o.position === 'above-frames' && o.visible)
-        .sort((a, b) => a.layerOrder - b.layerOrder);
+      // 4. Above-frames overlays (in order)
       for (const layer of aboveOverlays) {
-        await drawOverlayLayer(ctx, layer);
+        const item = loadedBitmaps.find(b => b.type === `above-overlay:${layer.id}`);
+        if (item?.bitmap && item.layer) drawOverlayBitmap(item.bitmap, item.layer);
       }
 
-      // Convert to PNG bytes
-      const dataUrl = canvas.toDataURL('image/png');
-      const base64 = dataUrl.split(',')[1];
-      const binaryString = atob(base64);
-      const bytes = new Uint8Array(binaryString.length);
-
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
+      // Encode
+      let blob: Blob | null = null;
+      if (canvas instanceof OffscreenCanvas) {
+        blob = await canvas.convertToBlob({ type: 'image/png' });
+      } else {
+        blob = await new Promise<Blob | null>((resolve) => (canvas as HTMLCanvasElement).toBlob(resolve, 'image/png'));
       }
+      if (!blob) { logger.error('Failed to encode canvas as PNG'); return null; }
+      const bytes = new Uint8Array(await blob.arrayBuffer());
 
-      const filename = `collage_${Date.now()}.png`;
-      return { bytes, filename };
+      logger.debug(`[export] Total: ${(performance.now() - startTime).toFixed(0)}ms, ${bytes.length} bytes`);
+      return { bytes, filename: `collage_${Date.now()}.png` };
     } catch (error) {
       logger.error('Failed to export canvas:', error);
       return null;
     }
-  }, [currentFrame, canvasSize, autoMatchBackground, backgroundDimensions, background, isSolidColor, bgSrc, backgroundTransform, overlays, placedImages, loadImageWithFallback, drawOverlayLayer]);
+  }, [currentFrame, canvasSize, autoMatchBackground, backgroundDimensions, background, isSolidColor, bgSrc, backgroundTransform, overlays, placedImages, loadImageAsBitmap]);
 
   // Overlay CRUD operations
   const addOverlay = useCallback((overlay: Omit<OverlayLayer, 'id' | 'createdAt'>): string => {

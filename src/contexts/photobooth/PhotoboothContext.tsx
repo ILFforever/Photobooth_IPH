@@ -104,6 +104,9 @@ export function PhotoboothProvider({ children }: { children: ReactNode }) {
     if (mode === 'capture') {
       setCurrentCollageFilename(null);
       setCollageIsDirty(false);
+      // Clear bitmap cache to free GPU memory between sessions
+      bitmapCache.current.forEach(bitmap => bitmap.close());
+      bitmapCache.current.clear();
     }
   }, []);
 
@@ -132,6 +135,14 @@ export function PhotoboothProvider({ children }: { children: ReactNode }) {
 
   // Image cache using ImageBitmap (faster than HTMLImageElement)
   const bitmapCache = useRef<Map<string, ImageBitmap>>(new Map());
+
+  // Clean up ImageBitmap objects on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      bitmapCache.current.forEach(bitmap => bitmap.close());
+      bitmapCache.current.clear();
+    };
+  }, []);
 
   // Helper: Load an image as ImageBitmap (GPU-accelerated)
   const loadImageAsBitmap = useCallback(async (src: string): Promise<ImageBitmap | null> => {

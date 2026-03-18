@@ -13,6 +13,25 @@ import {
 import { createLogger } from '../../utils/logger';
 const logger = createLogger('useGalleryState');
 
+// Process items in batches with limited concurrency
+async function processInBatches<T, R>(
+  items: T[],
+  batchSize: number,
+  processor: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = [];
+
+  for (let i = 0; i < items.length; i += batchSize) {
+    const batch = items.slice(i, i + batchSize);
+    const batchResults = await Promise.all(
+      batch.map((item, batchIndex) => processor(item, i + batchIndex))
+    );
+    results.push(...batchResults);
+  }
+
+  return results;
+}
+
 interface GalleryState {
   selectedImages: string[];
   loadedImages: Record<string, boolean>;
@@ -139,9 +158,9 @@ export function useGalleryState(): UseGalleryStateReturn {
       setProcessingImages(prev => [...prev, filename]);
 
       try {
-        logger.debug(`Generating thumbnail for: ${selected}`);
-        const thumbnailUrl = await invoke<string>('generate_cached_thumbnail', { imagePath: selected });
-        logger.debug(`Thumbnail generated: ${thumbnailUrl}`);
+        logger.debug(`Generating ultra-high quality thumbnail for: ${selected}`);
+        const thumbnailUrl = await invoke<string>('generate_cached_thumbnail_ultra', { imagePath: selected });
+        logger.debug(`Ultra-high quality thumbnail generated: ${thumbnailUrl}`);
 
         setAssetUrlToFilePath(prev => ({ ...prev, [thumbnailUrl]: selected }));
 
@@ -208,23 +227,47 @@ export function useGalleryState(): UseGalleryStateReturn {
       const filenames = regularImages.map(img => getFilenameFromPath(img.path));
       setProcessingImages(filenames);
 
-      // Generate thumbnails in batch
+      // Generate thumbnails in batches - add each to gallery as it completes
       const paths = regularImages.map(img => img.path);
-      const thumbnailResults = await invoke<ThumbnailResult[]>(
-        'generate_cached_thumbnails_batch',
-        { imagePaths: paths }
-      );
 
-      // Create mappings
-      const assetUrlMapping: Record<string, string> = {};
-      const thumbnailUrls = thumbnailResults.map(result => {
-        assetUrlMapping[result.thumbnail_url] = result.original_path;
-        logger.debug(`Thumbnail generated: ${result.original_path} -> ${result.thumbnail_url}`);
-        return result.thumbnail_url;
+      // Process in batches of 3 to avoid overwhelming the system
+      await processInBatches(paths, 3, async (imagePath, index) => {
+        try {
+          const thumbnailUrl = await invoke<string>('generate_cached_thumbnail_ultra', {
+            imagePath: imagePath
+          });
+          const filename = getFilenameFromPath(imagePath);
+
+          logger.debug(`Thumbnail ${index + 1}/${paths.length} generated: ${filename}`);
+
+          // Update UI immediately when thumbnail completes
+          setAssetUrlToFilePath(prev => {
+            const updated = { ...prev, [thumbnailUrl]: imagePath };
+            return updated;
+          });
+
+          setSelectedImages(prev => {
+            if (!prev.includes(thumbnailUrl)) {
+              const updated = [...prev, thumbnailUrl];
+              logger.debug(`[QR] Adding image to gallery: ${thumbnailUrl}, total: ${updated.length}`);
+              return updated;
+            }
+            return prev;
+          });
+
+          setProcessingImages(prev => prev.filter(name => name !== filename));
+
+          return {
+            thumbnailUrl: thumbnailUrl,
+            originalPath: imagePath,
+            filename: filename
+          };
+        } catch (err) {
+          logger.error(`Failed to generate thumbnail for ${imagePath}:`, err);
+          setProcessingImages(prev => prev.filter(name => name !== getFilenameFromPath(imagePath)));
+          return null;
+        }
       });
-      setAssetUrlToFilePath(assetUrlMapping);
-      setSelectedImages(thumbnailUrls);
-      setProcessingImages([]);
     } catch (e) {
       logger.error('Error selecting folder or fetching images:', e);
     }
@@ -321,43 +364,52 @@ export function useGalleryState(): UseGalleryStateReturn {
         }
       }
 
-      // Batch generate thumbnails
+      // Generate thumbnails progressively
       if (savedPaths.length > 0) {
         try {
-          logger.debug(`Generating ${savedPaths.length} cached thumbnails in batch...`);
-          const paths = savedPaths.map(sp => sp.path);
-          const thumbnailResults = await invoke<ThumbnailResult[]>(
-            'generate_cached_thumbnails_batch',
-            { imagePaths: paths }
-          );
+          logger.debug(`Generating ${savedPaths.length} ultra-high quality cached thumbnails progressively...`);
 
-          const assetUrlMapping: Record<string, string> = {};
-          const thumbnailMapping: Record<string, string> = {};
+          // Process in batches of 3 to avoid overwhelming the system
+          await processInBatches(savedPaths, 3, async (savedPath) => {
+            try {
+              const thumbnailUrl = await invoke<string>('generate_cached_thumbnail_ultra', {
+                imagePath: savedPath.path
+              });
 
-          for (const result of thumbnailResults) {
-            assetUrlMapping[result.thumbnail_url] = result.original_path;
-            const savedFile = savedPaths.find(sp => sp.path === result.original_path);
-            if (savedFile) {
-              thumbnailMapping[result.thumbnail_url] = savedFile.filename;
+              logger.debug(`Thumbnail generated: ${savedPath.filename} -> ${thumbnailUrl}`);
+
+              // Update UI immediately when thumbnail completes
+              setAssetUrlToFilePath(prev => ({ ...prev, [thumbnailUrl]: savedPath.path }));
+              setThumbnailToFilename(prev => ({ ...prev, [thumbnailUrl]: savedPath.filename }));
+              setSelectedImages(prev => {
+                if (!prev.includes(thumbnailUrl)) {
+                  return [...prev, thumbnailUrl];
+                }
+                return prev;
+              });
+              setProcessingImages(prev => prev.filter(name => name !== savedPath.filename));
+
+              return {
+                thumbnailUrl: thumbnailUrl,
+                originalPath: savedPath.path,
+                filename: savedPath.filename
+              };
+            } catch (err) {
+              logger.error(`Failed to generate thumbnail for ${savedPath.filename}:`, err);
+              setProcessingImages(prev => prev.filter(name => name !== savedPath.filename));
+              return null;
             }
-            logger.debug(`Thumbnail generated: ${result.original_path} -> ${result.thumbnail_url}`);
-          }
+          });
 
-          setAssetUrlToFilePath(prev => ({ ...prev, ...assetUrlMapping }));
-          setThumbnailToFilename(prev => ({ ...prev, ...thumbnailMapping }));
-          setSelectedImages(prev => [...prev, ...thumbnailResults.map(r => r.thumbnail_url)]);
-
-          logger.debug(`Batch thumbnail generation complete: ${thumbnailResults.length} thumbnails`);
+          logger.debug(`Progressive thumbnail generation complete`);
         } catch (thumbErr) {
-          logger.error('Failed to generate thumbnails in batch:', thumbErr);
+          logger.error('Failed to generate thumbnails:', thumbErr);
           for (const sp of savedPaths) {
             const fileExtUpper = getFileExtension(sp.filename).toUpperCase() || 'FILE';
             setNoPreviewImages(prev => [...prev, { filename: sp.filename, type: fileExtUpper, isRaw: false }]);
           }
         }
       }
-
-      setProcessingImages(prev => prev.filter(name => !regularFiles.some(f => f.name === name)));
     }
 
     logger.debug('All dropped images processed');

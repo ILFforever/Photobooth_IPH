@@ -119,7 +119,9 @@ pub fn run() {
             get_images_with_metadata,
             save_dropped_image,
             generate_cached_thumbnail,
+            generate_cached_thumbnail_ultra,
             generate_cached_thumbnails_batch,
+            generate_cached_thumbnails_batch_ultra,
             clear_temp_images,
             remove_temp_image,
             // Frames

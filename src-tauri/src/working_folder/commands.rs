@@ -109,6 +109,103 @@ pub async fn generate_cached_thumbnail(
 }
 
 #[tauri::command]
+pub async fn generate_cached_thumbnail_ultra(
+    app: tauri::AppHandle,
+    image_path: String,
+) -> Result<String, String> {
+    println!("=== ULTRA-HIGH QUALITY THUMBNAIL GENERATION ===");
+    println!("Mode: ULTRA HIGH RESOLUTION (QR Mode)");
+    println!("Settings: 800px max, Full JPEG quality, Lanczos3 filter");
+    println!("Input: {}", image_path);
+
+    // Use the ultra-high-res thumbnail function (800px, full quality, Lanczos3 filter)
+    let result = generate_cached_thumbnail_ultra_high_res(&image_path, &app).await?;
+
+    println!("✓ Ultra-high quality cached thumbnail generated: {}", result.thumbnail);
+    println!("===================================");
+    Ok(result.thumbnail)
+}
+
+#[tauri::command]
+pub async fn generate_cached_thumbnails_batch_ultra(
+    app: tauri::AppHandle,
+    image_paths: Vec<String>,
+) -> Result<Vec<CachedThumbnailResult>, String> {
+    println!(
+        "Generating {} ultra-high quality cached thumbnails in batch...",
+        image_paths.len()
+    );
+
+    let total_files = image_paths.len();
+
+    // Limit concurrent thumbnail generation
+    let max_concurrent_tasks = std::cmp::min(6, total_files); // Slightly lower for larger files
+    let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(max_concurrent_tasks));
+
+    // Use JoinSet for concurrent processing
+    let mut join_set = tokio::task::JoinSet::new();
+
+    // Spawn tasks for thumbnail generation
+    for (index, image_path) in image_paths.into_iter().enumerate() {
+        let app_clone = app.clone();
+        let semaphore_clone = semaphore.clone();
+
+        join_set.spawn(async move {
+            let _permit = semaphore_clone.acquire().await
+                .map_err(|e| format!("Semaphore closed: {}", e))?;
+
+            println!(
+                "[{}/{}] Generating ultra-high quality thumbnail...",
+                index + 1,
+                total_files
+            );
+
+            match generate_cached_thumbnail_ultra_high_res(&image_path, &app_clone).await {
+                Ok(result) => {
+                    println!(
+                        "✓ [{}/{}] Ultra-high quality thumbnail generated: {}",
+                        index + 1,
+                        total_files,
+                        result.thumbnail
+                    );
+                    Ok(CachedThumbnailResult {
+                        thumbnail_url: result.thumbnail,
+                        original_path: image_path,
+                    })
+                }
+                Err(e) => {
+                    println!(
+                        "✗ [{}/{}] Failed to generate ultra-high quality thumbnail: {}",
+                        index + 1,
+                        total_files,
+                        e
+                    );
+                    Err(e)
+                }
+            }
+        });
+    }
+
+    // Collect all results
+    let mut results = Vec::new();
+    while let Some(result) = join_set.join_next().await {
+        match result {
+            Ok(Ok(thumb_result)) => results.push(thumb_result),
+            Ok(Err(e)) => eprintln!("Task failed: {}", e),
+            Err(e) => eprintln!("Join error: {}", e),
+        }
+    }
+
+    println!(
+        "✓ Ultra-high quality batch thumbnail generation complete: {}/{} successful",
+        results.len(),
+        total_files
+    );
+
+    Ok(results)
+}
+
+#[tauri::command]
 pub async fn generate_cached_thumbnails_batch(
     app: tauri::AppHandle,
     image_paths: Vec<String>,
@@ -136,7 +233,10 @@ pub async fn generate_cached_thumbnails_batch(
         join_set.spawn_blocking(move || {
             tokio::runtime::Handle::current().block_on(async {
                 // Acquire semaphore permit to limit concurrency
-                let _permit = semaphore_clone.acquire().await.unwrap();
+                let _permit = match semaphore_clone.acquire().await {
+                    Ok(p) => p,
+                    Err(_) => return (path_clone, Err("Semaphore closed".to_string())),
+                };
 
                 let result = generate_thumbnail_cached(&path_clone, &app_clone, index).await;
                 (path_clone, result)
@@ -307,7 +407,10 @@ async fn scan_folder_for_images(
             join_set.spawn_blocking(move || {
                 tokio::runtime::Handle::current().block_on(async {
                     // Acquire semaphore permit to limit concurrency
-                    let _permit = semaphore_clone.acquire().await.unwrap();
+                    let _permit = match semaphore_clone.acquire().await {
+                        Ok(p) => p,
+                        Err(_) => return (index, Err("Semaphore closed".to_string()), file_path_clone, filename_clone, size, extension_clone),
+                    };
 
                     let result =
                         generate_thumbnail_cached(&file_path_clone, &app_clone, index).await;
@@ -667,6 +770,23 @@ pub async fn generate_cached_thumbnail_high_res(
         image::imageops::FilterType::Lanczos3,
         "cached_thumbnails",
         "cached_thumb",
+    )
+    .await
+}
+
+/// Ultra-high quality thumbnail for QR mode (print quality)
+pub async fn generate_cached_thumbnail_ultra_high_res(
+    image_path: &str,
+    app: &tauri::AppHandle,
+) -> Result<ThumbnailResult, String> {
+    generate_thumbnail_with_settings(
+        image_path,
+        app,
+        800,   // 2x higher resolution (sweet spot for quality vs speed)
+        1,     // Highest JPEG quality
+        image::imageops::FilterType::Lanczos3,
+        "cached_thumbnails_ultra",
+        "cached_thumb_ultra",
     )
     .await
 }

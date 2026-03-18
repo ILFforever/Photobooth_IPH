@@ -34,14 +34,14 @@ pub async fn process_photos(
 
     println!("🔐 Checking authentication...");
     let auth = {
-        let auth_guard = state.auth.lock().unwrap();
+        let auth_guard = state.auth.lock().map_err(|e| format!("State lock poisoned: {}", e))?;
         auth_guard.as_ref().ok_or("Not logged in")?.clone()
     };
     println!("✅ Authentication verified");
 
     println!("📂 Checking root folder...");
     let root_folder = {
-        let folder_guard = state.root_folder.lock().unwrap();
+        let folder_guard = state.root_folder.lock().map_err(|e| format!("State lock poisoned: {}", e))?;
         folder_guard.as_ref().ok_or("No root folder")?.clone()
     };
     println!(
@@ -113,7 +113,7 @@ pub async fn process_photos(
             .supports_all_drives(true)
             .upload(
                 std::io::Cursor::new(&[]),
-                "application/vnd.google-apps.folder".parse().unwrap(),
+                "application/vnd.google-apps.folder".parse().expect("valid MIME type"),
             )
             .await
         {
@@ -305,7 +305,7 @@ pub async fn process_photos(
                         .files()
                         .create(meta)
                         .supports_all_drives(true)
-                        .upload(std::io::Cursor::new(data.clone()), mime.parse().unwrap())
+                        .upload(std::io::Cursor::new(data.as_slice()), mime.parse().expect("valid MIME type"))
                         .await
                     {
                         Ok(_) => {
