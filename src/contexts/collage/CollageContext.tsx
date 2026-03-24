@@ -56,8 +56,8 @@ interface CollageContextType {
   setCanvasZoom: (zoom: number) => void;
   customCanvasSizes: CanvasSize[];
   setCustomCanvasSizes: (sizes: CanvasSize[]) => void;
-  activeSidebarTab: 'file' | 'edit' | 'frames' | 'layers' | 'custom-sets' | 'export';
-  setActiveSidebarTab: (tab: 'file' | 'edit' | 'frames' | 'layers' | 'custom-sets' | 'export') => void;
+  activeSidebarTab: 'file' | 'edit' | 'frames' | 'layers' | 'custom-sets' | 'export' | 'background';
+  setActiveSidebarTab: (tab: 'file' | 'edit' | 'frames' | 'layers' | 'custom-sets' | 'export' | 'background') => void;
   customFrames: Frame[];
   setCustomFrames: (frames: Frame[]) => void;
   reloadFrames: () => Promise<void>;
@@ -130,7 +130,7 @@ export function CollageProvider({ children }: { children: ReactNode }) {
   const [isBackgroundSelected, setIsBackgroundSelected] = useState<boolean>(false);
   const [canvasZoom, setCanvasZoom] = useState<number>(1);
   const [customCanvasSizes, setCustomCanvasSizes] = useState<CanvasSize[]>([]);
-  const [activeSidebarTab, setActiveSidebarTab] = useState<'file' | 'edit' | 'frames' | 'layers' | 'custom-sets' | 'export'>('file');
+  const [activeSidebarTab, setActiveSidebarTab] = useState<'file' | 'edit' | 'frames' | 'layers' | 'custom-sets' | 'export' | 'background'>('background');
   const [customFrames, setCustomFrames] = useState<Frame[]>([]);
   const [autoMatchBackground, setAutoMatchBackground] = useState(false);
   const [backgroundDimensions, setBackgroundDimensions] = useState<{ width: number; height: number } | null>(null);

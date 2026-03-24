@@ -1,3 +1,4 @@
+import "./CustomSetsSection.css";
 import { ChevronDown, ChevronRight, Check, Layers } from 'lucide-react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import type { CustomSet } from '../../../../types/customSet';

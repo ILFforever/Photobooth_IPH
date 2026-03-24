@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useState } from "react";
 import "./QRSidebar.css";
+import "../../../styles/Buttons.css";
 import type { GoogleAccount, NoPreviewImage, UploadProgress } from "../../../types/qr";
 import Icon from "@mdi/react";
 import { mdiRocketLaunch, mdiCheckCircle, mdiFolder, mdiMagnify, mdiUpload, mdiLockOpen, mdiQrcode, mdiAlert, mdiHistory } from "@mdi/js";

@@ -19,7 +19,7 @@ import { usePhotoDownloadHandler } from "../../hooks/photobooth/usePhotoDownload
 import CaptureView from "./CaptureView";
 import FinalizeView from "./FinalizeView";
 import SessionSelectModal from "./SessionSelectModal";
-import { displayPresets, type DisplayMode } from "./photoboothWorkspaceTypes";
+import { displayPresets, type DisplayMode, type CurrentSetPhoto } from "./photoboothWorkspaceTypes";
 import "./PhotoboothWorkspace.css";
 import { createLogger } from '../../utils/logger';
 
@@ -84,14 +84,14 @@ export default function PhotoboothWorkspace() {
   }, [captureError, showToast, clearCaptureError]);
 
   // Workflow state
-  const [selectedPhotos, setSelectedPhotos] = useState<Set<string>>(new Set());
+  const [selectedPhotos, setSelectedPhotos] = useState<string[]>([]);
   // Calculate required photos from photobooth frame zones - 0 when no frame/set selected
   const requiredPhotos = photoboothFrame?.zones.length ?? 0;
 
   // Clear selected photos when session changes
   useEffect(() => {
     logger.debug('[PhotoboothWorkspace] Session changed, clearing selected photos');
-    setSelectedPhotos(new Set());
+    setSelectedPhotos([]);
     setSelectedPhotoIndex(null);
     setCenterBrowseIndex(null);
   }, [currentSession?.id]);
@@ -249,22 +249,31 @@ export default function PhotoboothWorkspace() {
     }
 
     setSelectedPhotos(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(photoId)) {
-        newSet.delete(photoId);
+      const index = prev.indexOf(photoId);
+      if (index !== -1) {
+        // Remove photo from selection
+        return prev.filter(id => id !== photoId);
       } else {
         // Limit selection to required photos from frame
-        if (newSet.size < requiredPhotos) {
-          newSet.add(photoId);
+        if (prev.length < requiredPhotos) {
+          return [...prev, photoId];
         }
+        return prev;
       }
-      return newSet;
     });
   };
 
-  // Get selected photos in order (preserving capture order)
+  const handleSelectAll = () => {
+    setSelectedPhotos(currentSetPhotos.map(p => p.id));
+  };
+
+  const handleClearAll = () => {
+    setSelectedPhotos([]);
+  };
+
+  // Get selected photos in order (preserving click order)
   const getSelectedPhotosOrdered = () => {
-    return currentSetPhotos.filter(p => selectedPhotos.has(p.id));
+    return selectedPhotos.map(id => currentSetPhotos.find(p => p.id === id)).filter(Boolean) as CurrentSetPhoto[];
   };
 
   // Derive session folder name for file paths
@@ -392,6 +401,8 @@ export default function PhotoboothWorkspace() {
               onCenterBack={handleCenterBack}
               onCenterNavClick={handleCenterNavClick}
               onPhotoSelect={togglePhotoSelection}
+              onSelectAll={handleSelectAll}
+              onClearAll={handleClearAll}
               currentSession={currentSession}
               ptbSessionName={null}
               workingFolder={workingFolder}

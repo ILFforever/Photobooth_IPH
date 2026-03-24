@@ -31,6 +31,7 @@ export function useCurrentSetPhotos({
     if (photosTaken > lastPhotosTakenRef.current) {
       const newPhoto: CurrentSetPhoto = {
         id: `photo-${Date.now()}`,
+        filename: `photo-${Date.now()}`,
         thumbnailUrl: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200" viewBox="0 0 300 200"><rect fill="%23333" width="300" height="200"/><text x="50%25" y="50%25" dominant-baseline="middle" text-anchor="middle" fill="%23666" font-family="monospace" font-size="24">Photo ${photosTaken}</text></svg>`)}`,
         timestamp: new Date().toLocaleTimeString(),
       };
@@ -71,7 +72,8 @@ export function useCurrentSetPhotos({
           }
 
           return {
-            id: photo.filename || `photo-${idx}`,
+            id: `${new Date(photo.capturedAt).getTime()}-${photo.filename || `photo-${idx}`}`,
+            filename: photo.filename || `photo-${idx}`,
             thumbnailUrl: fullUrl || '',
             fullUrl,
             timestamp: new Date(photo.capturedAt).toLocaleTimeString(),

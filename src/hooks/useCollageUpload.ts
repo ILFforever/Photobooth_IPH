@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { usePhotobooth, useUploadQueue, useAuth, useWorkspaceSettings, useToast } from "../contexts";
 import * as fs from "@tauri-apps/plugin-fs";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { createLogger } from "../utils/logger";
 
 const logger = createLogger('useCollageUpload');
@@ -27,7 +28,8 @@ export function useCollageUpload() {
       currentSession: any,
       workingFolder: string,
       sessions: any[],
-      driveMetadata: any
+      driveMetadata: any,
+      onNewCollageGenerated?: (filename: string, imageUrl: string) => void
     ) => {
       if (!currentSession || !workingFolder || !driveMetadata?.folderId) {
         logger.debug('[useCollageUpload] Skipping upload - missing session, folder, or Drive folder ID');
@@ -83,16 +85,13 @@ export function useCollageUpload() {
             () => chars[Math.floor(Math.random() * chars.length)]
           ).join("");
           filename = `Collage_${randomStr}.png`;
-          setCurrentCollageFilename(filename);
-          resetCollageDirtyState();
 
           // Save to session folder using FS plugin
           const sessionPath = `${workingFolder}/${sessionFolder}`;
           await fs.mkdir(sessionPath, { recursive: true });
           await fs.writeFile(`${sessionPath}/${filename}`, exportResult.bytes);
 
-          // Clear generating state after save
-          setIsGeneratingCollage(false);
+          logger.debug('[useCollageUpload] New collage saved:', filename);
         }
 
         // Enqueue for upload
@@ -104,9 +103,26 @@ export function useCollageUpload() {
         );
 
         logger.debug('[useCollageUpload] Collage uploaded successfully');
+
+        // Update guest display with the collage
+        if (onNewCollageGenerated) {
+          const normalizedPath = localPath.replace(/\\/g, '/');
+          const imageUrl = convertFileSrc(normalizedPath);
+          onNewCollageGenerated(filename, imageUrl);
+        }
+
+        // Now set the filename and reset dirty state AFTER upload and display update
+        if (currentCollageFilename !== filename) {
+          setCurrentCollageFilename(filename);
+        }
+        resetCollageDirtyState();
+        setIsGeneratingCollage(false);
+
         showToast('Collage uploaded', 'success', 3000, filename);
       } catch (error) {
         logger.error('[useCollageUpload] Upload failed:', error);
+        // Reset generating state on error
+        setIsGeneratingCollage(false);
         showToast(
           'Upload failed',
           'error',

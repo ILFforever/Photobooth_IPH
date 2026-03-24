@@ -1,3 +1,4 @@
+import "./VmLogsModal.css";
 import { X, AlertCircle, RefreshCw, RotateCw, HelpCircle } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import type { VmLogEntry } from '../../../../hooks';

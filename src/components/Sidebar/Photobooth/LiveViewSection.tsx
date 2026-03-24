@@ -10,11 +10,12 @@ import {
   Download,
   Settings2,
 } from "lucide-react";
-import "./PhotoboothSidebar.css";
+import "./LiveViewSection.css";
 import { useState, useRef, useEffect } from "react";
 import { FFmpegDownloadModal } from "../../Modals";
 import { useLiveView } from "../../../contexts";
 import { emit, listen } from "@tauri-apps/api/event";
+import "../../../styles/Modal.css";
 
 type CollapsibleSection =
   | "camera"

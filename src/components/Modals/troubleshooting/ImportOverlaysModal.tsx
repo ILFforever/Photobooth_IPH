@@ -4,6 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useCollage } from '../../../contexts';
 import { LayerPosition } from '../../../types/overlay';
 import { createLogger } from '../../../utils/logger';
+import "../../../styles/Modal.css";
+import "../../../styles/Buttons.css";
 
 const logger = createLogger('ImportOverlaysModal');
 

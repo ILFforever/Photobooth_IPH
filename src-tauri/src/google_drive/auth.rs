@@ -38,6 +38,12 @@ pub async fn google_login(
         ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send + 'a>>
         {
             Box::pin(async move {
+                // Store the auth URL in state so the frontend can re-open it if needed
+                if let Some(state) = self.app.try_state::<AppState>() {
+                    if let Ok(mut auth_url) = state.auth_url.lock() {
+                        *auth_url = Some(url.to_string());
+                    }
+                }
                 // Use Tauri's shell plugin instead of open::that for better browser compatibility
                 #[allow(deprecated)]
                 let _ = self.app.shell().open(url, None);
@@ -219,4 +225,21 @@ pub async fn check_cached_account(
 #[tauri::command]
 pub async fn get_account(state: State<'_, AppState>) -> Result<Option<GoogleAccount>, String> {
     Ok(state.account.lock().map_err(|e| format!("State lock poisoned: {}", e))?.clone())
+}
+
+#[tauri::command]
+pub async fn open_auth_url(
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let url = state
+        .auth_url
+        .lock()
+        .map_err(|e| format!("State lock poisoned: {}", e))?
+        .clone()
+        .ok_or("No auth URL available")?;
+
+    #[allow(deprecated)]
+    app.shell().open(&url, None).map_err(|e| format!("Failed to open browser: {}", e))?;
+    Ok(())
 }

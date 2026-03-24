@@ -1,0 +1,525 @@
+/**
+ * Folder Picker Styles
+ *
+ * Professional Google Drive folder selector inspired by Capture One.
+ * Clean, efficient, technical - optimized for event photography workflows.
+ */
+
+/* ========================================
+ * Modal Layout
+ * ======================================== */
+
+.folder-picker-modal {
+  width: 100%;
+  max-width: 700px;
+  max-height: 85vh;
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+}
+
+.folder-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-xl) var(--spacing-2xl) var(--spacing-md);
+  border-bottom: var(--border-width) solid var(--border-color);
+}
+
+.folder-picker-header h2 {
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+}
+
+.folder-picker-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-normal);
+  flex-shrink: 0;
+}
+
+.folder-picker-close:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.folder-picker-close:active {
+  transform: scale(0.95);
+}
+
+/* ========================================
+ * Breadcrumb Navigation
+ * ======================================== */
+
+.folder-breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm) var(--spacing-2xl);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.breadcrumb-back-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-md);
+  margin-right: var(--spacing-sm);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  white-space: nowrap;
+}
+
+.breadcrumb-back-btn:hover {
+  background: var(--bg-primary);
+  border-color: var(--text-muted);
+  color: var(--text-primary);
+}
+
+.breadcrumb-back-btn:active {
+  transform: translateY(1px);
+}
+
+.breadcrumb-back-btn span {
+  line-height: 1;
+}
+
+.folder-breadcrumbs::-webkit-scrollbar {
+  display: none;
+}
+
+.folder-breadcrumbs::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.folder-breadcrumbs::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: var(--radius-sm);
+}
+
+.folder-breadcrumbs::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+.breadcrumb-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  white-space: nowrap;
+}
+
+.breadcrumb-item:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.breadcrumb-item:active {
+  transform: scale(0.98);
+}
+
+.breadcrumb-item span {
+  line-height: 1;
+}
+
+.breadcrumb-segment {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.breadcrumb-separator {
+  color: var(--text-muted);
+}
+
+/* ========================================
+ * Folder List Container
+ * ======================================== */
+
+.folder-list-container {
+  flex: 1;
+  min-height: 500px;
+  max-height: 640px;
+  overflow-y: auto;
+  background: var(--bg-primary);
+}
+
+/* Loading State */
+.folder-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-3xl);
+  color: var(--text-secondary);
+  font-size: var(--text-base);
+}
+
+.folder-loading-spinner {
+  color: var(--accent-blue);
+  opacity: 0.8;
+}
+
+/* Empty State */
+.folder-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-3xl);
+  color: var(--text-muted);
+  font-size: var(--text-base);
+}
+
+.folder-empty span {
+  font-weight: var(--font-medium);
+}
+
+/* Folder List */
+.folder-list {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Folder Row */
+.folder-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md) var(--spacing-2xl);
+  border-bottom: 1px solid var(--border-color);
+  transition: all var(--transition-normal);
+  position: relative;
+}
+
+.folder-row:last-child {
+  border-bottom: none;
+}
+
+.folder-row:hover {
+  background: var(--bg-secondary);
+}
+
+.folder-row:active {
+  background: var(--bg-tertiary);
+}
+
+.folder-info-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  flex: 1;
+  padding: var(--spacing-sm);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  min-width: 0;
+  text-align: left;
+  justify-content: flex-start;
+}
+
+.folder-info-btn:hover {
+  background: var(--bg-tertiary);
+}
+
+.folder-info-btn:active {
+  transform: scale(0.99);
+}
+
+.folder-info {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  flex: 1;
+  min-width: 0;
+  justify-content: flex-start;
+}
+
+.folder-icon {
+  color: var(--accent-blue);
+  flex-shrink: 0;
+}
+
+.folder-name {
+  font-size: var(--text-base);
+  font-weight: var(--font-medium);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  align-self: flex-start;
+}
+
+.folder-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-lg);
+  flex-shrink: 0;
+  margin-left: var(--spacing-md);
+}
+
+.folder-delete-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  background: transparent;
+  border: none;
+  color: rgba(239, 68, 68, 0.45);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-normal);
+}
+
+.folder-delete-btn:hover {
+  background: rgba(232, 17, 35, 0.1);
+  color: #ef4444;
+}
+
+.folder-delete-btn:active {
+  transform: scale(0.95);
+}
+
+.folder-select-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--accent-blue);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: white;
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  white-space: nowrap;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.folder-select-btn span {
+  opacity: 1;
+}
+
+.folder-select-btn:hover {
+  background: #106ebe;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
+.folder-select-btn:active {
+  transform: translateY(1px);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+/* ========================================
+ * Footer - Create Folder
+ * ======================================== */
+
+.folder-picker-footer {
+  padding: var(--spacing-xl) var(--spacing-2xl);
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.create-folder-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.create-folder-row > :first-child {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.create-folder-row input[type="text"] {
+  flex: 1;
+  min-width: 0;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-family: inherit;
+  transition: all var(--transition-normal);
+}
+
+.create-folder-row input[type="text"]:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+  background: var(--bg-tertiary);
+  box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.1);
+}
+
+.create-folder-row input[type="text"]::placeholder {
+  color: var(--text-muted);
+}
+
+.btn-create-folder {
+  padding: var(--spacing-sm) var(--spacing-lg);
+  background: #107c10;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: white;
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  white-space: nowrap;
+  flex-shrink: 0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.btn-create-folder:hover:not(:disabled) {
+  background: #0b5c0b;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
+.btn-create-folder:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.btn-create-folder:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-select-current {
+  width: 100%;
+  padding: var(--spacing-md) var(--spacing-lg);
+  background: var(--accent-blue);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: white;
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.btn-select-current:hover {
+  background: #106ebe;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
+.btn-select-current:active {
+  transform: translateY(1px);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.btn-select-current + .create-folder-row {
+  border-top: 1px solid var(--border-color);
+  padding-top: var(--spacing-md);
+  margin-top: var(--spacing-md);
+}
+
+/* ========================================
+ * Scrollbar Styling
+ * ======================================== */
+
+.folder-list-container::-webkit-scrollbar {
+  width: 8px;
+}
+
+.folder-list-container::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+}
+
+.folder-list-container::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: var(--radius-sm);
+  border: 2px solid var(--bg-secondary);
+}
+
+.folder-list-container::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* ========================================
+ * Responsive
+ * ======================================== */
+
+@media (max-width: 640px) {
+  .folder-picker-modal {
+    max-width: 100%;
+    height: 100%;
+    border-radius: 0;
+  }
+
+  .folder-picker-header,
+  .folder-breadcrumbs {
+    padding-left: var(--spacing-md);
+    padding-right: var(--spacing-md);
+  }
+
+  .folder-picker-footer {
+    padding-left: var(--spacing-md);
+    padding-right: var(--spacing-md);
+  }
+
+  .folder-row {
+    padding-left: var(--spacing-md);
+    padding-right: var(--spacing-md);
+  }
+
+  .folder-actions {
+    gap: var(--spacing-md);
+  }
+
+  .create-folder-row {
+    flex-wrap: wrap;
+  }
+
+  .create-folder-row input[type="text"] {
+    flex-basis: 100%;
+  }
+
+  .btn-create-folder {
+    width: 100%;
+  }
+}

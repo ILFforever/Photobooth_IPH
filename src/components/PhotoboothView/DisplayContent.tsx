@@ -1,4 +1,5 @@
 import { Layers, Camera, Image as ImageIcon, Grid3x3, ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
+import "./DisplayContent.css";
 import { mdiFlashTriangleOutline } from '@mdi/js';
 import Icon from '@mdi/react';
 import { memo, useCallback, useRef, useState } from "react";

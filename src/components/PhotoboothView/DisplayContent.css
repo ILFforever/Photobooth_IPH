@@ -1,0 +1,570 @@
+/* ========== DISPLAY MODES ========== */
+
+/* Preview Frame - 16:9 Aspect Ratio */
+.preview-frame-wrapper {
+  padding: 4px 16px 8px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.preview-frame {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  height: 360px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  border-radius: px;
+  overflow: hidden;
+}
+
+.preview-content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.preview-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-muted);
+}
+
+.camera-icon {
+  color: var(--text-muted);
+  opacity: 0.4;
+}
+
+.preview-text {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.preview-subtext {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* Photo Strip Display */
+.strip-display {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.strip-frame {
+  display: flex;
+  gap: 12px;
+  background: var(--bg-primary);
+  padding: 12px;
+  border-radius: 8px;
+  max-width: 90%;
+}
+
+.strip-photo {
+  width: 120px;
+  aspect-ratio: 3 / 4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--bg-secondary);
+  border: 2px solid white;
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+/* Center Display - Live view with recent photos */
+.center-display {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  gap: 12px;
+}
+
+.center-main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  position: relative;
+  overflow: hidden;
+  /* Fixed aspect ratio so the box doesn't resize when video connects */
+  aspect-ratio: 16 / 9;
+  min-height: 0;
+  min-width: 0;
+}
+
+.center-liveview-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transform: scaleX(var(--video-stretch, 1)) scaleY(var(--video-stretch-v, 1)) rotate(var(--video-rotate, 0deg));
+  transform-origin: center;
+}
+
+/* Grid overlay within center-main */
+.center-grid .grid-h-1,
+.center-grid .grid-h-2 {
+  left: 5%;
+  right: 5%;
+}
+
+.center-grid .grid-v-1,
+.center-grid .grid-v-2 {
+  top: 5%;
+  bottom: 5%;
+}
+
+.center-main-content {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--text-muted);
+}
+
+.center-label {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.center-recent {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+.center-recent-photo {
+  width: 80px;
+  aspect-ratio: 4 / 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 10px;
+  overflow: hidden;
+  flex-shrink: 0;
+  /* CSS containment for better rendering performance */
+  contain: layout style paint;
+}
+
+.center-recent-photo.has-photo {
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.center-recent-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* GPU acceleration */
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  image-rendering: -webkit-optimize-contrast;
+}
+
+.center-recent-photo.skeleton {
+  background: var(--bg-tertiary);
+  border-style: dashed;
+}
+
+/* Single Display (standalone mode) */
+.single-display {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+}
+
+.single-liveview-video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transform: scaleX(var(--video-stretch, 1)) scaleY(var(--video-stretch-v, 1)) rotate(var(--video-rotate, 0deg));
+  transform-origin: center;
+}
+
+.single-display .single-photo-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: var(--text-muted);
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.single-display .single-photo-label {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* Grid Display */
+.grid-display {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: 8px;
+  padding: 16px;
+  overflow-y: auto;
+  /* Hide scrollbar */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+  /* Allow auto-rows when scrollable */
+  grid-auto-rows: 1fr;
+}
+
+.grid-display.grid-scrollable {
+  grid-template-rows: repeat(auto-fill, 1fr);
+  overflow-y: auto;
+  align-content: start;
+}
+
+.grid-display::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}
+
+.grid-display::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.grid-photo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  overflow: hidden;
+  position: relative;
+  /* CSS containment for better rendering performance with many images */
+  contain: layout style paint;
+  will-change: transform;
+}
+
+.grid-photo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* GPU acceleration for smoother rendering */
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  image-rendering: -webkit-optimize-contrast;
+  /* Sub-pixel rendering */
+  -webkit-font-smoothing: antialiased;
+}
+
+.grid-photo:hover {
+  border-color: #666666;
+  transform: scale(1.02) translateZ(0);
+}
+
+.grid-photo:active {
+  transform: scale(0.98);
+}
+
+.grid-empty-message {
+  grid-column: 1 / -1;
+  grid-row: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* Grid Display Container with Pagination */
+.grid-display-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.grid-display.grid-3x3 {
+  flex: 1;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  overflow: hidden;
+}
+
+/* Pagination Controls - Floating style */
+.pagination-controls {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  backdrop-filter: blur(8px);
+  z-index: 100;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.pagination-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.pagination-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.4);
+  transform: scale(1.05);
+}
+
+.pagination-btn:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.pagination-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.pagination-indicator {
+  font-size: 13px;
+  font-weight: 500;
+  color: white;
+  min-width: 100px;
+  text-align: center;
+}
+
+/* Single Photo Display (from grid double-click) */
+.single-photo-display {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.single-photo-container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  width: 100%;
+  height: 100%;
+}
+
+.back-to-grid-btn {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: rgba(0, 0, 0, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: white;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(4px);
+  z-index: 100;
+}
+
+.back-to-grid-btn:hover {
+  background: rgba(0, 0, 0, 0.9);
+  border-color: #666666;
+}
+
+/* Fullscreen photo navigation */
+.fullscreen-photo-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  width: 100%;
+  height: 100%;
+}
+
+.nav-arrow-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(4px);
+  flex-shrink: 0;
+  z-index: 50;
+}
+
+.nav-arrow-btn:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.8);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.nav-arrow-btn:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.nav-arrow-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.nav-arrow-btn svg {
+  flex-shrink: 0;
+}
+
+.fullscreen-photo-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+.fullscreen-counter {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 14px;
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 20px;
+  color: white;
+  font-size: 12px;
+  font-weight: 500;
+  backdrop-filter: blur(4px);
+  z-index: 100;
+}
+
+.single-photo-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: var(--text-muted);
+  flex: 1;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.single-photo-label {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* Grid Overlay */
+.grid-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* Center mode grid overlay - contained within center-main */
+.grid-overlay.center-grid {
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.grid-line {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.grid-h-1 {
+  top: 33.33%;
+  left: 5%;
+  right: 5%;
+  height: 1px;
+}
+
+.grid-h-2 {
+  top: 66.66%;
+  left: 5%;
+  right: 5%;
+  height: 1px;
+}
+
+.grid-v-1 {
+  left: 33.33%;
+  top: 5%;
+  bottom: 5%;
+  width: 1px;
+}
+
+.grid-v-2 {
+  left: 66.66%;
+  top: 5%;
+  bottom: 5%;
+  width: 1px;
+}
+

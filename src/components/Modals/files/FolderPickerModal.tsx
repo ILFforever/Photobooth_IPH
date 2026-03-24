@@ -1,4 +1,8 @@
 import { motion, AnimatePresence } from "framer-motion";
+import { Trash2, X, ChevronLeft, ChevronRight, Home, Folder, Building2, Check, FolderPlus } from 'lucide-react';
+import "../../../styles/Modal.css";
+import "../../../styles/FolderPicker.css";
+import "../../../styles/Buttons.css";
 
 interface DriveFolder {
   id: string;
@@ -18,6 +22,8 @@ interface FolderPickerModalProps {
   onFetchFolders: (parentId: string | null) => void;
   onNavigateFolder: (folder: DriveFolder) => void;
   onNavigateUp: () => void;
+  onNavigateToRoot: () => void;
+  onNavigateToBreadcrumb: (index: number) => void;
   onConfirmSelection: (folder: DriveFolder) => void;
   onSelectCurrentDir: () => void;
   onCreateFolder: () => void;
@@ -33,9 +39,10 @@ export default function FolderPickerModal({
   newFolderName,
   creatingFolder,
   onSetNewFolderName,
-  onFetchFolders,
   onNavigateFolder,
   onNavigateUp,
+  onNavigateToRoot,
+  onNavigateToBreadcrumb,
   onConfirmSelection,
   onSelectCurrentDir,
   onCreateFolder,
@@ -53,146 +60,151 @@ export default function FolderPickerModal({
         onClick={onClose}
       >
         <motion.div
-          initial={{ opacity: 0, scale: 0.95, y: 20 }}
+          initial={{ opacity: 0, scale: 0.98, y: 10 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: 20 }}
-          className="modal-content"
+          exit={{ opacity: 0, scale: 0.98, y: 10 }}
+          transition={{ duration: 0.15 }}
+          className="folder-picker-modal"
           onClick={(e) => e.stopPropagation()}
         >
-          <h2>Select Drive Root Folder</h2>
+          {/* Header */}
+          <div className="folder-picker-header">
+            <h2>Select Google Drive Folder</h2>
+            <button
+              className="folder-picker-close"
+              onClick={onClose}
+              title="Close"
+            >
+              <X size={16} />
+            </button>
+          </div>
 
           {/* Breadcrumb Navigation */}
           <div className="folder-breadcrumbs">
+            {folderPath.length > 0 && (
+              <button
+                className="breadcrumb-back-btn"
+                onClick={onNavigateUp}
+                title="Go back"
+              >
+                <ChevronLeft size={14} />
+                <span>Back</span>
+              </button>
+            )}
             <button
-              onClick={() => { onFetchFolders(null); }}
+              onClick={onNavigateToRoot}
               className="breadcrumb-item"
-              disabled={folderPath.length === 0}
             >
-              🏠 My Drive
+              <Home size={14} />
+              <span>My Drive</span>
             </button>
-            {folderPath.map((item) => (
-              <span key={item.id} className="breadcrumb-segment">
-                <span className="breadcrumb-separator">/</span>
+            {folderPath.map((item, index) => (
+              <div key={item.id} className="breadcrumb-segment">
+                <ChevronRight size={12} className="breadcrumb-separator" />
                 <button
                   className="breadcrumb-item"
-                  onClick={() => {
-                    onFetchFolders(item.id);
-                  }}
+                  onClick={() => onNavigateToBreadcrumb(index)}
                 >
                   {item.name}
                 </button>
-              </span>
+              </div>
             ))}
           </div>
 
-          {folderPath.length > 0 && (
-            <button
-              className="btn-back"
-              onClick={onNavigateUp}
-            >
-              ← Back
-            </button>
-          )}
-
-          <div className="folder-list">
+          {/* Folder List */}
+          <div className="folder-list-container">
             {loadingFolders ? (
-              <div style={{ textAlign: 'center', padding: '2rem', color: '#888' }}>
+              <div className="folder-loading">
                 <motion.div
                   animate={{ rotate: 360 }}
                   transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                  style={{ display: 'inline-block', marginBottom: '0.5rem' }}
+                  className="folder-loading-spinner"
                 >
-                  ⟳
+                  <Folder size={36} />
                 </motion.div>
-                <div>Loading...</div>
+                <span>Loading folders...</span>
               </div>
             ) : !driveFolders || driveFolders.length === 0 ? (
-              <p style={{ textAlign: 'center', color: '#666', padding: '2rem' }}>No folders found</p>
+              <div className="folder-empty">
+                <Folder size={48} />
+                <span>No folders in this location</span>
+              </div>
             ) : (
-              driveFolders.map((folder) => (
-                <div
-                  key={folder.id}
-                  className="folder-row"
-                >
-                  <button
-                    className="folder-name-btn"
-                    onClick={() => onNavigateFolder(folder)}
+              <div className="folder-list">
+                {driveFolders.map((folder) => (
+                  <div
+                    key={folder.id}
+                    className="folder-row"
                   >
-                    <span className="folder-icon">
-                      {folder.is_shared_drive ? "🏢" : "📁"}
-                    </span>
-                    <span className="folder-name-text">{folder.name}</span>
-                  </button>
-
-                  <div className="folder-actions">
-                    <motion.button
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      className="folder-delete-btn"
-                      onClick={() => onDeleteFolder(folder)}
-                      title="Delete folder"
+                    <button
+                      className="folder-info-btn"
+                      onClick={() => onNavigateFolder(folder)}
+                      title="Open folder"
                     >
-                      🗑️
-                    </motion.button>
-                    <motion.button
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      className="folder-select-btn"
-                      onClick={() => onConfirmSelection(folder)}
-                    >
-                      Select
-                    </motion.button>
+                      {folder.is_shared_drive
+                        ? <Building2 size={20} className="folder-icon" />
+                        : <Folder size={20} className="folder-icon" />
+                      }
+                      <span className="folder-name">{folder.name}</span>
+                    </button>
+                    <div className="folder-actions">
+                      <button
+                        className="folder-select-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onConfirmSelection(folder);
+                        }}
+                        title="Select this folder"
+                      >
+                        <Check size={13} />
+                        <span>Select</span>
+                      </button>
+                      <button
+                        className="folder-delete-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          console.warn('[FolderPicker] Delete clicked for:', folder.name);
+                          onDeleteFolder(folder);
+                        }}
+                        title="Delete folder"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))
+                ))}
+              </div>
             )}
           </div>
 
-          {folderPath.length > 0 && (
-            <div style={{ marginTop: '1rem', borderTop: '1px solid #eee', paddingTop: '1rem' }}>
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className="btn-primary"
-                style={{ width: '100%' }}
+          {/* Footer Actions */}
+          <div className="folder-picker-footer">
+            {folderPath.length > 0 && (
+              <button
+                className="btn-select-current"
                 onClick={onSelectCurrentDir}
               >
-                Select Current Folder: {folderPath[folderPath.length - 1].name}
-              </motion.button>
-            </div>
-          )}
-
-          <div className="create-folder-section">
-            <h3>Or Create New Folder Here</h3>
-            <div className="input-group">
+                Select Current: {folderPath[folderPath.length - 1].name}
+              </button>
+            )}
+            <div className="create-folder-row">
+              <FolderPlus size={16} />
               <input
                 type="text"
                 value={newFolderName}
                 onChange={(e) => onSetNewFolderName(e.target.value)}
-                placeholder="Enter folder name..."
+                placeholder="New folder name"
                 onKeyDown={(e) => e.key === 'Enter' && onCreateFolder()}
               />
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
+              <button
                 onClick={onCreateFolder}
                 disabled={creatingFolder || !newFolderName.trim()}
-                className="btn-primary"
+                className="btn-create-folder"
               >
-                {creatingFolder ? "Creating..." : "Create"}
-              </motion.button>
+                {creatingFolder ? 'Creating...' : 'Create'}
+              </button>
             </div>
           </div>
-
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={onClose}
-            className="btn-secondary"
-            style={{ marginTop: '1rem', width: '100%' }}
-          >
-            Cancel
-          </motion.button>
         </motion.div>
       </motion.div>
     </AnimatePresence>

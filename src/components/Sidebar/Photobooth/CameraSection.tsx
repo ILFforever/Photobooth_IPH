@@ -33,7 +33,7 @@ import { useState, useEffect, useRef } from "react";
 import { useCamera } from "../../../contexts";
 import { detectBrand, normalizeMode, isSettingAdjustable, type CameraBrand } from "../../../services/cameraBrands";
 import { getCameraSettingsService } from "../../../services/cameraSettingsService";
-import "./PhotoboothSidebar.css";
+import "./CameraSection.css";
 import { createLogger } from '../../../utils/logger';
 
 const logger = createLogger('CameraSection');

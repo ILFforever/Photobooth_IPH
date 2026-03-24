@@ -132,6 +132,10 @@ pub async fn get_app_setting(app: tauri::AppHandle, key: String) -> Result<Optio
     let content =
         fs::read_to_string(setting_path).map_err(|e| format!("Failed to read setting file: {}", e))?;
 
+    if content.trim().is_empty() {
+        return Ok(None);
+    }
+
     let setting_data: serde_json::Value =
         serde_json::from_str(&content).map_err(|e| format!("Failed to parse setting file: {}", e))?;
 

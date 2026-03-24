@@ -5,6 +5,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { Download, Loader2, AlertCircle, Package, CheckCircle2, Film } from 'lucide-react';
 import { useToast } from '../../../contexts';
 import './FFmpegDownloadModal.css';
+import "../../../styles/Modal.css";
+import "../../../styles/Buttons.css";
 import { createLogger } from '../../../utils/logger';
 const logger = createLogger('FFmpegDownloadModal');
 

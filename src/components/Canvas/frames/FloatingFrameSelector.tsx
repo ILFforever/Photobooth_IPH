@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { createPortal } from "react-dom";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
@@ -144,6 +144,11 @@ const FloatingFrameSelector = () => {
     }
   }, [isFrameDisabled, openFloatingPanel]);
 
+  // Reset delete mode when panel switches or closes
+  useEffect(() => {
+    setDeleteMode(null);
+  }, [openFloatingPanel]);
+
   // Auto-match canvas when background changes and auto mode is enabled
   useEffect(() => {
     if (autoMatchBackground && background) {
@@ -165,7 +170,7 @@ const FloatingFrameSelector = () => {
   }, [autoMatchBackground]);
 
   // Update pill bar position on mount and window resize
-  useEffect(() => {
+  useLayoutEffect(() => {
     const updatePillBarPosition = () => {
       const mainPanel = document.querySelector(".main-panel") as HTMLElement;
       if (!mainPanel) return;
@@ -956,13 +961,13 @@ const FloatingFrameSelector = () => {
                               key={frame.id}
                               whileHover={{ scale: 1.02 }}
                               whileTap={{ scale: 0.98 }}
-                              onClick={() => deleteMode !== 'frame' && handleSelectFrame(frame)}
+                              onClick={() => deleteMode === 'frame' ? handleDeleteFrame(frame.id) : handleSelectFrame(frame)}
                               className={`frame-option ${
                                 currentFrame?.id === frame.id ? "selected" : ""
                               } ${deleteMode === 'frame' ? 'delete-mode' : ''}`}
                             >
                               <div className="frame-option-content">
-                                <div className="frame-preview-container">
+                                <div className="frame-preview-container" style={{ position: 'relative' }}>
                                   <div
                                     className="frame-zones-preview"
                                     style={{
@@ -988,6 +993,13 @@ const FloatingFrameSelector = () => {
                                       />
                                     ))}
                                   </div>
+                                  {deleteMode === 'frame' && (
+                                    <div className="item-delete-overlay">
+                                      <div className="item-delete-circle">
+                                        <Icon path={mdiDeleteOutline} size={0.8} />
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
                                 <div className="frame-option-info">
                                   <span className="frame-option-name">
@@ -997,22 +1009,6 @@ const FloatingFrameSelector = () => {
                                     {frame.zones.length} zones
                                   </span>
                                 </div>
-                                {deleteMode === 'frame' && (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleDeleteFrame(frame.id);
-                                    }}
-                                    className="item-delete-btn"
-                                    title="Delete frame"
-                                  >
-                                    <span style={{color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
-  <svg style={{width: '14px', height: '14px', fill: 'white'}} viewBox="0 0 24 24">
-    <path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z" />
-  </svg>
-</span>
-                                  </button>
-                                )}
                               </div>
                             </motion.div>
                           ))
@@ -1118,7 +1114,7 @@ const FloatingFrameSelector = () => {
                         key={size.name}
                         whileHover={{ scale: autoMatchBackground ? 1 : 1.02 }}
                         whileTap={{ scale: autoMatchBackground ? 1 : 0.98 }}
-                        onClick={() => !autoMatchBackground && deleteMode !== 'canvas' && handleSelectCanvasSize(size)}
+                        onClick={() => deleteMode === 'canvas' ? handleDeleteCustomCanvas(size) : (!autoMatchBackground && handleSelectCanvasSize(size))}
                         className={`frame-option ${
                           canvasSize?.name === size.name ? "selected" : ""
                         } ${deleteMode === 'canvas' ? 'delete-mode' : ''}`}
@@ -1129,7 +1125,7 @@ const FloatingFrameSelector = () => {
                         }}
                       >
                         <div className="frame-option-content">
-                          <div className="frame-preview-container">
+                          <div className="frame-preview-container" style={{ position: 'relative' }}>
                             <div
                               className="canvas-preview-compact"
                               style={{
@@ -1141,6 +1137,13 @@ const FloatingFrameSelector = () => {
                                 border: '1px solid rgba(59, 130, 246, 0.3)',
                               }}
                             />
+                            {deleteMode === 'canvas' && (
+                              <div className="item-delete-overlay">
+                                <div className="item-delete-circle">
+                                  <Icon path={mdiDeleteOutline} size={0.8} />
+                                </div>
+                              </div>
+                            )}
                           </div>
                           <div className="frame-option-info">
                             <span className="frame-option-name">
@@ -1150,22 +1153,6 @@ const FloatingFrameSelector = () => {
                               {size.width}×{size.height}
                             </span>
                           </div>
-                          {deleteMode === 'canvas' && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteCustomCanvas(size);
-                              }}
-                              className="item-delete-btn"
-                              title="Delete custom canvas"
-                            >
-                                <span style={{color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
-  <svg style={{width: '14px', height: '14px', fill: 'white'}} viewBox="0 0 24 24">
-    <path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z" />
-  </svg>
-</span>
-                              </button>
-                          )}
                         </div>
                       </motion.div>
                     ))}
@@ -1316,7 +1303,7 @@ const FloatingFrameSelector = () => {
                             key={bg.id}
                             whileHover={{ scale: 1.02 }}
                             whileTap={{ scale: 0.98 }}
-                            onClick={() => deleteMode !== 'background' && handleSelectBackground(bg)}
+                            onClick={() => deleteMode === 'background' && bg.background_type === 'image' ? handleDeleteBackground(bg) : (deleteMode !== 'background' && handleSelectBackground(bg))}
                             className={`frame-option ${
                               background === bgValueForCompare ? "selected" : ""
                             } ${deleteMode === 'background' ? 'delete-mode' : ''} ${
@@ -1324,7 +1311,7 @@ const FloatingFrameSelector = () => {
                             }`}
                           >
                             <div className="frame-option-content">
-                              <div className="frame-preview-container">
+                              <div className="frame-preview-container" style={{ position: 'relative' }}>
                                 <div
                                   className="bg-preview-compact"
                                   style={
@@ -1349,28 +1336,19 @@ const FloatingFrameSelector = () => {
                                       />
                                     )}
                                 </div>
+                                {deleteMode === 'background' && bg.background_type === 'image' && (
+                                  <div className="item-delete-overlay">
+                                    <div className="item-delete-circle">
+                                      <Icon path={mdiDeleteOutline} size={0.8} />
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                               <div className="frame-option-info">
                                 <span className="frame-option-name">
                                   {bg.name}
                                 </span>
                               </div>
-                              {deleteMode === 'background' && bg.background_type === 'image' && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDeleteBackground(bg);
-                                  }}
-                                  className="item-delete-btn"
-                                  title="Delete background"
-                                >
-                                  <span style={{color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
-  <svg style={{width: '14px', height: '14px', fill: 'white'}} viewBox="0 0 24 24">
-    <path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z" />
-  </svg>
-</span>
-                                </button>
-                              )}
                             </div>
                           </motion.div>
                         );

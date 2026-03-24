@@ -100,3 +100,75 @@ logger.error('Something failed', err);   // always shown
 - `console.warn(...)` → `logger.warn(...)`
 
 The `[ModuleName]` prefix is added automatically — no need to include it in messages.
+
+---
+
+## Design Context
+
+### Users
+**Primary Users**: Event photographers and production companies who operate photobooths at weddings, corporate events, parties, and other gatherings.
+
+**Context**: Fast-paced event environments where speed and reliability are critical. Photographers manage multiple workflows simultaneously—capturing photos, creating collages, uploading to Google Drive, and generating QR codes.
+
+**Job to Be Done**: Efficiently capture, process, and share event photos with minimal friction.
+
+**Emotional Goals**: Users should feel **confident & in control** and **efficient & productive**. The interface should reduce stress during events through clear workflows.
+
+### Brand Personality
+**Voice**: Professional, capable, unobtrusive. The interface speaks with quiet competence.
+
+**Three Words**: **Modern, Sleek, Minimal**
+
+**Anti-Personality**: Not playful, whimsical, or experimental. A professional tool that enables creative work, not a toy.
+
+### Aesthetic Direction
+**Visual Tone**: Dark, technical, precise—inspired by professional photography software like **Capture One**. The interface should feel like a precision instrument.
+
+**References**:
+- **Capture One**: Professional photo editing interface—dark backgrounds, subtle borders, clear visual hierarchy
+- **Adobe Lightroom/Camera Raw**: Organized, powerful, controlled
+
+**Anti-References**:
+- Consumer social apps (playful, rounded, friendly design)
+- Generic SaaS dashboards (template-like, AI-generated aesthetics)
+- Overly minimal interfaces that become cryptic
+
+**Theme**: Dark mode only (#1e1e1e primary). Standard for professional photography software.
+
+### Design Principles
+
+1. **Efficiency Over Elegance**: Speed matters. Fewer clicks, keyboard shortcuts, predictable patterns, clear hierarchy.
+
+2. **Technical Clarity Over Simplification**: Users are professionals. Show dimensions, technical details, use precise terminology.
+
+3. **Spatial Stability**: Avoid accordions that push content, dynamic layouts that shift, attention-grabbing animations.
+
+4. **Professional Minimalism**: Remove decorative elements. Use whitespace intentionally. Maintain contrast. Avoid visual noise.
+
+5. **Confidence Through Feedback**: Clear hover/focus/active states. Loading states. Success/error messages. Visual confirmation.
+
+### Design System Foundation
+Built on tokens in `src/styles/tokens.css`:
+
+**Colors**:
+- Primary: `#1e1e1e` (dark gray)
+- Accent blue: `#0078d4` (professional)
+- Semantic colors for success/error/warning/info
+
+**Typography**:
+- System stack: `-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif`
+- Monospace for technical values: `'SF Mono', 'Monaco', 'Consolas', 'Courier New', monospace`
+
+**Spacing**: 4px scale (4, 8, 12, 16, 20, 24, 32, 40px)
+
+**Components**:
+- Buttons: `.btn-primary`, `.btn-secondary`, `.btn-copy`
+- Modals, inputs with consistent patterns
+
+All new designs should build on this existing system.
+
+### Accessibility
+- WCAG 2.1 Level AA compliance
+- Keyboard navigation for all functionality
+- Screen reader support
+- Reduced motion support

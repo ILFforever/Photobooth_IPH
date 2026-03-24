@@ -46,14 +46,6 @@ export function QrSettingsSection({
       </button>
       {expanded && (
         <div className="collapsible-content">
-          {/* Info Banner */}
-          <div className="qr-info-banner">
-            <Info size={14} className="info-icon" />
-            <div className="info-text">
-              <strong>How it works:</strong> Each session creates a new folder in Google Drive. Photos upload automatically based on your chosen mode. <button className="info-learn-more" onClick={onShowInfo}>Learn more</button>
-            </div>
-          </div>
-
           {/* QR Upload Toggle */}
           <div className="qr-upload-toggle-row">
             <div>
@@ -68,6 +60,14 @@ export function QrSettingsSection({
             >
               <span className="toggle-slider" />
             </button>
+          </div>
+
+          {/* Info Banner */}
+          <div className="qr-info-banner">
+            <Info size={14} className="info-icon" />
+            <div className="info-text">
+              <strong>How it works:</strong> Each session creates a new folder in Google Drive. Photos upload automatically based on your chosen mode. <button className="info-learn-more" onClick={onShowInfo}>Learn more</button>
+            </div>
           </div>
 
           <div className="sidebar-divider" style={{ marginBottom: '16px' }} />

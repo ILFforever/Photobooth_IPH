@@ -7,6 +7,8 @@ import type { UpdateDownloadProgress, VersionStatus } from '../../../types/updat
 import { useToast } from '../../../contexts';
 import { createLogger } from '../../../utils/logger';
 import './UpdateModal.css';
+import "../../../styles/Modal.css";
+import "../../../styles/Buttons.css";
 
 const logger = createLogger('UpdateModal');
 

@@ -1,0 +1,179 @@
+.bg-sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.bg-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  border-bottom: 1px solid var(--border-color, #3d3d3d);
+  flex-shrink: 0;
+}
+
+.bg-sidebar-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary, #e4e4e4);
+}
+
+.bg-sidebar-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.bg-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 28px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.bg-action-btn svg {
+  fill: currentColor;
+  color: inherit;
+}
+
+.bg-action-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--text-muted);
+}
+
+.bg-action-btn.is-delete-mode {
+  color: #ff6b6b;
+  background: rgba(255, 107, 107, 0.15);
+  border-color: rgba(255, 107, 107, 0.3);
+}
+
+.bg-sidebar-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.bg-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.bg-card {
+  position: relative;
+  min-width: 0;
+  background: var(--bg-tertiary);
+  border: 2px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-color 0.2s ease;
+}
+
+.bg-card:hover {
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.bg-card.selected {
+  border-color: #000000;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+}
+
+.bg-card.non-deletable {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.bg-card-thumb {
+  width: 100%;
+  height: 200px;
+  border-radius: 6px 6px 0 0;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.05);
+  flex-shrink: 0;
+}
+
+.bg-card-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.bg-card-name {
+  display: block;
+  padding: 6px 8px;
+  font-size: 0.725rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bg-card-delete-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(220, 38, 38, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease;
+}
+
+.bg-card.delete-mode:not(.non-deletable):hover .bg-card-delete-overlay {
+  background: rgba(220, 38, 38, 0.75);
+}
+
+.bg-card-delete-circle {
+  width: 48px;
+  height: 48px;
+  background: rgba(220, 38, 38, 0.9);
+  border: 2px solid white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.bg-empty {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 32px 16px;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+.bg-import-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: var(--bg-tertiary);
+  border: 1px dashed var(--border-color);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.875rem;
+  transition: all 0.2s ease;
+}
+
+.bg-import-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--text-muted);
+  color: var(--text-primary);
+}

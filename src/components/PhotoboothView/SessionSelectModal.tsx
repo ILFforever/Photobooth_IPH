@@ -1,6 +1,8 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { FolderOpen, Plus } from "lucide-react";
 import { type PhotoboothSessionInfo } from "../../contexts";
+import "../../styles/Modal.css";
+import "../../styles/Buttons.css";
 
 interface SessionSelectModalProps {
   isOpen: boolean;

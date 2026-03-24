@@ -6,6 +6,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useToast } from '../../../contexts';
 import { RefreshCw, Loader2 } from 'lucide-react';
 import './RequirementsModal.css';
+import "../../../styles/Modal.css";
+import "../../../styles/Buttons.css";
 import { createLogger } from '../../../utils/logger';
 
 const logger = createLogger('RequirementsModal');

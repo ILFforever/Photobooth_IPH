@@ -1,5 +1,6 @@
-import { ChevronRight, Image as ImageIcon, Check, FileCheck } from "lucide-react";
+import { ChevronRight, Image as ImageIcon, Check, FileCheck, SquareCheck, SquareX } from "lucide-react";
 import { memo, useEffect, useRef } from "react";
+import "./CurrentSetPhotoStrip.css";
 
 interface CurrentSetPhoto {
   id: string;
@@ -10,12 +11,14 @@ interface CurrentSetPhoto {
 
 interface CurrentSetPhotoStripProps {
   currentSetPhotos: CurrentSetPhoto[];
-  selectedPhotos: Set<string>;
+  selectedPhotos: string[];
   setName: string | null;
   workingFolder: string | null;
   frameName: string | null;
   requiredPhotos: number;
   onPhotoSelect: (photoId: string) => void;
+  onSelectAll: () => void;
+  onClearAll: () => void;
   onNextSession: () => void;
   onFinalize: () => void;
 }
@@ -28,6 +31,8 @@ export default memo(function CurrentSetPhotoStrip({
   frameName,
   requiredPhotos,
   onPhotoSelect,
+  onSelectAll,
+  onClearAll,
   onNextSession,
   onFinalize,
 }: CurrentSetPhotoStripProps) {
@@ -57,24 +62,25 @@ export default memo(function CurrentSetPhotoStrip({
           <span className="current-set-name">{setName ?? 'No session'}</span>
           <span className="current-set-frame-name">{frameName ?? 'No set'}</span>
         </div>
-        <span className="current-set-count">{selectedPhotos.size} / {requiredPhotos} photos</span>
+        <span className="current-set-count">{selectedPhotos.length} / {requiredPhotos} photos</span>
       </div>
       <div className="current-set-body">
-        <div className="current-set-photos" ref={photosContainerRef}>
+        <div className="current-set-photos-column">
+          <div className="current-set-photos" ref={photosContainerRef}>
           {currentSetPhotos.length === 0 ? (
             <div className="current-set-empty">
               <ImageIcon size={32} />
               <span>No photos yet - capture photos to see them here</span>
             </div>
           ) : (
-            // Display photos in reverse order (newest first) to match guest display
+              // Display photos in reverse order (newest first) to match guest display
             [...currentSetPhotos].reverse().map((photo, idx) => {
               // Calculate frame number (newest photo gets highest number)
               const frameNumber = currentSetPhotos.length - idx;
               return (
                 <div
                   key={photo.id}
-                  className={`current-set-photo ${selectedPhotos.has(photo.id) ? 'selected' : ''}`}
+                  className={`current-set-photo ${selectedPhotos.includes(photo.id) ? 'selected' : ''}`}
                   onClick={() => onPhotoSelect(photo.id)}
                 >
                   <div className="current-set-photo-inner">
@@ -86,7 +92,7 @@ export default memo(function CurrentSetPhotoStrip({
                     />
                   </div>
                   <span className="current-set-photo-number">{frameNumber}</span>
-                  {selectedPhotos.has(photo.id) && (
+                  {selectedPhotos.includes(photo.id) && (
                     <div className="photo-selected-check">
                       <Check size={14} />
                     </div>
@@ -95,27 +101,67 @@ export default memo(function CurrentSetPhotoStrip({
               );
             })
           )}
-        </div>
-        <div className="current-set-side-buttons">
+          </div>
+        </div>{/* current-set-photos-column */}
+      </div>
+      <div className="current-set-photos-footer">
+        <div className="selection-control-group">
           <button
-            className="next-session-side-btn"
-            onClick={onNextSession}
-            disabled={!workingFolder || currentSetPhotos.length === 0}
-            title="Create and switch to next session"
+            className="selection-control-btn select-all-btn"
+            onClick={onSelectAll}
+            disabled={currentSetPhotos.length === 0 || currentSetPhotos.length !== requiredPhotos}
+            title={currentSetPhotos.length !== requiredPhotos ? `Need exactly ${requiredPhotos} photos to select all` : "Select all photos"}
           >
-            <FileCheck size={16} />
-            <span>Finalize</span>
+            <SquareCheck size={15} />
           </button>
           <button
-            className="finalize-session-btn"
-            onClick={onFinalize}
-            disabled={!workingFolder || requiredPhotos === 0 || selectedPhotos.size !== requiredPhotos}
-            title={requiredPhotos === 0 ? "Select a set first" : "View finalize page"}
+            className="selection-control-btn clear-selection-btn"
+            onClick={onClearAll}
+            disabled={selectedPhotos.length === 0}
+            title="Clear selection"
           >
-            <ChevronRight size={16} />
-            <span>Next</span>
+            <SquareX size={15} />
           </button>
         </div>
+        <div className="footer-divider" />
+        <div className="footer-selected-photos">
+          {selectedPhotos.length === 0 ? (
+            <span className="footer-selected-label">No photos selected</span>
+          ) : (
+            <>
+              <span className="footer-selected-label">Selected:</span>
+              <div className="footer-selected-chips">
+                {selectedPhotos.map((photoId, index) => {
+                  const photo = currentSetPhotos.find(p => p.id === photoId);
+                  const frameNumber = photo ? currentSetPhotos.indexOf(photo) + 1 : index + 1;
+                  return (
+                    <span key={photoId} className="footer-selected-chip">#{frameNumber}</span>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+      <div className="current-set-side-buttons">
+        <button
+          className="next-session-side-btn"
+          onClick={onNextSession}
+          disabled={!workingFolder || currentSetPhotos.length === 0}
+          title="Create and switch to next session"
+        >
+          <FileCheck size={16} />
+          <span>Finalize</span>
+        </button>
+        <button
+          className="finalize-session-btn"
+          onClick={onFinalize}
+          disabled={!workingFolder || requiredPhotos === 0 || selectedPhotos.length !== requiredPhotos}
+          title={requiredPhotos === 0 ? "Select a set first" : "View finalize page"}
+        >
+          <ChevronRight size={16} />
+          <span>Next</span>
+        </button>
       </div>
     </div>
   );

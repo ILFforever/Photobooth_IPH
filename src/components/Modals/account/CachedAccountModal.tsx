@@ -1,4 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
+import "../../../styles/AccountDropdown.css";
+import "../../../styles/Modal.css";
+import "../../../styles/Buttons.css";
 
 interface GoogleAccount {
   email: string;
@@ -36,7 +39,7 @@ export default function CachedAccountModal({
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
-          className="confirm-modal"
+          className="cached-account-modal"
           onClick={(e) => e.stopPropagation()}
         >
           <h3>Continue as this user?</h3>
@@ -57,15 +60,15 @@ export default function CachedAccountModal({
               </div>
             </div>
           </div>
-          <p style={{ marginBottom: '24px' }}>
+          <p style={{ marginTop: '20px', marginBottom: '24px' }}>
             We found a saved session for this account. Would you like to continue as this user, or sign in with a different account?
           </p>
-          <div className="confirm-modal-actions">
+          <div className="cached-account-modal-actions">
             <motion.button
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               onClick={onUseDifferent}
-              className="btn-secondary"
+              className="cached-account-ghost-btn"
             >
               Use Different Account
             </motion.button>
@@ -74,7 +77,6 @@ export default function CachedAccountModal({
               whileTap={{ scale: 0.98 }}
               onClick={onConfirm}
               className="btn-primary"
-              style={{ width: 'auto' }}
             >
               Continue as {cachedAccount.name.split(' ')[0]}
             </motion.button>

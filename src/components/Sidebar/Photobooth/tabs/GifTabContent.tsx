@@ -1,3 +1,4 @@
+import "./GifTabContent.css";
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { Film, Check, Loader, RotateCcw, ArrowLeft } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';

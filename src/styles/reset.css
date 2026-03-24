@@ -1,0 +1,171 @@
+/**
+ * Global Reset
+ *
+ * CSS reset to normalize default browser styles and establish
+ * consistent baseline styling across all browsers.
+ */
+
+/* ========================================
+ * Box Sizing
+ * ======================================== */
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* ========================================
+ * Document & Body
+ * ======================================== */
+html {
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  height: 100vh;
+  overflow: hidden;
+  line-height: var(--leading-normal);
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none; /* Disable right-click context menu */
+}
+
+/* ========================================
+ * Text Selection
+ * ======================================== */
+
+/* Allow text selection only in editable elements */
+input,
+textarea,
+[contenteditable="true"],
+.selectable-text {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* ========================================
+ * Typography
+ * ======================================== */
+/* Note: Minimal reset to avoid breaking existing component styles */
+h1, h2, h3, h4, h5, h6 {
+  margin: 0;
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: var(--accent-blue);
+  text-decoration: none;
+  transition: color var(--transition-normal);
+}
+
+a:hover {
+  color: var(--accent-blue-hover);
+}
+
+/* ========================================
+ * Forms
+ * ======================================== */
+/* Minimal button reset - don't override font-size as it affects icons */
+button {
+  font-family: inherit;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+/* Minimal form reset - preserve existing styling */
+input,
+textarea,
+select {
+  font-family: inherit;
+}
+
+/* ========================================
+ * Lists
+ * ======================================== */
+ul, ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* ========================================
+ * Images & Media
+ * ======================================== */
+/* Note: SVGs are excluded to preserve inline icon sizing */
+img,
+video,
+canvas,
+audio,
+iframe,
+embed,
+object {
+  display: block;
+  max-width: 100%;
+}
+
+img,
+video {
+  height: auto;
+}
+
+/* ========================================
+ * Tables
+ * ======================================== */
+table {
+  border-collapse: collapse;
+  border-spacing: 0;
+}
+
+th, td {
+  padding: 0;
+  text-align: left;
+}
+
+/* ========================================
+ * Scrollbar
+ * ======================================== */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  border: 2px solid var(--bg-primary);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-color);
+}
+
+/* ========================================
+ * Focus States
+ * ======================================== */
+:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
+}

@@ -26,4 +26,5 @@ pub struct AppState {
     pub account: Mutex<Option<GoogleAccount>>,
     pub root_folder: Mutex<Option<DriveFolder>>,
     pub upload_cancelled: Arc<AtomicBool>,
+    pub auth_url: Mutex<Option<String>>,
 }

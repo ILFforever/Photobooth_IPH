@@ -1,5 +1,8 @@
+import "./QrTabContent.css";
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { ExternalLink, Copy, Check, Upload, AlertCircle, Folder, XCircle, Loader, ChevronDown, ChevronRight, AlertTriangle, LogIn, QrCode, Image as ImageIcon } from 'lucide-react';
+import { convertFileSrc } from '@tauri-apps/api/core';
+import { emitTo } from '@tauri-apps/api/event';
+import { ExternalLink, Copy, Check, Upload, AlertCircle, Folder, XCircle, Loader, ChevronDown, ChevronRight, AlertTriangle, LogIn, QrCode, Image as ImageIcon, ChevronUp } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { open as shellOpen } from '@tauri-apps/plugin-shell';
 import { useWorkspaceSettings, usePhotoboothSession } from '../../../../contexts';
@@ -24,7 +27,7 @@ export function QrTabContent() {
   const [copied, setCopied] = useState(false);
   const [showQr, setShowQr] = useState(false);
   const [qrBase64, setQrBase64] = useState<string | null>(null);
-  const [showRegeneratePrompt, setShowRegeneratePrompt] = useState(false);
+  const [showRegenerateOptions, setShowRegenerateOptions] = useState(false);
 
   const driveMetadata = currentSession?.googleDriveMetadata;
   const folderLink = driveMetadata?.folderLink || '';
@@ -156,30 +159,86 @@ export function QrTabContent() {
     }
 
     // Check if we need to prompt for regeneration
-    if (currentCollageFilename && collageIsDirty) {
-      // Show prompt for regeneration
-      setShowRegeneratePrompt(true);
+    // Only show prompt if collage hasn't been auto-uploaded yet this session
+    const hasAutoUploadedThisSession = currentSession?.googleDriveMetadata?.uploadedImages?.some(
+      img => img.filename === currentCollageFilename
+    );
+
+    if (currentCollageFilename && collageIsDirty && !hasAutoUploadedThisSession) {
+      // Toggle expansion for regeneration options
+      setShowRegenerateOptions(!showRegenerateOptions);
       return;
     }
 
+    // Ensure QR code is generated BEFORE proceeding
+    let qrDataToSend = qrBase64;
+    if (!qrDataToSend && folderLink) {
+      try {
+        const data = await invoke<string>('generate_qr_code', { url: folderLink });
+        qrDataToSend = data;
+        setQrBase64(data);
+      } catch (err) {
+        logger.error('[QrTabContent] Failed to generate QR:', err);
+      }
+    }
+
     // Proceed with normal upload flow
-    await uploadCollage(currentSession, workingFolder, sessions, driveMetadata);
-  }, [currentSession, workingFolder, sessions, driveMetadata, currentCollageFilename, collageIsDirty, authStateInfo.state, authStateText, qrUploadEnabled, uploadCollage, showToast]);
+    await uploadCollage(currentSession, workingFolder, sessions, driveMetadata, async (_, imageUrl) => {
+      emitTo("guest-display", "guest-display:update", {
+        displayMode: 'finalize' as const,
+        finalizeImageUrl: imageUrl,
+        finalizeQrData: qrDataToSend || null,
+      });
+    });
+  }, [currentSession, workingFolder, sessions, driveMetadata, currentCollageFilename, collageIsDirty, authStateInfo.state, authStateText, qrUploadEnabled, uploadCollage, showToast, showRegenerateOptions, folderLink, qrBase64]);
 
   const confirmRegenerate = useCallback(async () => {
-    setShowRegeneratePrompt(false);
+    setShowRegenerateOptions(false);
     if (currentSession && workingFolder && driveMetadata) {
-      await uploadCollage(currentSession, workingFolder, sessions, driveMetadata);
+      let qrDataToSend = qrBase64;
+      if (!qrDataToSend && folderLink) {
+        try {
+          const data = await invoke<string>('generate_qr_code', { url: folderLink });
+          qrDataToSend = data;
+          setQrBase64(data);
+        } catch (err) {
+          logger.error('[QrTabContent] Failed to generate QR:', err);
+        }
+      }
+
+      await uploadCollage(currentSession, workingFolder, sessions, driveMetadata, async (_, imageUrl) => {
+        emitTo("guest-display", "guest-display:update", {
+          displayMode: 'finalize' as const,
+          finalizeImageUrl: imageUrl,
+          finalizeQrData: qrDataToSend || null,
+        });
+      });
     }
-  }, [currentSession, workingFolder, sessions, driveMetadata, uploadCollage]);
+  }, [currentSession, workingFolder, sessions, driveMetadata, uploadCollage, folderLink, qrBase64]);
 
   const cancelRegenerate = useCallback(async () => {
-    setShowRegeneratePrompt(false);
+    setShowRegenerateOptions(false);
     if (currentSession && workingFolder && driveMetadata) {
-      // Upload the existing cached version (hook handles this)
-      await uploadCollage(currentSession, workingFolder, sessions, driveMetadata);
+      let qrDataToSend = qrBase64;
+      if (!qrDataToSend && folderLink) {
+        try {
+          const data = await invoke<string>('generate_qr_code', { url: folderLink });
+          qrDataToSend = data;
+          setQrBase64(data);
+        } catch (err) {
+          logger.error('[QrTabContent] Failed to generate QR:', err);
+        }
+      }
+
+      await uploadCollage(currentSession, workingFolder, sessions, driveMetadata, async (_, imageUrl) => {
+        emitTo("guest-display", "guest-display:update", {
+          displayMode: 'finalize' as const,
+          finalizeImageUrl: imageUrl,
+          finalizeQrData: qrDataToSend || null,
+        });
+      });
     }
-  }, [currentSession, workingFolder, sessions, driveMetadata, uploadCollage]);
+  }, [currentSession, workingFolder, sessions, driveMetadata, uploadCollage, folderLink, qrBase64]);
 
   // Auto-refresh upload queue for current session
   useEffect(() => {
@@ -311,18 +370,47 @@ export function QrTabContent() {
       {/* Upload Collage Button */}
       <div className="qr-upload-collage-section">
         <button
-          className="qr-upload-collage-btn"
+          className={`qr-upload-collage-btn ${collageIsDirty && showRegenerateOptions ? 'expanded' : ''}`}
           onClick={handleUploadCollage}
           disabled={isUploadingCollage || !driveMetadata?.folderId}
           title="Export and upload the current collage to Google Drive"
         >
           {isUploadingCollage ? (
             <Loader size={14} className="spinning" />
+          ) : collageIsDirty ? (
+            <AlertCircle size={14} className="dirty-icon" />
           ) : (
             <ImageIcon size={14} />
           )}
-          <span>{isUploadingCollage ? 'Uploading...' : 'Upload Collage to Drive'}</span>
+          <span>{isUploadingCollage ? 'Uploading...' : collageIsDirty ? 'Collage Modified' : 'Upload Collage to Drive'}</span>
+          {collageIsDirty && !isUploadingCollage && (
+            showRegenerateOptions ? <ChevronUp size={12} /> : <ChevronDown size={12} />
+          )}
         </button>
+
+        {/* Inline regeneration options */}
+        {collageIsDirty && showRegenerateOptions && (
+          <div className="qr-regenerate-options">
+            <p className="qr-regenerate-text">The collage has been modified since it was last exported. Would you like to generate a new image with your changes?</p>
+            <div className="qr-regenerate-actions">
+              <button
+                className="qr-regenerate-btn secondary"
+                onClick={cancelRegenerate}
+                disabled={isUploadingCollage}
+              >
+                Use Old Version
+              </button>
+              <button
+                className="qr-regenerate-btn primary"
+                onClick={confirmRegenerate}
+                disabled={isUploadingCollage}
+              >
+                <ImageIcon size={12} />
+                Generate New
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Upload Status Section */}
@@ -399,31 +487,6 @@ export function QrTabContent() {
           </div>
         )}
       </div>
-
-      {/* Regenerate Collage Prompt Modal */}
-      {showRegeneratePrompt && (
-        <div className="regenerate-modal-overlay" onClick={cancelRegenerate}>
-          <div className="regenerate-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="regenerate-modal-header">
-              <AlertCircle size={18} className="regenerate-modal-icon" />
-              <h3>Collage Modified</h3>
-            </div>
-            <div className="regenerate-modal-content">
-              <p>The collage has been modified since it was last exported.</p>
-              <p>Would you like to generate a new image with your changes?</p>
-            </div>
-            <div className="regenerate-modal-actions">
-              <button className="regenerate-modal-btn secondary" onClick={cancelRegenerate}>
-                <span>Use Old Version</span>
-              </button>
-              <button className="regenerate-modal-btn primary" onClick={confirmRegenerate}>
-                <ImageIcon size={14} />
-                <span>Generate New</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

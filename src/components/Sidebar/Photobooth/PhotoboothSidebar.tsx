@@ -7,7 +7,7 @@ import { ImageQuality } from "./ImageQuality";
 import { FocusSettings } from "./FocusSettings";
 import { ConnectionLostModal } from "../../Modals";
 import { ConfirmDialog } from "../../Modals";
-import { FolderPickerModal } from "../../Modals";
+import { FolderPickerModal, DeleteFolderModal } from "../../Modals";
 import { useCamera, useVM, useCaptureTiming, useWorkspaceSettings, useToast } from "../../../contexts";
 import { usePhotobooth } from "../../../contexts/";
 import { usePrintSettings } from "../../../contexts/";
@@ -527,7 +527,7 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
 
       <FolderPickerModal
         show={driveFolderPicker.showFolderPicker}
-        onClose={() => driveFolderPicker.setShowFolderPicker(false)}
+        onClose={driveFolderPicker.closeFolderPicker}
         driveFolders={driveFolderPicker.driveFolders}
         loadingFolders={driveFolderPicker.loadingFolders}
         folderPath={driveFolderPicker.folderPath}
@@ -537,10 +537,20 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
         onFetchFolders={driveFolderPicker.fetchFolders}
         onNavigateFolder={driveFolderPicker.handleNavigateFolder}
         onNavigateUp={driveFolderPicker.handleNavigateUp}
+        onNavigateToRoot={driveFolderPicker.handleNavigateToRoot}
+        onNavigateToBreadcrumb={driveFolderPicker.handleNavigateToBreadcrumb}
         onConfirmSelection={driveFolderPicker.handleConfirmSelection}
         onSelectCurrentDir={driveFolderPicker.handleSelectCurrentDir}
         onCreateFolder={driveFolderPicker.handleCreateFolder}
         onDeleteFolder={driveFolderPicker.handleDeleteFolder}
+      />
+
+      <DeleteFolderModal
+        show={driveFolderPicker.showDeleteConfirm}
+        folderToDelete={driveFolderPicker.folderToDelete}
+        deleting={driveFolderPicker.deleting}
+        onCancel={driveFolderPicker.cancelDelete}
+        onConfirm={driveFolderPicker.confirmDeleteFolder}
       />
 
       <QrInfoModal

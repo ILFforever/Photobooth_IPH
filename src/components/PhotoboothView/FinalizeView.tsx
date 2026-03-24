@@ -22,6 +22,7 @@ const logger = createLogger('FinalizeView');
 
 interface CurrentSetPhoto {
   id: string;
+  filename: string;
   thumbnailUrl: string;
   fullUrl?: string;
   timestamp: string;
@@ -346,7 +347,7 @@ export default function FinalizeView({
           (photo) =>
             new Promise<void>((resolve) => {
               const img = new Image();
-              const filePath = `${workingFolder}/${sessionFolderName}/${photo.id}`;
+              const filePath = `${workingFolder}/${sessionFolderName}/${photo.filename}`;
               img.onload = () => {
                 if (!aborted) {
                   dimsMap.set(photo.id, {
@@ -366,7 +367,7 @@ export default function FinalizeView({
 
       const photos: PhotoForPlacement[] = selectedPhotos.map((p) => ({
         id: p.id,
-        filePath: `${workingFolder}/${sessionFolderName}/${p.id}`,
+        filePath: `${workingFolder}/${sessionFolderName}/${p.filename}`,
         thumbnail: p.thumbnailUrl,
       }));
 
@@ -424,6 +425,7 @@ export default function FinalizeView({
       autoTriggerRef.current = true;
     }
 
+    const isRefreshingDisplay = displayedImageIsDirty;
     setIsCompositing(true);
     try {
       let imageUrl: string;
@@ -481,7 +483,8 @@ export default function FinalizeView({
       setIsDisplayingOnGuest(true);
 
       // Trigger callback after successfully displaying on guest screen
-      if (onDisplayShown) {
+      // Skip when just refreshing a stale display — user didn't request an upload
+      if (onDisplayShown && !isRefreshingDisplay) {
         try {
           await onDisplayShown();
         } catch (err) {

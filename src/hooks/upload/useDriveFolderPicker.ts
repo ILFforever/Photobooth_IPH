@@ -53,7 +53,20 @@ export function useDriveFolderPicker(
     if (folderPath.length === 0) return;
     const newPath = folderPath.slice(0, -1);
     setFolderPath(newPath);
+    if (newPath.length === 0) setNewFolderName("");
     await fetchFolders(getParentId(newPath));
+  };
+
+  const handleNavigateToRoot = async () => {
+    setFolderPath([]);
+    setNewFolderName("");
+    await fetchFolders(null);
+  };
+
+  const handleNavigateToBreadcrumb = async (index: number) => {
+    const newPath = folderPath.slice(0, index + 1);
+    setFolderPath(newPath);
+    await fetchFolders(newPath[newPath.length - 1].id);
   };
 
   const handleConfirmSelection = async (folder: DriveFolder) => {
@@ -96,8 +109,10 @@ export function useDriveFolderPicker(
   };
 
   const handleDeleteFolder = (folder: DriveFolder) => {
+    logger.warn(`handleDeleteFolder called for: ${folder.name} (${folder.id})`);
     setFolderToDelete(folder);
     setShowDeleteConfirm(true);
+    logger.warn(`showDeleteConfirm set to true, folderToDelete: ${folder.name}`);
   };
 
   const confirmDeleteFolder = async () => {
@@ -124,8 +139,15 @@ export function useDriveFolderPicker(
 
   const openFolderPicker = async () => {
     setFolderPath([]);
+    setNewFolderName("");
     await fetchFolders(null);
     setShowFolderPicker(true);
+  };
+
+  const closeFolderPicker = () => {
+    setShowFolderPicker(false);
+    setNewFolderName("");
+    setFolderPath([]);
   };
 
   return {
@@ -155,5 +177,8 @@ export function useDriveFolderPicker(
     confirmDeleteFolder,
     cancelDelete,
     openFolderPicker,
+    closeFolderPicker,
+    handleNavigateToRoot,
+    handleNavigateToBreadcrumb,
   };
 }

@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "../../contexts";
 import Icon from "@mdi/react";
+import "../../styles/AccountDropdown.css";
 import {
   mdiLockOutline,
   mdiClose,
@@ -11,8 +12,12 @@ import {
   mdiQrcode,
   mdiInformationOutline,
   mdiPower,
+  mdiOpenInNew,
+  mdiLogoutVariant,
+  mdiCog,
 } from "@mdi/js";
 import iphLogo from "../../assets/images/IPH W.png";
+import { openAuthUrl } from "../../utils/googleAuth";
 
 type AppMode = 'photobooth' | 'collage' | 'qr';
 
@@ -28,6 +33,7 @@ interface HeaderProps {
   showAppMenu: boolean;
   setShowAppMenu: (show: boolean) => void;
   onShowAbout: () => void;
+  onShowSettings: () => void;
   onLogout: () => void;
   onLogin: () => void;
   onCancelLogin: () => void;
@@ -42,6 +48,7 @@ export default function Header({
   showAppMenu,
   setShowAppMenu,
   onShowAbout,
+  onShowSettings,
   onLogout,
   onLogin,
   onCancelLogin,
@@ -90,6 +97,16 @@ export default function Header({
                   </button>
                 ))}
                 <div className="app-menu-divider" />
+                <button
+                  className="app-menu-item"
+                  onClick={() => {
+                    onShowSettings();
+                    setShowAppMenu(false);
+                  }}
+                >
+                  <Icon path={mdiCog} size={0.6} />
+                  <span>Settings</span>
+                </button>
                 <button
                   className="app-menu-item"
                   onClick={() => {
@@ -154,9 +171,10 @@ export default function Header({
           <AnimatePresence>
             {showAccountMenu && (
               <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
+                initial={{ opacity: 0, scale: 0.97, y: -6 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.97, y: -6 }}
+                transition={{ type: "spring", duration: 0.25, bounce: 0.1 }}
                 className="account-menu"
                 onClick={(e) => e.stopPropagation()}
               >
@@ -175,74 +193,61 @@ export default function Header({
                         <div className="account-menu-email">{account.email}</div>
                       </div>
                     </div>
-                    <div className="account-menu-divider"></div>
-                    <button className="account-menu-item" onClick={onLogout}>
+                    <div className="account-menu-divider" />
+                    <button className="account-menu-item account-menu-item--danger" onClick={onLogout}>
+                      <Icon path={mdiLogoutVariant} size={0.75} />
                       <span>Sign out</span>
+                    </button>
+                  </>
+                ) : loggingIn ? (
+                  <>
+                    <div className="account-menu-signing-in">
+                      <div className="account-menu-signing-row">
+                        <motion.div
+                          className="account-menu-spinner"
+                          animate={{ rotate: 360 }}
+                          transition={{ duration: 0.9, repeat: Infinity, ease: "linear" }}
+                        />
+                        <div>
+                          <div className="account-menu-signing-title">Signing in…</div>
+                          <div className="account-menu-signing-desc">Complete sign-in in your browser</div>
+                        </div>
+                      </div>
+                      <button
+                        className="account-menu-open-browser-btn"
+                        onClick={() => openAuthUrl().catch(() => {})}
+                      >
+                        <Icon path={mdiOpenInNew} size={0.72} />
+                        Open browser
+                      </button>
+                    </div>
+                    <div className="account-menu-divider" />
+                    <button
+                      className="account-menu-item account-menu-item--muted"
+                      onClick={onCancelLogin}
+                    >
+                      <Icon path={mdiClose} size={0.72} />
+                      <span>Cancel</span>
                     </button>
                   </>
                 ) : (
                   <>
-                    {loggingIn ? (
-                      <>
-                        <div style={{
-                          padding: '24px 16px',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          gap: '12px',
-                          background: 'var(--bg-primary)',
-                          textAlign: 'center'
-                        }}>
-                          <motion.div
-                            animate={{ rotate: 360 }}
-                            transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                            style={{
-                              fontSize: '32px',
-                              color: 'var(--accent-blue)'
-                            }}
-                          >
-                            ⟳
-                          </motion.div>
-                          <div style={{
-                            fontSize: '14px',
-                            fontWeight: '600',
-                            color: 'var(--text-primary)'
-                          }}>
-                            Signing in...
-                          </div>
-                          <div style={{
-                            fontSize: '12px',
-                            color: 'var(--text-secondary)',
-                            lineHeight: '1.4',
-                            maxWidth: '240px'
-                          }}>
-                            Please complete the sign-in process in your browser
-                          </div>
-                        </div>
-                        <div className="account-menu-divider"></div>
-                        <button
-                          className="account-menu-item"
-                          onClick={onCancelLogin}
-                          style={{ color: 'var(--text-secondary)' }}
-                        >
-                          <span><Icon path={mdiClose} size={0.8} /></span>
-                          <span>Cancel</span>
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          className="account-menu-item sign-in-item"
-                          onClick={onLogin}
-                        >
-                          <span><Icon path={mdiLockOutline} size={0.9} /></span>
-                          <span>Sign in with Google</span>
-                        </button>
-                        <div className="account-menu-permission-notice">
-                          Will request permission to see and download your Google Drive files
-                        </div>
-                      </>
-                    )}
+                    <div className="account-menu-sign-in-section">
+                      <div className="account-menu-sign-in-icon">
+                        <Icon path={mdiAccountOutline} size={1.1} />
+                      </div>
+                      <div className="account-menu-sign-in-title">Connect Google Account</div>
+                      <div className="account-menu-sign-in-desc">
+                        Sign in to upload photos to Google Drive automatically.
+                      </div>
+                      <button className="account-menu-sign-in-btn" onClick={onLogin}>
+                        <Icon path={mdiLockOutline} size={0.8} />
+                        Sign in with Google
+                      </button>
+                    </div>
+                    <div className="account-menu-permission-notice">
+                      Requests access to see and manage your Google Drive files
+                    </div>
                   </>
                 )}
               </motion.div>

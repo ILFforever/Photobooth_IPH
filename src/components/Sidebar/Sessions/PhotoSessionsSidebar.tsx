@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState, useCallback, useRef } from "react";
-import { ChevronDown, ChevronRight, Calendar, Clock, Image as ImageIcon, Folder, Trash2, Unlink, Info, Camera, Aperture } from "lucide-react";
+import { ChevronDown, ChevronRight, Calendar, Clock, Image as ImageIcon, Folder, Trash2, Unlink, Info, Camera, Aperture, QrCode } from "lucide-react";
 import { type PhotoboothSessionInfo } from "../../../contexts";
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { useToast, useWorkspaceSettings, usePhotoboothSession } from "../../../contexts";
@@ -9,6 +9,9 @@ import { UploadQueueStatus } from "./UploadQueueStatus";
 import { UploadStatus } from "../../../types/uploadQueue";
 import CameraWebSocketManager from "../../../services/cameraWebSocket";
 import { createLogger } from '../../../utils/logger';
+import "./PhotoSessionsSidebar.css";
+import "../../../styles/Modal.css";
+import "../../../styles/Buttons.css";
 
 const logger = createLogger('PhotoSessionsSidebar');
 
@@ -80,6 +83,9 @@ export default function PhotoSessionsSidebar({
   const [photoExifData, setPhotoExifData] = useState<PhotoExifData | null>(null);
   const [loadingExif, setLoadingExif] = useState(false);
   const [deletingPhoto, setDeletingPhoto] = useState<string | null>(null);
+  const [qrPopupSessionId, setQrPopupSessionId] = useState<string | null>(null);
+  const [sessionQrCache, setSessionQrCache] = useState<Map<string, string>>(new Map());
+  const [generatingQrForId, setGeneratingQrForId] = useState<string | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
 
   const handleLoadSession = (set: PhotoboothSessionInfo, e: React.MouseEvent) => {
@@ -138,6 +144,30 @@ export default function PhotoSessionsSidebar({
   const handleDeleteDriveFolderCancel = (e: React.MouseEvent) => {
     e?.stopPropagation();
     setDeleteDriveConfirmSessionId(null);
+  };
+
+  const handleToggleQr = async (set: PhotoboothSessionInfo, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (qrPopupSessionId === set.id) {
+      setQrPopupSessionId(null);
+      return;
+    }
+    const folderLink = set.googleDriveMetadata?.folderLink;
+    if (!folderLink) return;
+
+    setQrPopupSessionId(set.id);
+    if (!sessionQrCache.has(set.id)) {
+      setGeneratingQrForId(set.id);
+      try {
+        const data = await invoke<string>('generate_qr_code', { url: folderLink });
+        setSessionQrCache(prev => new Map(prev).set(set.id, data));
+      } catch (err) {
+        logger.error('[PhotoSessionsSidebar] Failed to generate QR:', err);
+        setQrPopupSessionId(null);
+      } finally {
+        setGeneratingQrForId(null);
+      }
+    }
   };
 
   const handleDeleteClick = (set: PhotoboothSessionInfo, e: React.MouseEvent) => {
@@ -378,7 +408,6 @@ export default function PhotoSessionsSidebar({
             return (
               <motion.div
                 key={set.id}
-                layout
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
@@ -627,16 +656,44 @@ export default function PhotoSessionsSidebar({
                                   </button>
                                 </>
                               ) : (
-                                <button
-                                  className="drive-action-btn secondary"
-                                  onClick={(e) => handleDeleteDriveFolderClick(set, e)}
-                                  title="Unlink Drive folder"
-                                >
-                                  <Unlink size={12} />
-                                  <span>Unlink</span>
-                                </button>
+                                <>
+                                  <button
+                                    className={`drive-action-btn secondary${qrPopupSessionId === set.id ? ' active' : ''}`}
+                                    onClick={(e) => handleToggleQr(set, e)}
+                                    title="Show QR code"
+                                    disabled={generatingQrForId === set.id}
+                                  >
+                                    {generatingQrForId === set.id ? (
+                                      <span className="spinner-small"></span>
+                                    ) : (
+                                      <QrCode size={12} />
+                                    )}
+                                    <span>QR Code</span>
+                                  </button>
+                                  <button
+                                    className="drive-action-btn secondary"
+                                    onClick={(e) => handleDeleteDriveFolderClick(set, e)}
+                                    title="Unlink Drive folder"
+                                  >
+                                    <Unlink size={12} />
+                                    <span>Unlink</span>
+                                  </button>
+                                </>
                               )}
                             </div>
+
+                            {qrPopupSessionId === set.id && sessionQrCache.has(set.id) && (
+                              <div className="session-qr-panel">
+                                <div className="session-qr-image-wrap">
+                                  <img
+                                    src={`data:image/png;base64,${sessionQrCache.get(set.id)}`}
+                                    alt="QR Code"
+                                    className="session-qr-image"
+                                  />
+                                </div>
+                                <p className="session-qr-label">Scan to open Drive folder</p>
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <div className="drive-card-empty">

@@ -1,5 +1,6 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useQR } from "../../../contexts";
+import "../../../styles/Modal.css";
 import { invoke } from "@tauri-apps/api/core";
 import { useState, useEffect } from "react";
 import { createLogger } from '../../../utils/logger';

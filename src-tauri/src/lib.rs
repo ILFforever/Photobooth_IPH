@@ -59,6 +59,7 @@ pub fn run() {
             account: Mutex::new(None),
             root_folder: Mutex::new(None),
             upload_cancelled: Arc::new(AtomicBool::new(false)),
+            auth_url: Mutex::new(None),
         })
         .manage(UploadQueueStateWrapper {
             queue: Arc::new(UploadQueue::new()),
@@ -100,6 +101,7 @@ pub fn run() {
             google_logout,
             check_cached_account,
             get_account,
+            open_auth_url,
             list_drive_folders,
             create_drive_folder,
             share_drive_folder,
@@ -148,6 +150,7 @@ pub fn run() {
             duplicate_custom_set,
             export_custom_set,
             import_custom_set,
+            update_custom_set_background,
             // Photobooth Sessions
             load_ptb_workspace,
             save_ptb_workspace,

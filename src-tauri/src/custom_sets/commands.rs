@@ -554,3 +554,30 @@ pub async fn import_custom_set(
     println!("[IMPORT] Successfully imported set '{}' (id: {})", custom_set.name, new_id);
     Ok(custom_set)
 }
+
+/// Update only the background reference in a custom set (no file copying)
+/// Used after importing a background to update the set's stored path
+#[tauri::command]
+pub async fn update_custom_set_background(
+    app: tauri::AppHandle,
+    set_id: String,
+    background: crate::backgrounds::types::Background,
+) -> Result<(), String> {
+    let sets_dir = get_custom_sets_dir(&app)?;
+    let set_path = sets_dir.join(format!("{}.json", set_id));
+
+    let json = fs::read_to_string(&set_path)
+        .map_err(|e| format!("Failed to read custom set: {}", e))?;
+    let mut custom_set: CustomSet = serde_json::from_str(&json)
+        .map_err(|e| format!("Failed to parse custom set: {}", e))?;
+
+    custom_set.background = background;
+    custom_set.modified_at = chrono::Utc::now().to_rfc3339();
+
+    let updated_json = serde_json::to_string_pretty(&custom_set)
+        .map_err(|e| format!("Failed to serialize custom set: {}", e))?;
+    fs::write(&set_path, updated_json)
+        .map_err(|e| format!("Failed to write custom set: {}", e))?;
+
+    Ok(())
+}

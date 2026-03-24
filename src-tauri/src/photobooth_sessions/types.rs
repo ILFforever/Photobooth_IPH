@@ -30,7 +30,7 @@ pub struct GoogleDriveMetadata {
     pub folder_id: Option<String>,
     pub folder_name: Option<String>,
     pub folder_link: Option<String>,
-    pub account_id: Option<String>,  // Email of the account that created the folder
+    pub account_id: Option<String>, // Email of the account that created the folder
     pub uploaded_images: Vec<DriveUploadedImage>,
 }
 
@@ -118,7 +118,7 @@ impl Default for PhotoboothSettings {
 #[serde(rename_all = "camelCase")]
 pub struct GifSettings {
     pub auto_gif_enabled: bool,
-    pub auto_gif_format: String, // "gif" | "both" | "video"
+    pub auto_gif_format: String,       // "gif" | "both" | "video"
     pub auto_gif_photo_source: String, // "collage" | "all"
 }
 

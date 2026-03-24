@@ -1,4 +1,6 @@
 import { motion, AnimatePresence } from "framer-motion";
+import "../../../styles/Modal.css";
+import "../../../styles/Gallery.css";
 
 interface AddPhotosModalProps {
   show: boolean;

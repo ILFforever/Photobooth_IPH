@@ -1,5 +1,8 @@
-import { Printer, RefreshCw, AlertCircle, Image as ImageIcon } from 'lucide-react';
+import "./PrintTabContent.css";
+import { useState } from 'react';
+import { Printer, RefreshCw, AlertCircle, Image as ImageIcon, ChevronUp, ChevronDown } from 'lucide-react';
 import { usePrintSettings } from '../../../../contexts';
+import { usePhotobooth } from '../../../../contexts';
 
 interface PrintTabContentProps {
   isPrinting: boolean;
@@ -7,7 +10,17 @@ interface PrintTabContentProps {
 }
 
 export function PrintTabContent({ isPrinting, onPrint }: PrintTabContentProps) {
-  const { showRegeneratePrompt, confirmRegenerate, cancelRegenerate, doublePageMode, setDoublePageMode } = usePrintSettings();
+  const { confirmRegenerate, cancelRegenerate, doublePageMode, setDoublePageMode } = usePrintSettings();
+  const { collageIsDirty } = usePhotobooth();
+  const [showRegenerateOptions, setShowRegenerateOptions] = useState(false);
+
+  const handlePrint = () => {
+    if (collageIsDirty) {
+      setShowRegenerateOptions(!showRegenerateOptions);
+    } else {
+      onPrint();
+    }
+  };
 
   return (
     <div className="finalize-tab-content">
@@ -52,14 +65,20 @@ export function PrintTabContent({ isPrinting, onPrint }: PrintTabContentProps) {
         {/* Print Action Section */}
         <div className="print-section print-action-section">
           <button
-            className="print-now-btn"
-            onClick={onPrint}
+            className={`print-now-btn ${collageIsDirty && showRegenerateOptions ? 'expanded' : ''}`}
+            onClick={handlePrint}
             disabled={isPrinting}
           >
             {isPrinting ? (
               <>
                 <RefreshCw size={16} className="spinning" />
                 Opening Print Dialog...
+              </>
+            ) : collageIsDirty ? (
+              <>
+                <AlertCircle size={14} className="dirty-icon" />
+                Collage Modified
+                {showRegenerateOptions ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
               </>
             ) : (
               <>
@@ -68,33 +87,32 @@ export function PrintTabContent({ isPrinting, onPrint }: PrintTabContentProps) {
               </>
             )}
           </button>
+
+          {/* Inline regeneration options */}
+          {collageIsDirty && showRegenerateOptions && (
+            <div className="print-regenerate-options">
+              <p className="print-regenerate-text">The collage has been modified since it was last exported. Would you like to generate a new image with your changes?</p>
+              <div className="print-regenerate-actions">
+                <button
+                  className="print-regenerate-btn secondary"
+                  onClick={cancelRegenerate}
+                  disabled={isPrinting}
+                >
+                  Use Old Version
+                </button>
+                <button
+                  className="print-regenerate-btn primary"
+                  onClick={confirmRegenerate}
+                  disabled={isPrinting}
+                >
+                  <ImageIcon size={12} />
+                  Generate New
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
-
-      {/* Regenerate Collage Prompt Modal */}
-      {showRegeneratePrompt && (
-        <div className="regenerate-modal-overlay" onClick={cancelRegenerate}>
-          <div className="regenerate-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="regenerate-modal-header">
-              <AlertCircle size={18} className="regenerate-modal-icon" />
-              <h3>Collage Modified</h3>
-            </div>
-            <div className="regenerate-modal-content">
-              <p>The collage has been modified since it was last exported.</p>
-              <p>Would you like to generate a new image with your changes?</p>
-            </div>
-            <div className="regenerate-modal-actions">
-              <button className="regenerate-modal-btn secondary" onClick={cancelRegenerate}>
-                <span>Use Old Version</span>
-              </button>
-              <button className="regenerate-modal-btn primary" onClick={confirmRegenerate}>
-                <ImageIcon size={14} />
-                <span>Generate New</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

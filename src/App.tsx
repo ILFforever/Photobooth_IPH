@@ -16,11 +16,13 @@ import Header from "./components/Header/Header";
 import { AboutModal } from "./components/Modals";
 import {FolderPickerModal} from "./components/Modals";
 import {AddPhotosModal} from "./components/Modals";
+import {AppSettingsModal} from "./components/Modals";
 import {CachedAccountModal} from "./components/Modals";
 import {DeleteFolderModal} from "./components/Modals";
 import {RequirementsModal} from "./components/Modals";
 import {CleanupModal} from "./components/Modals";
 import {UpdateModal} from "./components/Modals";
+import {WelcomeModal} from "./components/Modals";
 import { CollageWorkspace } from "./components/Canvas";
 import Sidebar from "./components/Sidebar/Sidebar";
 import { QRSidebar } from "./components/Sidebar/QR";
@@ -28,6 +30,10 @@ import { PhotoboothSidebar } from "./components/Sidebar/Photobooth";
 import QRView from "./components/QRView/QRView";
 import PhotoboothWorkspace from "./components/PhotoboothView/PhotoboothWorkspace";
 import { createLogger } from './utils/logger';
+// Foundation styles - must be loaded first
+import "./styles/tokens.css";
+import "./styles/reset.css";
+import "./styles/utilities.css";
 import "./App.css";
 
 type AppMode = 'photobooth' | 'collage' | 'qr';
@@ -82,12 +88,14 @@ function App() {
   const [showAccountMenu, setShowAccountMenu] = useState(false);
   const [showAppMenu, setShowAppMenu] = useState(false);
   const [showAboutModal, setShowAboutModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [showRequirementsModal, setShowRequirementsModal] = useState(false);
   const [requirementsChecked, setRequirementsChecked] = useState(false);
   const [systemRequirements, setSystemRequirements] = useState<SystemRequirements | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showCleanup, setShowCleanup] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(false);
 
   // Track fullscreen state to disable drag region
   useEffect(() => {
@@ -99,6 +107,20 @@ function App() {
       checkFullscreen();
     });
     return () => { unlisten.then(fn => fn()); };
+  }, []);
+
+  // Apply start_fullscreen setting on launch
+  useEffect(() => {
+    (async () => {
+      try {
+        const value = await invoke<string | null>('get_app_setting', { key: 'start_fullscreen' });
+        if (value === 'true') {
+          await getCurrentWindow().setFullscreen(true);
+        }
+      } catch {
+        // setting not found or error — ignore
+      }
+    })();
   }, []);
 
   // Disable right-click context menu globally
@@ -142,6 +164,20 @@ function App() {
       setShowCleanup(true);
     });
     return () => { unlisten.then(fn => fn()); };
+  }, []);
+
+  // Show welcome modal on first launch
+  useEffect(() => {
+    (async () => {
+      try {
+        const shown = await invoke<string | null>('get_app_setting', { key: 'welcome_shown' });
+        if (shown !== 'true') {
+          setShowWelcome(true);
+        }
+      } catch {
+        setShowWelcome(true);
+      }
+    })();
   }, []);
 
   // Check system requirements on mount
@@ -279,6 +315,7 @@ function App() {
         showAppMenu={showAppMenu}
         setShowAppMenu={setShowAppMenu}
         onShowAbout={() => setShowAboutModal(true)}
+        onShowSettings={() => setShowSettingsModal(true)}
         onLogout={handleLogout}
         onLogin={handleLogin}
         onCancelLogin={handleCancelLogin}
@@ -351,7 +388,7 @@ function App() {
         {driveFolderPicker.showFolderPicker && (
           <FolderPickerModal
             show={driveFolderPicker.showFolderPicker}
-            onClose={() => driveFolderPicker.setShowFolderPicker(false)}
+            onClose={driveFolderPicker.closeFolderPicker}
             driveFolders={driveFolderPicker.driveFolders}
             loadingFolders={driveFolderPicker.loadingFolders}
             folderPath={driveFolderPicker.folderPath}
@@ -361,6 +398,8 @@ function App() {
             onFetchFolders={driveFolderPicker.fetchFolders}
             onNavigateFolder={driveFolderPicker.handleNavigateFolder}
             onNavigateUp={driveFolderPicker.handleNavigateUp}
+            onNavigateToRoot={driveFolderPicker.handleNavigateToRoot}
+            onNavigateToBreadcrumb={driveFolderPicker.handleNavigateToBreadcrumb}
             onConfirmSelection={driveFolderPicker.handleConfirmSelection}
             onSelectCurrentDir={driveFolderPicker.handleSelectCurrentDir}
             onCreateFolder={driveFolderPicker.handleCreateFolder}
@@ -425,6 +464,17 @@ function App() {
         )}
       </AnimatePresence>
 
+      {/* App Settings Modal */}
+      <AnimatePresence>
+        {showSettingsModal && (
+          <AppSettingsModal
+            show={showSettingsModal}
+            onClose={() => setShowSettingsModal(false)}
+            onShowGuide={() => setShowWelcome(true)}
+          />
+        )}
+      </AnimatePresence>
+
       {/* Update Modal */}
       <AnimatePresence>
         {showUpdateModal && versionStatus && (
@@ -452,6 +502,15 @@ function App() {
 
       {/* Cleanup Modal - shown when exiting */}
       <CleanupModal show={showCleanup} onCancel={() => setShowCleanup(false)} />
+
+      {/* Welcome Modal - shown on first launch */}
+      <AnimatePresence>
+        {showWelcome && (
+          <WelcomeModal
+            onClose={() => setShowWelcome(false)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

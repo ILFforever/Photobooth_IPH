@@ -168,7 +168,10 @@
       "Bash(sort -k5 -n -r)",
       "Bash(npx vite:*)",
       "Bash(git -C \"w:/Photobooth_IPH\" diff HEAD -- src/components/Canvas/core/CollageCanvas.tsx)",
-      "Bash(git -C \"w:/Photobooth_IPH\" show HEAD:src/components/Canvas/core/CollageCanvas.tsx)"
+      "Bash(git -C \"w:/Photobooth_IPH\" show HEAD:src/components/Canvas/core/CollageCanvas.tsx)",
+      "Bash(wc -l \"w:/Photobooth_IPH/src/App.css\" \"w:/Photobooth_IPH/src/styles/\"*.css)",
+      "Bash(wc -l src/components/PhotoboothView/PhotoboothWorkspace/*.css)",
+      "Bash(wc -l src/components/PhotoboothView/*.css)"
     ],
     "additionalDirectories": [
       "d:\\Photobooth_IPH",

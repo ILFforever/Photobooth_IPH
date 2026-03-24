@@ -1,7 +1,6 @@
 import { useRef, useMemo, useState, useCallback, useEffect } from "react";
 import { motion } from "framer-motion";
 import { ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
-import { convertFileSrc } from "@tauri-apps/api/core";
 import { useCollage } from "../../../contexts";
 import { FrameZone } from "../../../types/frame";
 import { FloatingFrameSelector } from "../frames";
@@ -267,21 +266,6 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [activeSidebarTab, selectedZone, copiedZone, currentFrame, setCopiedZone, setCurrentFrame, setSelectedZone]);
 
-  // Check if background is a solid color (hex value) — needed for overflow rendering
-  const isSolidColor = useMemo(() => {
-    if (!background) return false;
-    return /^#([0-9A-F]{3}){1,2}$/i.test(background);
-  }, [background]);
-
-  // Convert background path to Tauri-compatible URL — needed for overflow rendering
-  const bgSrc = useMemo(() => {
-    if (!background || isSolidColor) return null;
-    if (background.startsWith("http") || background.startsWith("data:")) {
-      return background;
-    }
-    return convertFileSrc(background.replace("asset://", ""));
-  }, [background, isSolidColor]);
-
   // Auto-scroll to zoom center when zooming
   // Ensures the point under the mouse stays stable during zoom
   useEffect(() => {
@@ -350,8 +334,8 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
   if (!width || !height) {
     return (
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
         className="collage-canvas-container"
         style={{ flex: "1", display: "flex", flexDirection: "column" }}
       >
@@ -419,8 +403,8 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
       className="collage-canvas-container"
       style={{ flex: "1", display: "flex", flexDirection: "column" }}
     >
@@ -471,9 +455,6 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
             setSelectedZone(null);
             setIsBackgroundSelected(false);
             setSelectedOverlayId(null);
-            if (activeSidebarTab !== "frames" && activeSidebarTab !== "layers") {
-              setActiveSidebarTab("file");
-            }
           }}
         >
           {/* Invisible spacer to allow scrolling when zoomed */}
@@ -486,45 +467,6 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
             onDrop={handleCanvasDrop}
             onDragOver={handleCanvasDragOver}
           >
-            {/* Background overflow — rendered outside inner canvas so it can extend beyond */}
-            {isBackgroundSelected && background && backgroundTransform.scale > 1 && bgSrc && (
-              <div
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  pointerEvents: "none",
-                  zIndex: 0,
-                  overflow: "hidden",
-                }}
-              >
-                <img
-                  src={bgSrc}
-                  alt="Background Overflow"
-                  draggable={false}
-                  style={{
-                    position: "absolute",
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
-                    opacity: 0.2,
-                    transform: `
-                      scale(${backgroundTransform.scale})
-                      translate(${backgroundTransform.offsetX}px, ${backgroundTransform.offsetY}px)
-                    `,
-                  }}
-                />
-                <div
-                  className="grid-overlay grid-overlay-overflow overflow-overlay-frame"
-                  style={{ position: "absolute", inset: 0 }}
-                >
-                  <div className="grid-line grid-line-vertical" style={{ left: "33.33%" }} />
-                  <div className="grid-line grid-line-vertical" style={{ left: "66.67%" }} />
-                  <div className="grid-line grid-line-horizontal" style={{ top: "33.33%" }} />
-                  <div className="grid-line grid-line-horizontal" style={{ top: "66.67%" }} />
-                </div>
-              </div>
-            )}
-
             <div style={innerCanvasStyle}>
               {/* Background Layer */}
               <BackgroundLayer />

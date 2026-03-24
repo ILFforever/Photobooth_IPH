@@ -1,0 +1,197 @@
+/* ── Versions Tab ──────────────────────────────────────────── */
+.versions-table {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+
+.versions-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  background: var(--bg-secondary);
+}
+
+.versions-row + .versions-row {
+  border-top: 1px solid var(--border-color);
+}
+
+.versions-row-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.versions-row-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.versions-row-sub {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.versions-row-version {
+  font-family: 'SF Mono', 'Consolas', 'Courier New', monospace;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.versions-row-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* Status badges — icon-only dot style */
+.version-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+  letter-spacing: 0.2px;
+}
+
+.version-badge--ok   { color: #4ade80; }
+.version-badge--update { color: #60a5fa; }
+.version-badge--missing { color: #f87171; }
+.version-badge--dev  { color: #fbbf24; }
+
+/* Action buttons — compact icon + label */
+.versions-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.versions-action-btn:hover:not(:disabled) {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.versions-action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.versions-action-btn--update {
+  border-color: rgba(96, 165, 250, 0.25);
+  color: #60a5fa;
+}
+
+.versions-action-btn--update:hover:not(:disabled) {
+  background: rgba(96, 165, 250, 0.1);
+  border-color: rgba(96, 165, 250, 0.4);
+}
+
+.versions-action-btn--danger {
+  border-color: rgba(248, 113, 113, 0.25);
+  color: #f87171;
+}
+
+.versions-action-btn--danger:hover:not(:disabled) {
+  background: rgba(248, 113, 113, 0.1);
+  border-color: rgba(248, 113, 113, 0.4);
+}
+
+.versions-action-btn--install {
+  border-color: rgba(74, 222, 128, 0.25);
+  color: #4ade80;
+}
+
+.versions-action-btn--install:hover:not(:disabled) {
+  background: rgba(74, 222, 128, 0.08);
+  border-color: rgba(74, 222, 128, 0.4);
+}
+
+/* Release notes */
+.versions-release-notes {
+  padding: 8px 14px 10px;
+  background: var(--bg-primary);
+  border-top: 1px solid var(--border-color);
+}
+
+.versions-release-notes-title {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 5px;
+}
+
+.versions-release-notes ul {
+  margin: 0;
+  padding-left: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.versions-release-notes li {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* Check for updates button */
+.versions-check-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.versions-check-btn:hover:not(:disabled) {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.versions-check-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.spin {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

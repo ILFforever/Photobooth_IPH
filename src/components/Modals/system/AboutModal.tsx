@@ -2,10 +2,14 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-shell";
-import { Download, Loader2, Trash2 } from "lucide-react";
+import { Check, CircleAlert, Download, Loader2, RefreshCw, Trash2 } from "lucide-react";
+import iphLogo from "../../../assets/images/IPH.png";
 import type { VersionStatus } from "../../../types/updates";
 import { FFmpegDownloadModal } from "../troubleshooting";
 import { createLogger } from "../../../utils/logger";
+import "../../../styles/Modal.css";
+import "../../../styles/Buttons.css";
+import "./AboutModal.css";
 const logger = createLogger('AboutModal');
 
 interface AboutModalProps {
@@ -147,7 +151,7 @@ export default function AboutModal({
           onClick={(e) => e.stopPropagation()}
         >
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '48px', marginBottom: '0.75rem' }}>📸</div>
+            <img src={iphLogo} alt="IPH" style={{ width: '56px', height: '56px', objectFit: 'contain', margin: '0 auto 0.75rem', display: 'block' }} />
             <h2 style={{ marginBottom: '0.25rem' }}>{appInfo?.name || 'Photobooth IPH'}</h2>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '0.25rem', fontSize: '13px' }}>Version {appInfo?.version || '1.0.11'}</p>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem', fontSize: '12px' }}>Professional-grade photobooth application for event photography</p>
@@ -237,6 +241,10 @@ export default function AboutModal({
                     transition={{ duration: 0.2 }}
                   >
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 10px', background: 'rgba(0,120,212,0.08)', border: '1px solid rgba(0,120,212,0.2)', borderRadius: '6px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                        <span style={{ color: 'var(--accent-blue)', flexShrink: 0 }}>💡</span>
+                        Press <kbd style={{ padding: '1px 5px', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: '3px', fontFamily: 'monospace', fontSize: '10px', color: 'var(--text-primary)' }}>F1</kbd> or click the IPH logo in the top-left to open the menu and switch modes.
+                      </div>
                       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', padding: '0.5rem', background: 'var(--bg-secondary)', borderRadius: '6px' }}>
                         <span style={{ fontSize: '18px' }}>📷</span>
                         <div>
@@ -312,274 +320,120 @@ export default function AboutModal({
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: 10 }}
                     transition={{ duration: 0.2 }}
-                    style={{ fontSize: '12px' }}
                   >
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                      {/* App Version */}
-                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem', padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
-                        <span style={{ fontSize: '24px' }}>📦</span>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Photobooth_IPH App</div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <div style={{ fontSize: '16px', fontWeight: '600', color: 'var(--text-primary)' }}>
-                              {(externalVersionStatus || versions?.versionStatus)?.app.current_version || 'Loading...'}
-                            </div>
-                            {(externalVersionStatus || versions?.versionStatus)?.app.is_dev_build && (
-                              <span style={{
-                                padding: '0.25rem 0.5rem',
-                                fontSize: '10px',
-                                background: '#f59e0b',
-                                color: 'white',
-                                borderRadius: '4px',
-                                fontWeight: '600'
-                              }}>
-                                DEV
-                              </span>
-                            )}
-                            {(externalVersionStatus || versions?.versionStatus)?.app.latest_version && (
-                              <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                                → {(externalVersionStatus || versions?.versionStatus)!.app.latest_version}
-                                {(externalVersionStatus || versions?.versionStatus)?.app.file_size && (
-                                  <span> • {Math.round(((externalVersionStatus || versions?.versionStatus)!.app.file_size! / (1024 * 1024)) * 10) / 10} MB</span>
+                    {(() => {
+                      const vs = externalVersionStatus || versions?.versionStatus;
+                      const appUpdate = vs?.app.update_available && vs?.app.has_download;
+                      const vmUpdate = vs?.vm.update_available && vs?.vm.has_download;
+                      return (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          <div className="versions-table">
+                            {/* App row */}
+                            <div className="versions-row">
+                              <div className="versions-row-meta">
+                                <span className="versions-row-name">Photobooth IPH</span>
+                                <span className="versions-row-sub">Desktop application</span>
+                              </div>
+                              <div className="versions-row-right">
+                                <span className="versions-row-version">{vs?.app.current_version ?? '—'}</span>
+                                {vs?.app.is_dev_build && <span className="version-badge version-badge--dev">DEV</span>}
+                                {appUpdate
+                                  ? <span className="version-badge version-badge--update"><Download size={10} />{vs!.app.latest_version}{vs!.app.file_size ? ` · ${(vs!.app.file_size / (1024*1024)).toFixed(1)} MB` : ''}</span>
+                                  : vs && <span className="version-badge version-badge--ok"><Check size={10} />Up to date</span>
+                                }
+                                {appUpdate && onShowUpdate && (
+                                  <button className="versions-action-btn versions-action-btn--update" onClick={() => onShowUpdate('msi')}>
+                                    <Download size={10} /> Update
+                                  </button>
                                 )}
-                              </span>
-                            )}
-                          </div>
-                          {(externalVersionStatus || versions?.versionStatus)?.app.update_available &&
-                           (externalVersionStatus || versions?.versionStatus)?.app.has_download && onShowUpdate && (
-                            <button
-                              onClick={() => onShowUpdate('msi')}
-                              style={{
-                                marginTop: '0.5rem',
-                                padding: '0.4rem 0.75rem',
-                                fontSize: '11px',
-                                background: '#22c55e',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: '4px',
-                                cursor: 'pointer',
-                                fontWeight: '600',
-                                width: 'fit-content'
-                              }}
-                            >
-                              <Download size={12} style={{ marginRight: '0.25rem', verticalAlign: 'middle' }} />
-                              Update to {(externalVersionStatus || versions?.versionStatus)!.app.latest_version}
-                            </button>
-                          )}
-                          {/* Release notes */}
-                          {(externalVersionStatus || versions?.versionStatus)?.app.release_notes &&
-                           (externalVersionStatus || versions?.versionStatus)!.app.release_notes.length > 0 && (
-                            <div style={{ marginTop: '0.5rem', fontSize: '11px', color: 'var(--text-secondary)' }}>
-                              <div style={{ fontWeight: '500', marginBottom: '0.25rem' }}>What's new:</div>
-                              <ul style={{ paddingLeft: '1rem', margin: 0 }}>
-                                {(externalVersionStatus || versions?.versionStatus)!.app.release_notes.map((note, idx) => (
-                                  <li key={idx}>{note}</li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* VM Version */}
-                      <div style={{ padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
-                          <span style={{ fontSize: '24px' }}>🐧</span>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Photobooth VM (photobooth.iso)</div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                              <div style={{ fontSize: '16px', fontWeight: '600', color: 'var(--text-primary)' }}>
-                                {(externalVersionStatus || versions?.versionStatus)?.vm.current_version || 'Loading...'}
                               </div>
-                              {(externalVersionStatus || versions?.versionStatus)?.vm.update_available && (
-                                <>
-                                  <span style={{
-                                    padding: '0.25rem 0.5rem',
-                                    fontSize: '10px',
-                                    background: '#22c55e',
-                                    color: 'white',
-                                    borderRadius: '4px',
-                                    fontWeight: '600'
-                                  }}>
-                                    UPDATE
-                                  </span>
-                                  {(externalVersionStatus || versions?.versionStatus)?.vm.has_download && onShowUpdate && (
-                                    <button
-                                      onClick={() => onShowUpdate('vm')}
-                                      style={{
-                                        padding: '0.4rem 0.75rem',
-                                        fontSize: '11px',
-                                        background: '#22c55e',
-                                        color: 'white',
-                                        border: 'none',
-                                        borderRadius: '4px',
-                                        cursor: 'pointer',
-                                        fontWeight: '600',
-                                      }}
-                                    >
-                                      <Download size={12} style={{ marginRight: '0.25rem', verticalAlign: 'middle' }} />
-                                      Update Now
-                                    </button>
-                                  )}
-                                </>
-                              )}
                             </div>
-                          </div>
-                        </div>
-                        <div style={{ display: 'flex', gap: '1rem', fontSize: '11px', color: 'var(--text-secondary)', paddingLeft: '2.25rem' }}>
-                          <div>
-                            ISO File: <span style={{ color: (externalVersionStatus || versions?.versionStatus)?.vm.iso_exists ? '#22c55e' : '#ef4444' }}>
-                              {(externalVersionStatus || versions?.versionStatus)?.vm.iso_exists ? 'Present' : 'Missing'}
-                            </span>
-                          </div>
-                          {(externalVersionStatus || versions?.versionStatus)?.vm.iso_modified_date && (
-                            <div>
-                              Modified: <span>{(externalVersionStatus || versions?.versionStatus)!.vm.iso_modified_date}</span>
-                            </div>
-                          )}
-                        </div>
-                        {(externalVersionStatus || versions?.versionStatus)?.vm.latest_version && (
-                          <div style={{ marginTop: '0.5rem', fontSize: '11px', color: 'var(--text-secondary)', paddingLeft: '2.25rem' }}>
-                            Latest available: <span style={{ color: 'var(--text-primary)', fontWeight: '500' }}>{(externalVersionStatus || versions?.versionStatus)!.vm.latest_version}</span>
-                            {(externalVersionStatus || versions?.versionStatus)?.vm.file_size && (
-                              <span> • {Math.round(((externalVersionStatus || versions?.versionStatus)!.vm.file_size! / (1024 * 1024)) * 10) / 10} MB</span>
-                            )}
-                          </div>
-                        )}
-                        {/* Release notes */}
-                        {(externalVersionStatus || versions?.versionStatus)?.vm.release_notes &&
-                         (externalVersionStatus || versions?.versionStatus)!.vm.release_notes.length > 0 && (
-                          <div style={{ marginTop: '0.5rem', fontSize: '11px', color: 'var(--text-secondary)', paddingLeft: '2.25rem' }}>
-                            <div style={{ fontWeight: '500', marginBottom: '0.25rem' }}>What's new:</div>
-                            <ul style={{ paddingLeft: '1rem', margin: 0 }}>
-                              {(externalVersionStatus || versions?.versionStatus)!.vm.release_notes.map((note, idx) => (
-                                <li key={idx}>{note}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* VirtualBox Version */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
-                        <span style={{ fontSize: '24px' }}>🖥️</span>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '2px' }}>VirtualBox</div>
-                          <div style={{ fontSize: '16px', fontWeight: '600', color: versions?.virtualboxVersion ? 'var(--text-primary)' : '#ef4444' }}>
-                            {versions?.virtualboxVersion || 'Not detected'}
-                          </div>
-                        </div>
-                        {!versions?.virtualboxVersion && (
-                          <button
-                            onClick={() => {
-                              window.location.reload();
-                            }}
-                            style={{
-                              padding: '0.4rem 0.75rem',
-                              fontSize: '11px',
-                              background: 'var(--accent-blue)',
-                              color: 'white',
-                              border: 'none',
-                              borderRadius: '4px',
-                              cursor: 'pointer',
-                              fontWeight: '500'
-                            }}
-                          >
-                            Retry
-                          </button>
-                        )}
-                      </div>
-
-                      {/* FFmpeg Version */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
-                        <span style={{ fontSize: '24px' }}>🎬</span>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '2px' }}>FFmpeg</div>
-                          <div>
-                            <div style={{ fontSize: '16px', fontWeight: '600', color: ffmpegVersion ? 'var(--text-primary)' : '#ef4444', marginBottom: '2px' }}>
-                              {ffmpegVersion || 'Not installed'}
-                            </div>
-                            {ffmpegSize && (
-                              <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                                {(ffmpegSize / (1024 * 1024)).toFixed(1)} MB
+                            {vs?.app.release_notes && vs.app.release_notes.length > 0 && (
+                              <div className="versions-release-notes">
+                                <div className="versions-release-notes-title">What's new</div>
+                                <ul>{vs.app.release_notes.map((n, i) => <li key={i}>{n}</li>)}</ul>
                               </div>
                             )}
-                          </div>
-                        </div>
-                        {ffmpegVersion ? (
-                          <button
-                            onClick={handleDeleteFfmpeg}
-                            disabled={isDeleting}
-                            style={{
-                              padding: '0.4rem 0.75rem',
-                              fontSize: '11px',
-                              background: isDeleting ? '#f97316' : '#ef4444',
-                              color: 'white',
-                              border: 'none',
-                              borderRadius: '4px',
-                              cursor: isDeleting ? 'wait' : 'pointer',
-                              fontWeight: '500',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '0.25rem',
-                              opacity: isDeleting ? 0.7 : 1,
-                            }}
-                          >
-                            {isDeleting ? (
-                              <>
-                                <Loader2 size={12} className="spin" />
-                                Deleting...
-                              </>
-                            ) : (
-                              <>
-                                <Trash2 size={12} />
-                                Delete
-                              </>
-                            )}
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => setShowFfmpegModal(true)}
-                            style={{
-                              padding: '0.4rem 0.75rem',
-                              fontSize: '11px',
-                              background: '#22c55e',
-                              color: 'white',
-                              border: 'none',
-                              borderRadius: '4px',
-                              cursor: 'pointer',
-                              fontWeight: '500',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '0.25rem'
-                            }}
-                          >
-                            <Download size={12} />
-                            Download
-                          </button>
-                        )}
-                      </div>
 
-                      {/* Action Button */}
-                      <button
-                        onClick={checkForUpdates}
-                        disabled={checkingUpdate}
-                        className="btn-primary"
-                        style={{ width: '100%' }}
-                      >
-                        {checkingUpdate ? (
-                          <>
-                            <Loader2 size={14} className="spin" />
-                            Checking...
-                          </>
-                        ) : (
-                          <>
-                            <Download size={14} />
-                            Check for Updates
-                          </>
-                        )}
-                      </button>
-                    </div>
+                            {/* VM row */}
+                            <div className="versions-row">
+                              <div className="versions-row-meta">
+                                <span className="versions-row-name">Photobooth VM</span>
+                                <span className="versions-row-sub">photobooth.iso · {vs?.vm.iso_exists ? <span style={{ color: '#4ade80' }}>Present</span> : <span style={{ color: '#f87171' }}>Missing</span>}{vs?.vm.iso_modified_date ? ` · ${vs.vm.iso_modified_date}` : ''}</span>
+                              </div>
+                              <div className="versions-row-right">
+                                <span className="versions-row-version">{vs?.vm.current_version ?? '—'}</span>
+                                {vmUpdate
+                                  ? <span className="version-badge version-badge--update"><Download size={10} />{vs!.vm.latest_version}{vs!.vm.file_size ? ` · ${(vs!.vm.file_size / (1024*1024)).toFixed(1)} MB` : ''}</span>
+                                  : vs && <span className="version-badge version-badge--ok"><Check size={10} />Up to date</span>
+                                }
+                                {vmUpdate && onShowUpdate && (
+                                  <button className="versions-action-btn versions-action-btn--update" onClick={() => onShowUpdate('vm')}>
+                                    <Download size={10} /> Update
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                            {vs?.vm.release_notes && vs.vm.release_notes.length > 0 && (
+                              <div className="versions-release-notes">
+                                <div className="versions-release-notes-title">What's new</div>
+                                <ul>{vs.vm.release_notes.map((n, i) => <li key={i}>{n}</li>)}</ul>
+                              </div>
+                            )}
+
+                            {/* VirtualBox row */}
+                            <div className="versions-row">
+                              <div className="versions-row-meta">
+                                <span className="versions-row-name">VirtualBox</span>
+                                <span className="versions-row-sub">Required for VM</span>
+                              </div>
+                              <div className="versions-row-right">
+                                <span className="versions-row-version">{versions?.virtualboxVersion ?? '—'}</span>
+                                {versions?.virtualboxVersion
+                                  ? <span className="version-badge version-badge--ok"><Check size={10} />Detected</span>
+                                  : <span className="version-badge version-badge--missing"><CircleAlert size={10} />Not detected</span>
+                                }
+                                {!versions?.virtualboxVersion && (
+                                  <button className="versions-action-btn" onClick={() => window.location.reload()}><RefreshCw size={10} />Retry</button>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* FFmpeg row */}
+                            <div className="versions-row">
+                              <div className="versions-row-meta">
+                                <span className="versions-row-name">FFmpeg</span>
+                                <span className="versions-row-sub">HDMI capture &amp; video{ffmpegSize ? ` · ${(ffmpegSize / (1024*1024)).toFixed(1)} MB` : ''}</span>
+                                {ffmpegVersion && (
+                                  <button className="versions-action-btn versions-action-btn--danger" style={{ marginTop: '6px', width: 'fit-content' }} onClick={handleDeleteFfmpeg} disabled={isDeleting}>
+                                    {isDeleting ? <><Loader2 size={10} className="spin" />Removing…</> : <><Trash2 size={10} />Remove</>}
+                                  </button>
+                                )}
+                              </div>
+                              <div className="versions-row-right">
+                                <span className="versions-row-version">{ffmpegVersion ?? '—'}</span>
+                                {ffmpegVersion
+                                  ? <span className="version-badge version-badge--ok"><Check size={10} />Installed</span>
+                                  : <span className="version-badge version-badge--missing"><CircleAlert size={10} />Not installed</span>
+                                }
+                                {!ffmpegVersion && (
+                                  <button className="versions-action-btn versions-action-btn--install" onClick={() => setShowFfmpegModal(true)}>
+                                    <Download size={10} />Install
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          <button className="versions-check-btn" onClick={checkForUpdates} disabled={checkingUpdate}>
+                            {checkingUpdate
+                              ? <><Loader2 size={12} className="spin" />Checking…</>
+                              : <><RefreshCw size={12} />Check for Updates</>
+                            }
+                          </button>
+                        </div>
+                      );
+                    })()}
                   </motion.div>
                 ) : (
                   <motion.div
@@ -591,21 +445,45 @@ export default function AboutModal({
                   >
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                       <div
-                        onClick={() => open('https://github.com/ILFforever')}
+                        onClick={() => open('https://iph-photobooth.vercel.app/')}
                         style={{
                           display: 'flex',
                           alignItems: 'center',
                           gap: '0.75rem',
                           color: 'var(--text-primary)',
-                          textDecoration: 'none',
-                          padding: '0.5rem',
+                          padding: '0.5rem 0.5rem 0.5rem 1rem',
                           borderRadius: '6px',
                           background: 'var(--bg-secondary)',
                           transition: 'background 0.2s ease',
                           cursor: 'pointer'
                         }}
                       >
-                        <span style={{ fontSize: '16px' }}>🐙</span>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+                          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.5"/>
+                          <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                        </svg>
+                        <div>
+                          <div style={{ fontSize: '12px', fontWeight: '600' }}>Website</div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>iph-photobooth.vercel.app</div>
+                        </div>
+                      </div>
+                      <div
+                        onClick={() => open('https://github.com/ILFforever')}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.75rem',
+                          color: 'var(--text-primary)',
+                          padding: '0.5rem 0.5rem 0.5rem 1rem',
+                          borderRadius: '6px',
+                          background: 'var(--bg-secondary)',
+                          transition: 'background 0.2s ease',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <svg width="20" height="20" viewBox="0 0 98 96" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+                          <path fillRule="evenodd" clipRule="evenodd" d="M48.854 0C21.839 0 0 22 0 49.217c0 21.756 13.993 40.172 33.405 46.69 2.427.49 3.316-1.059 3.316-2.362 0-1.141-.08-5.052-.08-9.127-13.59 2.934-16.42-5.867-16.42-5.867-2.184-5.704-5.42-7.17-5.42-7.17-4.448-3.015.324-3.015.324-3.015 4.934.326 7.523 5.052 7.523 5.052 4.367 7.496 11.404 5.378 14.235 4.074.404-3.178 1.699-5.378 3.074-6.6-10.839-1.141-22.243-5.378-22.243-24.283 0-5.378 1.94-9.778 5.014-13.2-.485-1.222-2.184-6.275.486-13.038 0 0 4.125-1.304 13.426 5.052a46.97 46.97 0 0 1 12.214-1.63c4.125 0 8.33.571 12.213 1.63 9.302-6.356 13.427-5.052 13.427-5.052 2.67 6.763.97 11.816.485 13.038 3.155 3.422 5.015 7.822 5.015 13.2 0 18.905-11.404 23.06-22.324 24.283 1.78 1.548 3.316 4.481 3.316 9.126 0 6.6-.08 11.897-.08 13.526 0 1.304.89 2.853 3.316 2.364 19.412-6.52 33.405-24.935 33.405-46.691C97.707 22 75.788 0 48.854 0z" fill="currentColor"/>
+                        </svg>
                         <div>
                           <div style={{ fontSize: '12px', fontWeight: '600' }}>GitHub</div>
                           <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>@ILFforever</div>
@@ -618,22 +496,23 @@ export default function AboutModal({
                           alignItems: 'center',
                           gap: '0.75rem',
                           color: 'var(--text-primary)',
-                          textDecoration: 'none',
-                          padding: '0.5rem',
+                          padding: '0.5rem 0.5rem 0.5rem 1rem',
                           borderRadius: '6px',
                           background: 'var(--bg-secondary)',
                           transition: 'background 0.2s ease',
                           cursor: 'pointer'
                         }}
                       >
-                        <span style={{ fontSize: '16px' }}>📧</span>
+                        <svg width="20" height="20" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+                          <path d="M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636A1.636 1.636 0 0 1 0 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.908 1.528-1.147C21.69 2.28 24 3.434 24 5.457z" fill="#EA4335"/>
+                        </svg>
                         <div>
                           <div style={{ fontSize: '12px', fontWeight: '600' }}>Email</div>
                           <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>hammymukura@gmail.com</div>
                         </div>
                       </div>
                       <div style={{ marginTop: '0.5rem', padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: '6px', textAlign: 'center', fontSize: '11px', color: 'var(--text-secondary)' }}>
-                        <div style={{ marginBottom: '0.25rem' }}>© 2025 Intania Production House</div>
+                        <div style={{ marginBottom: '0.25rem' }}>© 2026 ILFforever</div>
                         <div>All rights reserved</div>
                       </div>
                     </div>

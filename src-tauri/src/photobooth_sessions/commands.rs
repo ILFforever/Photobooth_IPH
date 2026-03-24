@@ -117,8 +117,9 @@ async fn load_ptb_workspace_internal(folder_path: String) -> Result<(PtbWorkspac
     if ptb_path.exists() {
         let content = fs::read_to_string(&ptb_path)
             .map_err(|e| format!("Failed to read .ptb file: {}", e))?;
+
         let workspace: PtbWorkspace = serde_json::from_str(&content)
-            .map_err(|e| format!("Failed to parse .ptb file: {}", e))?;
+            .map_err(|e| format!("The workspace file (.ptb) is corrupted and could not be read ({}). Open the file to fix it manually, or choose a new folder.", e))?;
         println!(
             "[load_ptb_workspace_internal] Loaded existing .ptb file with {} sessions",
             workspace.sessions.len()
@@ -822,7 +823,9 @@ pub async fn download_photo_from_daemon(
     let (next_photo_num, session_folder) = if let Some(session) =
         workspace.sessions.iter().find(|s| s.id == session_id)
     {
-        let next_num = session.photos.len() + 1;
+        // Use shot_count instead of photos.len() to handle deletions correctly
+        // shot_count tracks total photos taken, not current count
+        let next_num = session.shot_count + 1;
         let folder = std::path::Path::new(&folder_path).join(&session.folder_name);
         println!(
             "[Rust::download_photo_from_daemon] Session found: {}, next photo number: {}",
@@ -898,7 +901,7 @@ pub async fn download_photo_from_daemon(
             captured_at: chrono::Utc::now().to_rfc3339(),
         };
         session.photos.push(photo_entry);
-        session.shot_count = session.photos.len() as u32;
+        session.shot_count += 1; // Increment shot counter (handles deletions correctly)
         session.last_used_at = chrono::Utc::now().to_rfc3339();
         println!(
             "[Rust::download_photo_from_daemon] Session updated, shot_count: {}",
@@ -1019,7 +1022,8 @@ pub async fn delete_session_photo(
             println!("[delete_session_photo] WARN: Photo was not in photos array");
         }
 
-        session.shot_count = session.photos.len() as u32;
+        // Don't reset shot_count - it should keep increasing to track highest photo number
+        // session.shot_count = session.photos.len() as u32;  // REMOVED - this was causing duplicates
         session.last_used_at = chrono::Utc::now().to_rfc3339();
 
         Some(session.clone())

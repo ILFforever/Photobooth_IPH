@@ -270,7 +270,9 @@ export function CustomSetsSidebar() {
         // Check if this background already exists in the persisted backgrounds
         const existingBgs = await invoke<Background[]>('load_backgrounds');
         const alreadyPersisted = existingBgs.some(bg => {
-          // Compare by normalized path
+          // Check by id first (set after first import)
+          if (bg.id === set.background.id) return true;
+          // Fallback: compare by normalized path
           const normalize = (p: string) => {
             try {
               return decodeURIComponent(p)
@@ -313,6 +315,12 @@ export function CustomSetsSidebar() {
               ? convertFileSrc(importedBg.value.replace('asset://', ''))
               : importedBg.value;
             setBackground(bgValue);
+            // Update only the background id in the set (keep original value/path as resilient fallback).
+            // The id check in alreadyPersisted will find the bg in the library on next load.
+            // If the user deletes the bg from the library, the original custom_sets/ copy still
+            // exists and will be re-imported successfully.
+            invoke('update_custom_set_background', { setId, background: { ...set.background, id: importedBg.id } })
+              .catch(e => logger.warn('Failed to update set background ref:', e));
           } catch (importErr) {
             logger.warn('Failed to persist background, using temporary:', importErr);
             // Fallback: add to array without persistence

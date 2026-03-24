@@ -1680,14 +1680,26 @@ pub async fn close_splash_and_show_main(window: tauri::Window) -> Result<(), Str
     // Get the app handle to access other windows
     let app = window.app_handle();
 
+    // Check start_fullscreen setting
+    let start_fullscreen = app
+        .path()
+        .app_data_dir()
+        .ok()
+        .and_then(|dir| std::fs::read_to_string(dir.join("setting_start_fullscreen.json")).ok())
+        .and_then(|content| serde_json::from_str::<serde_json::Value>(&content).ok())
+        .and_then(|v| v.get("value").and_then(|v| v.as_str()).map(|s| s == "true"))
+        .unwrap_or(false);
+
     // Show and focus the main window
     if let Some(main_window) = app.get_webview_window("main") {
         main_window.show()
             .map_err(|e| format!("Failed to show main window: {}", e))?;
         main_window.set_focus()
             .map_err(|e| format!("Failed to focus main window: {}", e))?;
-        main_window.set_fullscreen(true)
-            .map_err(|e| format!("Failed to set fullscreen: {}", e))?;
+        if start_fullscreen {
+            main_window.set_fullscreen(true)
+                .map_err(|e| format!("Failed to set fullscreen: {}", e))?;
+        }
     }
 
     // Close the splash window

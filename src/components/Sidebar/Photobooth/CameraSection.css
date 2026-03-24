@@ -1,0 +1,834 @@
+/**
+ * CameraSection.css
+ *
+ * Camera control panel (EXIF display, mode indicator, settings grid),
+ * white-balance picker, shutter dial, and exposure slider styles.
+ * Relies on tokens.css and reset.css loaded globally via App.tsx.
+ */
+
+/* ========================================
+ * Control Row (ISO / Aperture / Shutter row)
+ * ======================================== */
+
+.control-row {
+  display: flex;
+  gap: 10px;
+}
+
+.control-item { flex: 1; }
+
+.control-select {
+  display: flex;
+  align-items: center;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  outline: none;
+  transition: all var(--transition-normal);
+}
+
+.control-select:hover  { border-color: var(--text-muted); }
+.control-select:focus  { border-color: var(--accent-blue); box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.15); }
+
+.control-label {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-widest);
+}
+
+.control-separator {
+  width: 1px;
+  height: 16px;
+  background: var(--border-color);
+  margin: 0 var(--spacing-sm);
+  opacity: 0.5;
+}
+
+.control-value {
+  flex: 1;
+  font-size: var(--text-base);
+  font-weight: var(--font-medium);
+  color: var(--text-primary);
+  text-align: right;
+}
+
+/* ========================================
+ * Property Row (scoped to .photobooth-sidebar)
+ * ======================================== */
+
+.photobooth-sidebar .property-row { margin-bottom: 0; }
+
+.photobooth-sidebar .property-row label {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  margin-bottom: var(--spacing-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.photobooth-sidebar .property-input {
+  width: 100%;
+  padding: 6px var(--spacing-sm);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  box-sizing: border-box;
+}
+
+.photobooth-sidebar .property-input:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+}
+
+/* ========================================
+ * Camera Control Panel
+ * ======================================== */
+
+.camera-control-panel {
+  background: var(--bg-primary);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.photobooth-sidebar .camera-control-panel,
+.photobooth-sidebar .camera-control-wrapper {
+  margin: 0 var(--spacing-md) var(--spacing-md) var(--spacing-md);
+}
+
+.top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Mode indicator (e.g. "M", "Av") */
+.mode-indicator {
+  font-size: var(--text-2xl);
+  font-weight: var(--font-bold);
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-base);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.mode-indicator:hover  { background: var(--bg-secondary); }
+.mode-indicator.active { background: #000000; color: white; }
+
+.mode-chevron                    { color: var(--text-muted); }
+.mode-indicator.active .mode-chevron { color: white; }
+
+.right-group {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.percentage {
+  font-size: var(--text-base);
+  color: var(--text-muted);
+}
+
+.battery-icon {
+  color: #4ade80;
+  transform: rotate(90deg);
+}
+
+/* ========================================
+ * Settings Grid (3-column EXIF cells)
+ * ======================================== */
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--spacing-xs);
+}
+
+.setting-cell {
+  position: relative;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  padding: 6px var(--spacing-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.setting-cell.setting-cell-static { cursor: default; }
+.setting-cell:not(.setting-cell-static):hover { background: var(--bg-primary); }
+
+.setting-cell.active {
+  background: #000000;
+}
+
+.setting-cell.active .setting-label,
+.setting-cell.active .setting-value   { color: white; }
+.setting-cell.active .setting-chevron { color: white; }
+
+.setting-cell.disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.setting-cell.disabled:hover { background: var(--bg-secondary); }
+
+.setting-cell.disabled .setting-label,
+.setting-cell.disabled .setting-value { color: var(--text-muted); }
+
+.setting-label {
+  font-size: 9px;
+  font-weight: var(--font-semibold);
+  color: var(--text-muted);
+  letter-spacing: var(--tracking-widest);
+  text-transform: uppercase;
+}
+
+.setting-value {
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.setting-chevron { color: var(--text-muted); }
+
+/* Pending change indicator dot */
+.pending-indicator {
+  position: absolute;
+  top: var(--spacing-xs);
+  right: var(--spacing-xs);
+  width: 8px;
+  height: 8px;
+  background-color: var(--color-error);
+  border-radius: 50%;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* ========================================
+ * Setting Control Panel (option picker)
+ * ======================================== */
+
+.setting-control-panel {
+  background: var(--bg-primary);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-sm);
+  margin-top: var(--spacing-xs);
+  animation: fadeIn var(--transition-base);
+}
+
+.setting-control-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-sm);
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.setting-control-title {
+  font-size: var(--text-xs);
+  font-weight: var(--font-bold);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-widest);
+}
+
+.setting-control-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+}
+
+.setting-control-close:hover { color: var(--text-primary); }
+
+/* 4-column option grid (ISO, aperture, etc.) */
+.setting-options-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--spacing-xs);
+}
+
+.setting-options-grid .setting-option-btn {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.setting-options-grid .setting-option-btn:hover {
+  background: var(--accent-blue);
+  border-color: var(--accent-blue);
+  color: white;
+}
+
+/* ========================================
+ * White Balance — Grid Layout
+ * ======================================== */
+
+.wb-options-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs);
+}
+
+.wb-option-btn {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 10px var(--spacing-sm);
+  font-size: var(--text-base);
+  font-weight: var(--font-medium);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  min-height: 56px;
+}
+
+/* Color hint stripe */
+.wb-option-btn::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: var(--spacing-sm);
+  bottom: var(--spacing-sm);
+  width: 3px;
+  border-radius: 2px 0 0 2px;
+  background: var(--wb-hint-color, #888);
+  opacity: 0.6;
+  transition: opacity var(--transition-normal);
+}
+
+.wb-option-btn:hover {
+  background: var(--accent-blue);
+  border-color: var(--accent-blue);
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+}
+
+.wb-option-btn:hover::before { opacity: 1; }
+
+.wb-option-btn.wb-selected {
+  background: #000;
+  border-color: #000;
+  color: white;
+  box-shadow: var(--shadow-sm);
+}
+
+.wb-option-btn.wb-selected::before   { opacity: 1; background: #fff; }
+.wb-option-btn.wb-selected:hover     { background: #000; border-color: #000; transform: translateY(-1px); }
+
+.wb-option-btn .wb-option-icon {
+  width: 20px;
+  height: 20px;
+  color: currentColor;
+}
+
+.wb-option-label {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  text-align: center;
+  line-height: 1.2;
+}
+
+/* WB color hints — grid */
+.wb-option-btn[data-wb="Auto"]               { --wb-hint-color: #888; }
+.wb-option-btn[data-wb="Daylight"]           { --wb-hint-color: #FFD700; }
+.wb-option-btn[data-wb="Shade"]              { --wb-hint-color: #87CEEB; }
+.wb-option-btn[data-wb="K"]                  { --wb-hint-color: #FFA500; }
+.wb-option-btn[data-wb="Incandescent"],
+.wb-option-btn[data-wb="Tungsten"]           { --wb-hint-color: #FF6B35; }
+.wb-option-btn[data-wb="Fluorescent 1"],
+.wb-option-btn[data-wb="Fluorescent 2"],
+.wb-option-btn[data-wb="Fluorescent 3"]      { --wb-hint-color: #B8E8B8; }
+.wb-option-btn[data-wb="Underwater"]         { --wb-hint-color: #006994; }
+.wb-option-btn[data-wb="C1"],
+.wb-option-btn[data-wb="C2"],
+.wb-option-btn[data-wb="C3"]                 { --wb-hint-color: #9C27B0; }
+.wb-option-btn[data-wb="White Priority"]     { --wb-hint-color: #FFF; }
+.wb-option-btn[data-wb="Ambient Priority"]   { --wb-hint-color: #FFB6C1; }
+
+/* ========================================
+ * White Balance — Vertical Layout
+ * ======================================== */
+
+.wb-options-vertical {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--spacing-xs);
+}
+
+.wb-option-vertical-btn {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--spacing-md);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color-light);
+  border-radius: var(--radius-lg);
+  padding: 10px 14px;
+  font-size: var(--text-md);
+  font-weight: var(--font-medium);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  min-height: 48px;
+}
+
+.wb-option-icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+}
+
+.wb-option-vertical-btn .wb-option-icon {
+  width: 22px;
+  height: 22px;
+  color: currentColor;
+}
+
+.wb-option-vertical-btn .wb-option-label {
+  font-size: var(--text-md);
+  font-weight: var(--font-medium);
+  text-align: left;
+  line-height: 1.2;
+}
+
+.wb-option-vertical-btn:hover {
+  background: var(--bg-primary);
+  border-color: var(--text-muted);
+  color: white;
+  transform: translateX(2px);
+}
+
+.wb-option-vertical-btn.wb-selected       { background: #000; border-color: #000; color: white; }
+.wb-option-vertical-btn.wb-selected:hover { background: #000; border-color: #000; transform: translateX(2px); }
+
+/* WB color hints — vertical */
+.wb-option-vertical-btn[data-wb="Auto"]              { --wb-hint-color: #888; }
+.wb-option-vertical-btn[data-wb="Daylight"]          { --wb-hint-color: #FFD700; }
+.wb-option-vertical-btn[data-wb="Shade"]             { --wb-hint-color: #87CEEB; }
+.wb-option-vertical-btn[data-wb="K"]                 { --wb-hint-color: #FFA500; }
+.wb-option-vertical-btn[data-wb="Incandescent"],
+.wb-option-vertical-btn[data-wb="Tungsten"]          { --wb-hint-color: #FF6B35; }
+.wb-option-vertical-btn[data-wb="Fluorescent 1"],
+.wb-option-vertical-btn[data-wb="Fluorescent 2"],
+.wb-option-vertical-btn[data-wb="Fluorescent 3"]     { --wb-hint-color: #B8E8B8; }
+.wb-option-vertical-btn[data-wb="Underwater"]        { --wb-hint-color: #006994; }
+.wb-option-vertical-btn[data-wb="C1"],
+.wb-option-vertical-btn[data-wb="C2"],
+.wb-option-vertical-btn[data-wb="C3"]                { --wb-hint-color: #9C27B0; }
+.wb-option-vertical-btn[data-wb="White Priority"]    { --wb-hint-color: #FFF; }
+.wb-option-vertical-btn[data-wb="Ambient Priority"]  { --wb-hint-color: #FFB6C1; }
+
+/* ========================================
+ * Shutter Dial
+ * ======================================== */
+
+.shutter-dial-container {
+  position: relative;
+  width: 100%;
+  padding: var(--spacing-sm) 0;
+}
+
+/* Viewport — sliding dial */
+.shutter-dial-viewport {
+  position: relative;
+  width: 100%;
+  height: 40px;
+  background: linear-gradient(to bottom, var(--bg-tertiary), var(--bg-secondary));
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  overflow: hidden;
+  cursor: grab;
+}
+
+.shutter-dial-viewport:active { cursor: grabbing; }
+
+/* Tick marks container */
+.shutter-ticks-container {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+  transition: transform 0.1s ease-out;
+  will-change: transform;
+}
+
+/* Individual tick marks */
+.shutter-tick {
+  position: absolute;
+  bottom: 6px;
+  width: 2px;
+  height: 14px;
+  background: var(--border-color);
+  transform: translateX(-50%);
+  transition: all var(--transition-base);
+  opacity: 0.8;
+}
+
+.shutter-tick-active {
+  background: #d60000;
+  opacity: 1;
+  height: 18px;
+  box-shadow: 0 0 6px rgba(214, 0, 0, 0.6);
+}
+
+.shutter-tick-short { height: 8px; }
+
+/* Fixed center indicator (triangle pointer) */
+.shutter-indicator-fixed {
+  position: absolute;
+  top: -2px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+  z-index: 15;
+}
+
+.shutter-indicator-triangle {
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 8px solid #d60000;
+}
+
+/* Invisible Radix Slider interaction layer */
+.shutter-slider-root {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  user-select: none;
+  touch-action: none;
+  z-index: 5;
+}
+
+.shutter-slider-track {
+  position: relative;
+  flex-grow: 1;
+  height: 100%;
+  background: transparent;
+}
+
+.shutter-slider-range { display: none; }
+
+.shutter-slider-thumb {
+  width: 1px;
+  height: 100%;
+  background: transparent;
+  cursor: grab;
+}
+
+.shutter-slider-thumb:active { cursor: grabbing; }
+.shutter-slider-thumb:focus  { outline: none; }
+
+/* Arrow controls + label row */
+.shutter-dial-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-md);
+  margin-top: 6px;
+}
+
+.shutter-dial-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all var(--transition-base);
+  padding: 0;
+}
+
+.shutter-dial-arrow:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+}
+
+.shutter-dial-arrow:active:not(:disabled) { transform: scale(0.95); }
+.shutter-dial-arrow:disabled               { opacity: 0.3; cursor: not-allowed; }
+
+.shutter-dial-label {
+  text-align: center;
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+  min-width: 60px;
+}
+
+.shutter-dial-hints {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 var(--spacing-xs);
+  margin-top: var(--spacing-xs);
+}
+
+.shutter-hint         { font-size: 9px; color: var(--text-muted); }
+.shutter-hint-fast    { text-align: left; }
+.shutter-hint-slow    { text-align: right; }
+
+/* ========================================
+ * Settings Folder Section
+ * ======================================== */
+
+.settings-folder-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.setting-label-full {
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-widest);
+}
+
+.setting-header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.setting-header:hover .setting-value { color: var(--text-primary); }
+
+/* Animated options list */
+.setting-options {
+  max-height: 200px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: var(--spacing-xs);
+  padding-top: var(--spacing-xs);
+  border-top: 1px solid var(--border-color);
+  animation: slideDownOptions var(--transition-slow);
+}
+
+.setting-options.closed {
+  max-height: 0;
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+  overflow: hidden;
+  animation: slideUpOptions var(--transition-slow) forwards;
+}
+
+.setting-options.open {
+  animation: slideDownOptions var(--transition-slow) forwards;
+}
+
+@keyframes slideDownOptions {
+  from { max-height: 0; opacity: 0; margin-top: 0; padding-top: 0; }
+  to   { max-height: 200px; opacity: 1; margin-top: var(--spacing-xs); padding-top: var(--spacing-xs); }
+}
+
+@keyframes slideUpOptions {
+  from { max-height: 200px; opacity: 1; margin-top: var(--spacing-xs); padding-top: var(--spacing-xs); }
+  to   { max-height: 0; opacity: 0; margin-top: 0; padding-top: 0; }
+}
+
+.setting-option {
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  padding: 6px var(--spacing-sm);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.setting-option:hover {
+  background: var(--accent-blue);
+  color: white;
+  transform: translateX(2px);
+}
+
+/* ========================================
+ * Slider Settings (exposure / ISO dials)
+ * ======================================== */
+
+.slider-setting {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) 0;
+}
+
+.slider-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.slider-label {
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-widest);
+}
+
+.slider-value {
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  padding: 2px var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  min-width: 32px;
+  text-align: center;
+}
+
+/* Numbered dial slider */
+.slider-wrapper {
+  position: relative;
+  width: 100%;
+  height: 40px;
+}
+
+.photobooth-slider {
+  position: absolute;
+  inset: 0;
+  cursor: grab;
+  z-index: 20;
+  touch-action: none;
+}
+
+.photobooth-slider:active { cursor: grabbing; }
+
+.slider-track-container {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(to bottom, var(--bg-tertiary), var(--bg-secondary));
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  overflow: hidden;
+}
+
+.slider-numbers-container {
+  position: absolute;
+  top: 0;
+  left: 16px;
+  right: 16px;
+  height: 100%;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.slider-number-marker {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-size: var(--text-md);
+  font-weight: var(--font-medium);
+  color: var(--text-muted);
+  transition: all var(--transition-base);
+  user-select: none;
+}
+
+.slider-number-marker.active {
+  color: var(--accent-blue);
+  font-weight: var(--font-bold);
+  text-shadow: 0 0 8px rgba(0, 120, 212, 0.5);
+}
+
+.slider-active-indicator {
+  position: absolute;
+  top: var(--spacing-xs);
+  bottom: var(--spacing-xs);
+  background: var(--accent-blue-light);
+  border: 1px solid rgba(0, 120, 212, 0.4);
+  border-radius: var(--radius-sm);
+  z-index: 5;
+  transition: all var(--transition-base);
+}
+
+.photobooth-slider-thumb {
+  position: absolute;
+  inset: 0;
+  background: transparent;
+  border: none;
+  max-block-size: 25px;
+  cursor: grab;
+}
+
+.photobooth-slider-thumb:active { cursor: grabbing; }
+
+.slider-hint-row { display: none; }
+
+/* ========================================
+ * Keyframes
+ * ======================================== */
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.5; }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}

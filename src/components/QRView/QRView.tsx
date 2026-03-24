@@ -2,6 +2,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useState, useCallback, useEffect, useRef } from "react";
 import "./QRView.css";
+import "../../styles/Gallery.css";
+import "../../styles/Buttons.css";
 import type { NoPreviewImage, Result } from "../../types/qr";
 import { createLogger } from '../../utils/logger';
 

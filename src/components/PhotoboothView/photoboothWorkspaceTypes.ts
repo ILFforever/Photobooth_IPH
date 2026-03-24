@@ -16,7 +16,8 @@ export const displayPresets: DisplayPreset[] = [
 ];
 
 export interface CurrentSetPhoto {
-  id: string;
+  id: string; // Unique React key (timestamp + filename)
+  filename: string; // Actual filename for file operations
   thumbnailUrl: string;
   fullUrl?: string;
   timestamp: string;

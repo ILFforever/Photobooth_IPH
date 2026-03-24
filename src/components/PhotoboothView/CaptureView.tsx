@@ -22,7 +22,7 @@ interface CaptureViewProps {
   currentSetPhotos: CurrentSetPhoto[];
   selectedPhotoIndex: number | null;
   centerBrowseIndex: number | null;
-  selectedPhotos: Set<string>;
+  selectedPhotos: string[];
 
   // Live view
   liveViewStream: MediaStream | null;
@@ -41,6 +41,8 @@ interface CaptureViewProps {
   onCenterBack: () => void;
   onCenterNavClick: (direction: 'prev' | 'next') => void;
   onPhotoSelect: (photoId: string) => void;
+  onSelectAll: () => void;
+  onClearAll: () => void;
 
   // Session strip
   currentSession: PhotoboothSession | null;
@@ -112,6 +114,8 @@ export default function CaptureView({
   onCenterBack,
   onCenterNavClick,
   onPhotoSelect,
+  onSelectAll,
+  onClearAll,
   currentSession,
   ptbSessionName,
   workingFolder,
@@ -198,6 +202,8 @@ export default function CaptureView({
           frameName={selectedSetName}
           requiredPhotos={requiredPhotos}
           onPhotoSelect={onPhotoSelect}
+          onSelectAll={onSelectAll}
+          onClearAll={onClearAll}
           onNextSession={onNextSession}
           onFinalize={onFinalize}
         />

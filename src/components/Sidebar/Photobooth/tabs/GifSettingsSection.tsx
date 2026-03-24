@@ -68,15 +68,6 @@ export function GifSettingsSection({
             </button>
           </div>
 
-          {/* Status Notice (only when authenticated) */}
-          {isAuthenticated && (
-            <div className={`setting-notice ${autoGifEnabled ? 'notice-success' : 'notice-warning'}`}>
-              {autoGifEnabled
-                ? 'Ready to generate after finalizing'
-                : 'Enable to auto-generate after finalizing'}
-            </div>
-          )}
-
           <div className="sidebar-divider" style={{ marginBottom: '16px' }} />
 
           <div className={`gif-settings-body ${!autoGifEnabled ? 'disabled' : ''}`}>

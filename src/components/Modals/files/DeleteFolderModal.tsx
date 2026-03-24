@@ -1,4 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
+import { Loader2 } from "lucide-react";
+import "../../../styles/Modal.css";
+import "../../../styles/Buttons.css";
 
 interface DriveFolder {
   id: string;
@@ -36,7 +39,7 @@ export default function DeleteFolderModal({
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
-          className="confirm-modal"
+          className="delete-folder-modal"
           onClick={(e) => e.stopPropagation()}
         >
           <h3>Delete Folder?</h3>
@@ -44,7 +47,7 @@ export default function DeleteFolderModal({
             Are you sure you want to delete "<strong>{folderToDelete.name}</strong>"?
             This will permanently delete the folder and all its contents from Google Drive.
           </p>
-          <div className="confirm-modal-actions">
+          <div className="delete-folder-modal-actions">
             <motion.button
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
@@ -63,12 +66,7 @@ export default function DeleteFolderModal({
             >
               {deleting ? (
                 <>
-                  <motion.span
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                  >
-                    ⟳
-                  </motion.span>
+                  <Loader2 size={14} className="delete-folder-spinner" />
                   Deleting...
                 </>
               ) : (

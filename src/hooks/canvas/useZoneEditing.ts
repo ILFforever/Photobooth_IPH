@@ -31,7 +31,6 @@ export function useZoneEditing({
   zone,
   frameWidth,
   frameHeight,
-  isSelected,
   onSelect,
   onUpdate,
   scale,

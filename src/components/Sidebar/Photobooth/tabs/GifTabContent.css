@@ -1,0 +1,508 @@
+/**
+ * GifTabContent.css
+ *
+ * GIF / video generation tab: segmented controls, photo grid,
+ * media preview list, settings section, and FFmpeg notice banner.
+ * Relies on tokens.css and reset.css loaded globally via App.tsx.
+ */
+
+/* ========================================
+ * Segmented Control (GIF / Video / Boomerang)
+ * ======================================== */
+
+.gif-segmented-control {
+  position: relative;
+  display: flex;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 3px;
+  width: 100%;
+}
+
+/* Sliding background track */
+.gif-segmented-control .slider-track {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  background: #000000;
+  border-radius: var(--radius-md);
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 1;
+}
+
+.gif-segmented-control[data-option-count="2"] .slider-track { width: calc(50% - 3px); }
+.gif-segmented-control[data-option-count="3"] .slider-track { width: calc(33.333% - 2px); }
+
+.gif-segmented-control[data-active-index="0"] .slider-track { transform: translateX(3px); }
+.gif-segmented-control[data-active-index="1"] .slider-track { transform: translateX(calc(100% + 3px)); }
+.gif-segmented-control[data-active-index="2"][data-option-count="3"] .slider-track { transform: translateX(calc(200% + 3px)); }
+
+.gif-segmented-option {
+  flex: 1;
+  position: relative;
+  z-index: 2;
+  text-align: center;
+}
+
+.gif-segmented-option button {
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: var(--text-base);
+  font-weight: var(--font-medium);
+  cursor: pointer;
+  transition: color var(--transition-normal);
+}
+
+.gif-segmented-option button:hover:not(:disabled) { color: var(--text-primary); }
+.gif-segmented-option button.active               { color: white; }
+.gif-segmented-option button:disabled             { cursor: not-allowed; opacity: 0.5; }
+
+.gif-source-toggle,
+.gif-output-toggle { width: 100%; }
+
+.gif-selection-label {
+  width: 100%;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  padding: 0 2px;
+}
+
+/* ========================================
+ * Photo Selection Grid
+ * ======================================== */
+
+.gif-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+  gap: 6px;
+  width: 100%;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.gif-photo-item {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: all var(--transition-base);
+}
+
+.gif-photo-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.gif-photo-item:hover          { border-color: var(--text-muted); }
+.gif-photo-item.selected       { border-color: var(--accent-blue); }
+
+.gif-photo-check {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 18px;
+  height: 18px;
+  background: var(--accent-blue);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+
+.gif-photo-skeleton {
+  position: relative;
+  width: 65.75px;
+  height: 64.75px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.gif-photo-placeholder {
+  width: 100%;
+  height: 100%;
+  background: var(--bg-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+}
+
+/* ========================================
+ * Progress + Generate Button
+ * ======================================== */
+
+.gif-progress-section {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.gif-generate-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  background: #000000;
+  border: none;
+  border-radius: var(--radius-lg);
+  color: white;
+  font-size: var(--text-md);
+  font-weight: var(--font-semibold);
+  cursor: pointer;
+  transition: background var(--transition-normal);
+}
+
+.gif-generate-btn:hover:not(:disabled)  { background: #1a1a1a; }
+.gif-generate-btn:active:not(:disabled) { background: #0a0a0a; }
+
+.gif-generate-btn:disabled {
+  background: #0a0a0a;
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.gif-generate-btn .spinning { animation: spin 1s linear infinite; }
+
+/* ========================================
+ * Generated Media List
+ * ======================================== */
+
+.gif-media-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.gif-media-item {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  transition: border-color var(--transition-normal);
+}
+
+.gif-media-item:hover { border-color: #666; }
+
+.gif-media-preview-container {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.gif-media-preview {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.gif-media-info {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+}
+
+.gif-media-name {
+  font-size: var(--text-base);
+  font-weight: var(--font-medium);
+  color: var(--text-primary);
+}
+
+.gif-media-meta {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.gif-media-actions {
+  display: flex;
+  gap: var(--spacing-xs);
+}
+
+.gif-media-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 70px;
+  height: 30px;
+  padding: 0 var(--spacing-md);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color-light);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+}
+
+.gif-media-btn:hover  { background: var(--bg-primary); border-color: var(--text-muted); }
+.gif-media-btn:active { background: var(--bg-secondary); transform: translateY(1px); }
+
+/* Force white stroke on SVG icons when hovering */
+.gif-media-btn:hover svg,
+.gif-media-btn:hover svg *,
+.gif-media-btn:hover svg path,
+.gif-media-btn:hover svg circle,
+.gif-media-btn:hover svg line,
+.gif-media-btn:hover svg polyline,
+.gif-media-btn:hover svg rect { stroke: white !important; }
+
+/* Video replay overlay */
+.gif-media-replay-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  color: white;
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  transition: background var(--transition-normal);
+}
+
+.gif-media-replay-overlay:hover { background: rgba(0, 0, 0, 0.7); }
+
+.gif-media-replay-overlay span {
+  font-size: var(--text-base);
+  font-weight: var(--font-medium);
+}
+
+/* ========================================
+ * Progress Bars (GIF + Video)
+ * ======================================== */
+
+.gif-progress-bars {
+  display: flex;
+  gap: var(--spacing-sm);
+  margin-left: var(--spacing-sm);
+}
+
+.gif-progress-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+}
+
+.gif-progress-label {
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  color: var(--accent-blue);
+}
+
+.gif-progress-text {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+/* ========================================
+ * GIF Settings Section
+ * ======================================== */
+
+.gif-settings-section .toggle-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+}
+
+.gif-settings-section .toggle-info { flex: 1; }
+
+.gif-settings-section .toggle-label {
+  display: block;
+  font-size: var(--text-base);
+  font-weight: var(--font-medium);
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.gif-settings-section .toggle-description {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+/* In-settings segmented control */
+.gif-settings-section .gif-segmented-control {
+  display: flex;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 3px;
+  gap: 2px;
+  margin-bottom: var(--spacing-md);
+}
+
+.gif-settings-section .gif-segmented-option { flex: 1; text-align: center; }
+
+.gif-settings-section .gif-segmented-option button {
+  width: 100%;
+  padding: 7px var(--spacing-sm);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  cursor: pointer;
+  transition: all var(--transition-normal);
+}
+
+.gif-settings-section .gif-segmented-option button:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.gif-settings-section .gif-segmented-option button.active {
+  color: white;
+  background: var(--accent-blue);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Notice banners */
+.gif-settings-section .setting-notice {
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+  padding: var(--spacing-sm) 10px;
+  border-radius: var(--radius-md);
+  margin-bottom: var(--spacing-xs);
+}
+
+.gif-settings-section .setting-notice.notice-warning {
+  color: var(--accent-yellow);
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.gif-settings-section .setting-notice.notice-success {
+  color: #34d399;
+  background: rgba(52, 211, 153, 0.08);
+  border: 1px solid rgba(52, 211, 153, 0.2);
+}
+
+.gif-settings-section .setting-notice.notice-info {
+  color: var(--accent-blue);
+  background: var(--accent-blue-light);
+  border: 1px solid rgba(0, 120, 212, 0.2);
+}
+
+.gif-settings-section .setting-label {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--text-secondary);
+  margin-top: var(--spacing-sm);
+  margin-bottom: var(--spacing-xs);
+}
+
+/* Disabled overlay */
+.gif-settings-section .gif-settings-body {
+  transition: opacity var(--transition-normal);
+}
+
+.gif-settings-section .gif-settings-body.disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+/* ========================================
+ * FFmpeg Required Notice
+ * ======================================== */
+
+.ffmpeg-toast {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 10px var(--spacing-md);
+  background: rgba(99, 102, 241, 0.07);
+  border: 1px solid rgba(99, 102, 241, 0.22);
+  border-radius: var(--radius-md);
+}
+
+.ffmpeg-toast-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #a5b4fc;
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+}
+
+.ffmpeg-toast-message {
+  color: var(--text-secondary);
+  font-size: 10.5px;
+  line-height: var(--leading-normal);
+}
+
+.ffmpeg-toast-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  background: rgba(99, 102, 241, 0.15);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: var(--radius-sm);
+  color: #c7d2fe;
+  font-size: 10.5px;
+  font-weight: var(--font-medium);
+  cursor: pointer;
+  align-self: flex-start;
+  transition: background var(--transition-base), border-color var(--transition-base);
+}
+
+.ffmpeg-toast-btn:hover {
+  background: rgba(99, 102, 241, 0.25);
+  border-color: rgba(99, 102, 241, 0.45);
+}
+
+/* ========================================
+ * Keyframes
+ * ======================================== */
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.5; }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+.spinning { animation: spin 1s linear infinite; }

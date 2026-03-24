@@ -2,6 +2,8 @@ import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useCamera } from "../../../contexts";
+import "../../../styles/Modal.css";
+import "../../../styles/Buttons.css";
 
 interface CleanupModalProps {
   show: boolean;

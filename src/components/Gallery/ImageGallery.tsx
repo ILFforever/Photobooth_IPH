@@ -1,5 +1,7 @@
 import { motion } from "framer-motion";
 import { createLogger } from '../../utils/logger';
+import "../../styles/Gallery.css";
+import "../../styles/Buttons.css";
 
 const logger = createLogger('ImageGallery');
 

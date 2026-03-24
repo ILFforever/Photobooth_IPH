@@ -28,3 +28,10 @@ export async function googleLogin(): Promise<GoogleAccount> {
 export async function googleLogout(): Promise<void> {
   await invoke("google_logout");
 }
+
+/**
+ * Re-opens the Google OAuth URL in the browser (fallback if the popup didn't open)
+ */
+export async function openAuthUrl(): Promise<void> {
+  await invoke("open_auth_url");
+}

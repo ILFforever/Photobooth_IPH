@@ -92,10 +92,11 @@ export function useGuestDisplaySync({
 
   // Listen for events from guest display
   useEffect(() => {
+    let cancelled = false;
     let unlisteners: UnlistenFn[] = [];
 
     const setupListeners = async () => {
-      const [unlisten1, unlisten2, unlisten3, unlisten4] = await Promise.all([
+      const listeners = await Promise.all([
         listen('guest-display:escape', () => {
           setSelectedPhotoIndex(null);
         }),
@@ -109,8 +110,6 @@ export function useGuestDisplaySync({
         }),
         listen('guest-display:ready', () => {
           // Guest display listeners are ready — send full current state
-          // Note: displayMode is NOT sent here — the guest display already has it from the URL param,
-          // and sending it here can cause a race condition that resets the mode
           logger.debug('[PhotoboothWorkspace] Guest display ready, sending full state');
           emitTo('guest-display', 'guest-display:mode', displayModeRef.current);
           emitTo('guest-display', 'guest-display:update', {
@@ -120,12 +119,19 @@ export function useGuestDisplaySync({
           emitTo('guest-display', 'guest-display:center-browse', centerBrowseIndexRef.current);
         }),
       ]);
-      unlisteners = [unlisten1, unlisten2, unlisten3, unlisten4];
+
+      if (cancelled) {
+        // Cleanup already ran before async resolved — unlisten immediately
+        listeners.forEach(u => u());
+        return;
+      }
+      unlisteners = listeners;
     };
 
     setupListeners();
 
     return () => {
+      cancelled = true;
       unlisteners.forEach(u => u());
     };
   }, [handleCapturePreviewLoad]);

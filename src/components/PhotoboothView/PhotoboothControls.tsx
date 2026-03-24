@@ -1,4 +1,5 @@
 import { memo, useState, useEffect } from "react";
+import "./PhotoboothControls.css";
 
 // 7-Segment Digit Component
 interface SevenSegmentDigitProps {

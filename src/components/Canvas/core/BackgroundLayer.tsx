@@ -89,7 +89,6 @@ export function BackgroundLayer() {
       style={{
         position: "absolute",
         inset: 0,
-        overflow: "hidden",
         cursor: isDragging ? "grabbing" : "grab",
         zIndex: 0,
       }}
@@ -106,6 +105,9 @@ export function BackgroundLayer() {
             translate(${backgroundTransform.offsetX}px, ${backgroundTransform.offsetY}px)
           `,
           transition: isDragging ? "none" : "transform 0.2s ease",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
         }}
       >
         <img
@@ -113,9 +115,8 @@ export function BackgroundLayer() {
           alt="Background"
           draggable={false}
           style={{
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
+            maxWidth: "none",
+            maxHeight: "none",
             display: "block",
           }}
         />
@@ -129,44 +130,6 @@ export function BackgroundLayer() {
             <div className="grid-line grid-line-vertical" style={{ left: "66.67%" }} />
             <div className="grid-line grid-line-horizontal" style={{ top: "33.33%" }} />
             <div className="grid-line grid-line-horizontal" style={{ top: "66.67%" }} />
-          </div>
-        )}
-        {/* Overflow visualization - shows parts of bg extending beyond canvas with transparency and grid */}
-        {isBackgroundSelected && backgroundTransform.scale > 1 && (
-          <div
-            className="background-overflow-mask"
-            style={{
-              position: "absolute",
-              width: "100%",
-              height: "100%",
-              pointerEvents: "none",
-              overflow: "hidden",
-            }}
-          >
-            <img
-              src={bgSrc ?? undefined}
-              alt="Background Overflow"
-              draggable={false}
-              style={{
-                position: "absolute",
-                width: "100%",
-                height: "100%",
-                objectFit: "cover",
-                opacity: 0.2,
-                transform: `
-                  translate(${-backgroundTransform.offsetX}px, ${-backgroundTransform.offsetY}px)
-                  scale(${1 / backgroundTransform.scale})
-                `,
-                transformOrigin: "center center",
-              }}
-            />
-            {/* 3x3 grid on the overflow area */}
-            <div className="grid-overlay grid-overlay-overflow" style={{ position: "absolute", inset: 0 }}>
-              <div className="grid-line grid-line-vertical" style={{ left: "33.33%" }} />
-              <div className="grid-line grid-line-vertical" style={{ left: "66.67%" }} />
-              <div className="grid-line grid-line-horizontal" style={{ top: "33.33%" }} />
-              <div className="grid-line grid-line-horizontal" style={{ top: "66.67%" }} />
-            </div>
           </div>
         )}
         {/* Snap Guides - shown during dragging */}

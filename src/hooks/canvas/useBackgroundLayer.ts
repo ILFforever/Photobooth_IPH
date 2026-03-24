@@ -12,7 +12,7 @@ interface UseBackgroundLayerProps {
   setBackgroundTransform: (transform: BackgroundTransform) => void;
   setIsBackgroundSelected: (selected: boolean) => void;
   activeSidebarTab: string;
-  bgRef: RefObject<HTMLDivElement>;
+  bgRef: RefObject<HTMLDivElement | null>;
 }
 
 interface UseBackgroundLayerReturn {

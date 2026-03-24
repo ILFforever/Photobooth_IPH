@@ -1,0 +1,184 @@
+/**
+ * Design Tokens
+ *
+ * Centralized design tokens for the application.
+ * These CSS custom properties provide a single source of truth for
+ * colors, spacing, typography, and other design decisions.
+ */
+
+:root {
+  /* ========================================
+   * Colors - Backgrounds
+   * ======================================== */
+  --bg-primary: #1e1e1e;
+  --bg-secondary: #252525;
+  --bg-tertiary: #2d2d2d;
+  --bg-overlay: rgba(0, 0, 0, 0.5);
+
+  /* ========================================
+   * Colors - Text
+   * ======================================== */
+  --text-primary: #e4e4e4;
+  --text-secondary: #a0a0a0;
+  --text-muted: #707070;
+
+  /* ========================================
+   * Colors - Borders
+   * ======================================== */
+  --border-color: #3d3d3d;
+  --border-color-light: #4d4d4d;
+
+  /* ========================================
+   * Colors - Accents
+   * ======================================== */
+  --accent-blue: #0078d4;
+  --accent-blue-hover: #1084d8;
+  --accent-blue-light: rgba(0, 120, 212, 0.1);
+
+  --accent-green: #107c10;
+  --accent-green-hover: #0e6b0e;
+  --accent-green-light: rgba(16, 124, 16, 0.15);
+
+  --accent-red: #e81123;
+  --accent-red-hover: #f02030;
+  --accent-red-light: rgba(232, 17, 35, 0.1);
+
+  --accent-yellow: #eab308;
+  --accent-orange: #f97316;
+
+  /* ========================================
+   * Colors - Semantic
+   * ======================================== */
+  --color-success: #6fdb6f;
+  --color-success-bg: rgba(16, 124, 16, 0.15);
+  --color-success-border: rgba(16, 124, 16, 0.3);
+
+  --color-error: #ff99a4;
+  --color-error-bg: rgba(232, 17, 35, 0.1);
+  --color-error-border: rgba(232, 17, 35, 0.3);
+
+  --color-warning: #fbbf24;
+  --color-info: #60a5fa;
+
+  /* ========================================
+   * Colors - Specific
+   * ======================================== */
+  --titlebar-bg: #323233;
+  --sidebar-bg: #252525;
+
+  /* ========================================
+   * Spacing
+   * ======================================== */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 20px;
+  --spacing-2xl: 24px;
+  --spacing-3xl: 32px;
+  --spacing-4xl: 40px;
+
+  /* ========================================
+   * Typography - Font Families
+   * ======================================== */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'SF Mono', 'Monaco', 'Consolas', 'Courier New', monospace;
+
+  /* ========================================
+   * Typography - Font Sizes
+   * ======================================== */
+  --text-xs: 10px;
+  --text-sm: 11px;
+  --text-base: 12px;
+  --text-md: 13px;
+  --text-lg: 14px;
+  --text-xl: 16px;
+  --text-2xl: 18px;
+  --text-3xl: 20px;
+  --text-4xl: 24px;
+
+  /* ========================================
+   * Typography - Font Weights
+   * ======================================== */
+  --font-normal: 400;
+  --font-medium: 500;
+  --font-semibold: 600;
+  --font-bold: 700;
+
+  /* ========================================
+   * Typography - Line Heights
+   * ======================================== */
+  --leading-tight: 1;
+  --leading-snug: 1.25;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.6;
+  --leading-loose: 2;
+
+  /* ========================================
+   * Typography - Letter Spacing
+   * ======================================== */
+  --tracking-tight: -0.02em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.02em;
+  --tracking-wider: 0.05px;
+  --tracking-widest: 0.5px;
+
+  /* ========================================
+   * Borders & Radius
+   * ======================================== */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-full: 9999px;
+
+  --border-width: 1px;
+  --border-width-sm: 2px;
+
+  /* ========================================
+   * Shadows
+   * ======================================== */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --shadow-xl: 0 12px 32px rgba(0, 0, 0, 0.6);
+
+  /* ========================================
+   * Transitions
+   * ======================================== */
+  --transition-fast: 0.1s ease;
+  --transition-base: 0.15s ease;
+  --transition-normal: 0.2s ease;
+  --transition-slow: 0.3s ease;
+  --transition-slower: 0.5s ease;
+
+  /* ========================================
+   * Z-Index Layers
+   * ======================================== */
+  --z-base: 1;
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-fixed: 300;
+  --z-modal-backdrop: 400;
+  --z-modal: 500;
+  --z-popover: 600;
+  --z-tooltip: 700;
+  --z-toast: 800;
+  --z-max: 9999;
+
+  /* ========================================
+   * Layout
+   * ======================================== */
+  --sidebar-width: 360px;
+  --sidebar-min-width: 320px;
+  --header-height: 40px;
+
+  /* ========================================
+   * Breakpoints (for reference in JS/CSS)
+   * ======================================== */
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+  --breakpoint-2xl: 1536px;
+}

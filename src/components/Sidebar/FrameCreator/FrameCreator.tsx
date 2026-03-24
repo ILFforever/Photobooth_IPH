@@ -1,257 +1,48 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { createPortal } from 'react-dom';
 import { invoke } from '@tauri-apps/api/core';
 import { useCollage } from '../../../contexts';
 import { Frame, FrameZone, FrameShape } from '../../../types/frame';
 import { generateFrameId } from '../../../utils/frameTemplates';
-import './FrameCreator.css';
+import { createLogger } from '../../../utils/logger';
 import Icon from '@mdi/react';
 import {
-  mdiSquareRoundedOutline,
-  mdiCircleOutline,
-  mdiTriangleOutline,
-  mdiHexagonOutline,
-  mdiOctagon,
-  mdiStarOutline,
-  mdiDiamondStone,
-  mdiHeartOutline,
-  mdiPlus,
-  mdiSquareOutline,
-  mdiLock,
-  mdiLockOpenVariant,
   mdiMagnet,
   mdiMagnetOn,
   mdiEyeOutline,
-  mdiEyeClosed
+  mdiEyeClosed,
 } from '@mdi/js';
 
-// Drag and drop imports
-import { useDrag, useDrop } from 'react-dnd';
+import { ZoneItem } from './ZoneItem';
+import { ShapeSelector } from './ShapeSelector';
+import { FrameModals } from './FrameModals';
 
-import { createLogger } from '../../../utils/logger';
+import './FrameCreator.css';
 
 const logger = createLogger('FrameCreator');
 
-const DRAG_TYPE = 'zone';
-
 const CANVAS_SIZE = { width: 1200, height: 1800 };
 
-// Draggable Zone Item Component
-function ZoneItem({
-  zone,
-  index,
-  isSelected,
-  onToggle,
-  onDelete,
-  onMove,
-  onSelect,
-  onToggleLock,
-}: {
-  zone: FrameZone;
-  index: number;
-  isSelected: boolean;
-  onToggle: () => void;
-  onDelete: () => void;
-  onMove: (dragIndex: number, hoverIndex: number) => void;
-  onSelect: (zoneId: string) => void;
-  onToggleLock: () => void;
-}) {
-  const [dragHandled, setDragHandled] = useState(false);
-  const [panelInteracted, setPanelInteracted] = useState(false);
-
-  const [{ isDragging }, drag] = useDrag({
-    type: DRAG_TYPE,
-    item: { index },
-    collect: (monitor) => ({
-      isDragging: monitor.isDragging(),
-    }),
-  });
-
-  const [{ isOver, canDrop }, drop] = useDrop({
-    accept: DRAG_TYPE,
-    hover(item: { index: number }) {
-      if (item.index === index) return;
-      onMove(item.index, index);
-      item.index = index;
-    },
-    collect: (monitor) => ({
-      isOver: monitor.isOver({ shallow: true }),
-      canDrop: monitor.canDrop(),
-    }),
-  });
-
-  const isLocked = zone.locked || false;
-
-  return (
-    <div
-      ref={(node) => {
-        drag(drop(node));
-      }}
-      className={`zone-item-wrapper ${isSelected ? 'expanded' : ''} ${isOver && canDrop && !isDragging ? 'drag-over' : ''} ${isLocked ? 'locked' : ''}`}
-      style={{ opacity: isDragging ? 0.3 : 1 }}
-    >
-      {/* Zone Item Header - Always Visible */}
-      <div
-        className={`zone-item ${isSelected ? 'selected' : ''}`}
-        onClick={() => {
-          if (!dragHandled) {
-            onSelect(zone.id);
-            onToggle();
-          }
-          setDragHandled(false);
-        }}
-      >
-        <div className="zone-item-left">
-          <div
-            className="zone-drag-handle"
-            onMouseDown={() => setDragHandled(true)}
-            onMouseUp={() => setDragHandled(true)}
-            onClick={(e) => {
-              e.stopPropagation();
-              setDragHandled(false);
-            }}
-          >
-            <span></span>
-            <span></span>
-            <span></span>
-          </div>
-          <div className="zone-item-info">
-            <span className="zone-item-number">
-              {(() => {
-                const match = zone.id.match(/zone-(\d+)/);
-                return match ? match[1] : index + 1;
-              })()}
-            </span>
-            <span className="zone-item-shape">
-              {zone.shape === 'rounded_rect' ? <Icon path={mdiSquareRoundedOutline} size={0.8} /> :
-               zone.shape === 'circle' ? <Icon path={mdiCircleOutline} size={0.8} /> :
-               zone.shape === 'ellipse' ? <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><ellipse cx="12" cy="12" rx="10" ry="6"/></svg> :
-               zone.shape === 'pill' ? <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><rect x="6" y="2" width="12" height="20" rx="6"/></svg> :
-               zone.shape === 'triangle' ? <Icon path={mdiTriangleOutline} size={0.8} /> :
-               zone.shape === 'pentagon' ? <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L22 9L18 21H6L2 9L12 2Z"/></svg> :
-               zone.shape === 'hexagon' ? <Icon path={mdiHexagonOutline} size={0.8} /> :
-               zone.shape === 'octagon' ? <Icon path={mdiOctagon} size={0.8} /> :
-               zone.shape === 'star' ? <Icon path={mdiStarOutline} size={0.8} /> :
-               zone.shape === 'diamond' ? <Icon path={mdiDiamondStone} size={0.8} /> :
-               zone.shape === 'heart' ? <Icon path={mdiHeartOutline} size={0.8} /> :
-               zone.shape === 'cross' ? <Icon path={mdiPlus} size={0.8} /> : <Icon path={mdiSquareOutline} size={0.8} />}
-            </span>
-            <span className="zone-item-size">
-              {Math.round(zone.width)}×{Math.round(zone.height)}
-            </span>
-          </div>
-        </div>
-        <div className="zone-item-actions">
-          <button
-            className={`zone-item-lock ${isLocked ? 'locked' : ''}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleLock();
-            }}
-            title={isLocked ? 'Unlock zone' : 'Lock zone'}
-          >
-            <Icon path={isLocked ? mdiLock : mdiLockOpenVariant} size={0.6} />
-          </button>
-          <button
-            className="zone-item-delete"
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete();
-            }}
-            title="Delete zone"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        </div>
-      </div>
-
-      {/* Zone Settings Dropdown - Only visible when selected */}
-      {isSelected && (
-        <div className="zone-props-panel">
-          <div className="zone-props-grid">
-            <div className="zone-prop-field">
-              <label>X</label>
-              <input
-                type="number"
-                value={zone.x}
-                onChange={(e) => {
-                  const event = new CustomEvent('zoneUpdate', {
-                    detail: { index, updates: { x: Number(e.target.value) } }
-                  });
-                  window.dispatchEvent(event);
-                }}
-              />
-            </div>
-            <div className="zone-prop-field">
-              <label>Y</label>
-              <input
-                type="number"
-                value={zone.y}
-                onChange={(e) => {
-                  const event = new CustomEvent('zoneUpdate', {
-                    detail: { index, updates: { y: Number(e.target.value) } }
-                  });
-                  window.dispatchEvent(event);
-                }}
-              />
-            </div>
-            <div className="zone-prop-field">
-              <label>Width</label>
-              <input
-                type="number"
-                value={zone.width}
-                onChange={(e) => {
-                  const event = new CustomEvent('zoneUpdate', {
-                    detail: { index, updates: { width: Number(e.target.value) } }
-                  });
-                  window.dispatchEvent(event);
-                }}
-              />
-            </div>
-            <div className="zone-prop-field">
-              <label>Height</label>
-              <input
-                type="number"
-                value={zone.height}
-                onChange={(e) => {
-                  const event = new CustomEvent('zoneUpdate', {
-                    detail: { index, updates: { height: Number(e.target.value) } }
-                  });
-                  window.dispatchEvent(event);
-                }}
-              />
-            </div>
-          </div>
-          {zone.shape === 'rounded_rect' && (
-            <div className="zone-prop-roundness">
-              <label>Radius</label>
-              <input
-                type="range"
-                min="0"
-                max="50"
-                step="1"
-                value={zone.borderRadius || 12}
-                onChange={(e) => {
-                  const event = new CustomEvent('zoneUpdate', {
-                    detail: { index, updates: { borderRadius: Number(e.target.value) } }
-                  });
-                  window.dispatchEvent(event);
-                }}
-              />
-              <span className="zone-prop-roundness-value">{zone.borderRadius || 12}</span>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function FrameCreator() {
-  const { reloadFrames, currentFrame, setCurrentFrame, placedImages, setPlacedImages, activeSidebarTab, copiedZone, setCopiedZone, setSelectedZone, showAllOverlays, setShowAllOverlays, snapEnabled, setSnapEnabled, customFrames, isFrameCreatorSaving, setIsFrameCreatorSaving } = useCollage();
+  const {
+    reloadFrames,
+    currentFrame,
+    setCurrentFrame,
+    placedImages,
+    setPlacedImages,
+    activeSidebarTab,
+    copiedZone,
+    setCopiedZone,
+    setSelectedZone,
+    showAllOverlays,
+    setShowAllOverlays,
+    snapEnabled,
+    setSnapEnabled,
+    customFrames,
+    isFrameCreatorSaving,
+    setIsFrameCreatorSaving,
+  } = useCollage();
+
+  // State
   const [newFrameName, setNewFrameName] = useState('');
   const [zones, setZones] = useState<FrameZone[]>([]);
   const [selectedZoneIndex, setSelectedZoneIndex] = useState<number | null>(null);
@@ -271,7 +62,7 @@ function FrameCreator() {
   const showSaveDialog = isFrameCreatorSaving;
   const setShowSaveDialog = setIsFrameCreatorSaving;
 
-  // Refs for stable event listeners (avoid stale closures and re-registration)
+  // Refs for stable event listeners
   const zonesRef = useRef<FrameZone[]>(zones);
   const currentFrameRef = useRef(currentFrame);
   const selectedZoneIndexRef = useRef(selectedZoneIndex);
@@ -290,7 +81,7 @@ function FrameCreator() {
   const newFrameNameRef = useRef(newFrameName);
   const isUpdatingFromEditorRef = useRef(false);
 
-  // Update refs when state changes (lightweight - only updates ref values)
+  // Update refs when state changes
   useEffect(() => {
     zonesRef.current = zones;
     currentFrameRef.current = currentFrame;
@@ -308,7 +99,24 @@ function FrameCreator() {
     setSaveSuccessRef.current = setSaveSuccess;
     setCurrentFrameRef.current = setCurrentFrame;
     newFrameNameRef.current = newFrameName;
-  }, [zones, currentFrame, selectedZoneIndex, copiedZone, showSaveDialog, showReplaceConfirm, activeSidebarTab, setZones, setSelectedZoneIndex, setCopiedZone, setShowCopyNotification, setShowSaveDialog, setSaveError, setSaveSuccess, setCurrentFrame, newFrameName]);
+  }, [
+    zones,
+    currentFrame,
+    selectedZoneIndex,
+    copiedZone,
+    showSaveDialog,
+    showReplaceConfirm,
+    activeSidebarTab,
+    setZones,
+    setSelectedZoneIndex,
+    setCopiedZone,
+    setShowCopyNotification,
+    setShowSaveDialog,
+    setSaveError,
+    setSaveSuccess,
+    setCurrentFrame,
+    newFrameName,
+  ]);
 
   // Create portal root for modals on mount
   useEffect(() => {
@@ -348,7 +156,7 @@ function FrameCreator() {
     }
   };
 
-  // Handle zone updates from dropdown inputs - stable listener with refs
+  // Handle zone updates from dropdown inputs
   useEffect(() => {
     const handleZoneUpdate = (e: Event) => {
       const customEvent = e as CustomEvent<{ index: number; updates: Partial<FrameZone> }>;
@@ -378,7 +186,7 @@ function FrameCreator() {
     // Only register once - stable listener
     window.addEventListener('zoneUpdate', handleZoneUpdate);
     return () => window.removeEventListener('zoneUpdate', handleZoneUpdate);
-  }, []); // Empty deps - listener never changes
+  }, []);
 
   // Helper function to get the next zone ID
   const getNextZoneId = useCallback(() => {
@@ -393,14 +201,14 @@ function FrameCreator() {
     // Find the highest number and add 1
     const maxNumber = existingNumbers.length > 0 ? Math.max(...existingNumbers) : 0;
     return `zone-${maxNumber + 1}`;
-  }, []); // Uses zonesRef internally, no deps needed
+  }, []);
+
   // Sync zones with currentFrame when in frame creator mode
   useEffect(() => {
     if (activeSidebarTab === 'frames' && currentFrame?.id === 'system-blank') {
-            // Check if this update is coming from the editor (not a frame load)
+      // Check if this update is coming from the editor (not a frame load)
       if (isUpdatingFromEditorRef.current) {
         // Don't reset selection - zones are already in sync
-        // Flag will be cleared by setTimeout in handleZoneUpdate
         return;
       }
       setZones(currentFrame.zones);
@@ -469,7 +277,7 @@ function FrameCreator() {
   // Handle keyboard shortcuts for copy/paste zones and save dialog
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if event originated from the name input in save dialog (it has its own handler)
+      // Ignore if event originated from the name input in save dialog
       const target = e.target as HTMLElement;
       const isNameInput = target.classList.contains('frame-name-input');
 
@@ -491,7 +299,7 @@ function FrameCreator() {
       if (showSaveDialog && !showReplaceConfirm && !isNameInput) {
         if (e.key === 'Enter') {
           e.preventDefault();
-          saveFrame(newFrameName, false, true); // Enter triggers Save & Apply (primary action)
+          saveFrame(newFrameName, false, true); // Enter triggers Save & Apply
         } else if (e.key === 'Escape') {
           e.preventDefault();
           setShowSaveDialog(false);
@@ -564,7 +372,20 @@ function FrameCreator() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeSidebarTab, selectedZoneIndex, zones, copiedZone, currentFrame, setCopiedZone, setCurrentFrame, showSaveDialog, showReplaceConfirm]);
+  }, [
+    activeSidebarTab,
+    selectedZoneIndex,
+    zones,
+    copiedZone,
+    currentFrame,
+    setCopiedZone,
+    setCurrentFrame,
+    showSaveDialog,
+    showReplaceConfirm,
+    getNextZoneId,
+    newFrameName,
+    setShowSaveDialog,
+  ]);
 
   // Add a new zone
   const addZone = () => {
@@ -636,38 +457,28 @@ function FrameCreator() {
   // Save frame
   const saveFrame = async (frameName: string, forceReplace = false, shouldApply = false) => {
     logger.debug('[saveFrame] Called with:', { frameName, forceReplace, shouldApply });
-    logger.debug('[saveFrame] Current state:', { newFrameName, showReplaceConfirm, pendingApplyAfterSave });
 
     const trimmedName = frameName.trim();
-    logger.debug('[saveFrame] trimmedName:', trimmedName);
 
     if (!trimmedName) {
-      logger.debug('[saveFrame] Error: empty name');
       setSaveError('Please enter a frame name');
       return;
     }
 
     if (zones.length === 0) {
-      logger.debug('[saveFrame] Error: no zones');
       setSaveError('Please add at least one zone');
       return;
     }
 
     // Check if a frame with the same name already exists
-    const existingFrame = customFrames.find(
-      f => f.name.toLowerCase() === trimmedName.toLowerCase()
-    );
-    logger.debug('[saveFrame] existingFrame:', existingFrame?.name || 'none');
+    const existingFrame = customFrames.find(f => f.name.toLowerCase() === trimmedName.toLowerCase());
 
     if (existingFrame && !forceReplace) {
-      logger.debug('[saveFrame] Showing replace confirm dialog');
       setExistingFrameToReplace(existingFrame);
       setPendingApplyAfterSave(shouldApply);
       setShowReplaceConfirm(true);
       return;
     }
-
-    logger.debug('[saveFrame] Proceeding to save frame:', trimmedName);
 
     // Calculate canvas dimensions based on zone positions
     const maxX = Math.max(...zones.map(z => z.x + z.width));
@@ -675,8 +486,8 @@ function FrameCreator() {
 
     // Add some padding (10px) around the edges
     const padding = 10;
-    const width = Math.max(maxX + padding, 100); // Minimum 100px width
-    const height = Math.max(maxY + padding, 100); // Minimum 100px height
+    const width = Math.max(maxX + padding, 100);
+    const height = Math.max(maxY + padding, 100);
 
     // Round all zone coordinates to integers before saving (unlocked)
     const roundedZones = zones.map(zone => ({
@@ -687,11 +498,10 @@ function FrameCreator() {
       height: Math.round(zone.height),
       rotation: Math.round(zone.rotation),
       borderRadius: zone.borderRadius !== undefined ? Math.round(zone.borderRadius) : undefined,
-      locked: false, // Save as unlocked
+      locked: false,
     }));
 
     const frame: Frame = {
-      // Use existing frame's ID if replacing, otherwise generate new one
       id: existingFrame ? existingFrame.id : generateFrameId(),
       name: trimmedName,
       description: `Custom frame with ${zones.length} zone${zones.length > 1 ? 's' : ''}`,
@@ -705,7 +515,6 @@ function FrameCreator() {
     try {
       await invoke('save_frame', { frame });
       await reloadFrames();
-      // Keep the zones on canvas, just clear the replace state
       setExistingFrameToReplace(null);
       setSaveSuccess(true);
 
@@ -716,19 +525,13 @@ function FrameCreator() {
           setSaveSuccess(false);
           setSaveError('');
 
-          // Load the saved frame - fetch it from the backend to ensure we have the latest version
           try {
             const loadedFrames = await invoke<Frame[]>('load_frames');
             const savedFrame = loadedFrames.find(f => f.id === frame.id);
 
             if (savedFrame) {
-              // Apply the saved frame to the canvas
               setCurrentFrame(savedFrame);
-              // Clear placed images since we're switching to a new frame
               setPlacedImages(new Map());
-              logger.debug('[saveFrame] Applied saved frame:', savedFrame.name);
-            } else {
-              logger.warn('[saveFrame] Could not find saved frame after reload');
             }
           } catch (error) {
             logger.error('[saveFrame] Failed to load saved frame:', error);
@@ -749,7 +552,6 @@ function FrameCreator() {
 
   // Handle replace confirmation
   const confirmReplace = () => {
-    logger.debug('[confirmReplace] Called with:', { newFrameName, pendingApplyAfterSave });
     setShowReplaceConfirm(false);
     saveFrame(newFrameName, true, pendingApplyAfterSave);
   };
@@ -795,13 +597,54 @@ function FrameCreator() {
     }
   };
 
+  // Handle delete zone from zones list
+  const handleDeleteZone = (index: number) => {
+    const updated = zones.filter((_, i) => i !== index);
+    setZones(updated);
+    if (selectedZoneIndex === index) {
+      setSelectedZoneIndex(null);
+    } else if (selectedZoneIndex !== null && selectedZoneIndex > index) {
+      setSelectedZoneIndex(selectedZoneIndex - 1);
+    }
+    if (currentFrame?.id === 'system-blank') {
+      setCurrentFrame({ ...currentFrame, zones: updated });
+    }
+  };
+
+  // Handle toggle lock
+  const handleToggleLock = (index: number) => {
+    const updated = zones.map((z, i) => (i === index ? { ...z, locked: !z.locked } : z));
+    setZones(updated);
+    if (currentFrame?.id === 'system-blank') {
+      setCurrentFrame({ ...currentFrame, zones: updated });
+    }
+  };
+
+  // Get add button text based on selected shape
+  const getAddButtonText = (): string => {
+    const shapeNames: Record<FrameShape, string> = {
+      rectangle: '+ Add Rectangle Zone',
+      rounded_rect: '+ Add Rounded Zone',
+      circle: '+ Add Circle Zone',
+      ellipse: '+ Add Oval Zone',
+      pill: '+ Add Pill Zone',
+      triangle: '+ Add Triangle Zone',
+      pentagon: '+ Add Pentagon Zone',
+      hexagon: '+ Add Hexagon Zone',
+      octagon: '+ Add Octagon Zone',
+      star: '+ Add Star Zone',
+      diamond: '+ Add Diamond Zone',
+      heart: '+ Add Heart Zone',
+      cross: '+ Add Cross Zone',
+    };
+    return shapeNames[selectedShape];
+  };
+
   return (
     <div className="frame-creator">
       {/* Copy Notification */}
       {showCopyNotification && (
-        <div className="copy-notification">
-          Zone copied! Press Ctrl+V to paste
-        </div>
+        <div className="copy-notification">Zone copied! Press Ctrl+V to paste</div>
       )}
 
       {/* Header */}
@@ -827,144 +670,11 @@ function FrameCreator() {
 
       <div className="frame-creator-content">
         {/* Shape Selection */}
-        <div className="shape-selector">
-          <h4>Zone Shape</h4>
-          <div className="shape-buttons">
-            {(['rectangle', 'rounded_rect', 'circle', 'ellipse', 'pill', 'triangle', 'pentagon', 'hexagon', 'octagon', 'star', 'diamond', 'heart', 'cross'] as FrameShape[]).map((shape) => {
-              const getShapeStyle = () => {
-                switch (shape) {
-                  case 'circle':
-                    return '50%';
-                  case 'ellipse':
-                    return '50% / 40%';
-                  case 'rounded_rect':
-                    return '12px';
-                  case 'pill':
-                    return '999px';
-                  default:
-                    return '2px';
-                }
-              };
-
-              const getClipPath = () => {
-                switch (shape) {
-                  case 'triangle':
-                    return 'polygon(50% 0%, 0% 100%, 100% 100%)';
-                  case 'pentagon':
-                    return 'polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)';
-                  case 'hexagon':
-                    return 'polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)';
-                  case 'octagon':
-                    return 'polygon(30% 0%, 70% 0%, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0% 70%, 0% 30%)';
-                  case 'star':
-                    return 'polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)';
-                  case 'diamond':
-                    return 'polygon(50% 0%, 78% 50%, 50% 100%, 22% 50%)';
-                  case 'heart':
-                    return 'polygon(50% 15%, 65% 0%, 85% 0%, 100% 15%, 100% 35%, 85% 50%, 50% 100%, 15% 50%, 0% 35%, 0% 15%, 15% 0%, 35% 0%)';
-                  case 'cross':
-                    return 'polygon(20% 0%, 80% 0%, 80% 20%, 100% 20%, 100% 80%, 80% 80%, 80% 100%, 20% 100%, 20% 80%, 0% 80%, 0% 20%, 20% 20%)';
-                  default:
-                    return 'none';
-                }
-              };
-
-              const getShapeIcon = () => {
-                switch (shape) {
-                  case 'triangle': return mdiTriangleOutline;
-                  case 'hexagon': return mdiHexagonOutline;
-                  case 'octagon': return mdiOctagon;
-                  case 'star': return mdiStarOutline;
-                  case 'diamond': return mdiDiamondStone;
-                  case 'heart': return mdiHeartOutline;
-                  case 'cross': return mdiPlus;
-                  case 'rounded_rect': return mdiSquareRoundedOutline;
-                  case 'rectangle': return mdiSquareOutline;
-                  case 'circle': return mdiCircleOutline;
-                  default: return null;
-                }
-              };
-
-              const getCustomSvg = () => {
-                switch (shape) {
-                  case 'ellipse':
-                    return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2"><ellipse cx="12" cy="12" rx="10" ry="6"/></svg>;
-                  case 'pill':
-                    return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2"><rect x="6" y="2" width="12" height="20" rx="6"/></svg>;
-                  case 'pentagon':
-                    return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L22 9L18 21H6L2 9L12 2Z"/></svg>;
-                  default: return null;
-                }
-              };
-
-              const getShapeName = () => {
-                switch (shape) {
-                  case 'rounded_rect': return 'Rounded';
-                  case 'circle': return 'Circle';
-                  case 'ellipse': return 'Oval';
-                  case 'pill': return 'Pill';
-                  case 'triangle': return 'Triangle';
-                  case 'pentagon': return 'Pentagon';
-                  case 'hexagon': return 'Hexagon';
-                  case 'octagon': return 'Octagon';
-                  case 'star': return 'Star';
-                  case 'diamond': return 'Diamond';
-                  case 'heart': return 'Heart';
-                  case 'cross': return 'Cross';
-                  default: return 'Rectangle';
-                }
-              };
-
-              const clipPath = getClipPath();
-              const shapeIcon = getShapeIcon();
-              const customSvg = getCustomSvg();
-              const isPolygonShape = clipPath !== 'none' || shape === 'rounded_rect';
-              const hasCustomIcon = !!customSvg;
-
-              return (
-                <button
-                  key={shape}
-                  className={`shape-btn ${selectedShape === shape ? 'active' : ''}`}
-                  onClick={() => setSelectedShape(shape)}
-                >
-                  {hasCustomIcon ? (
-                    <span className="shape-icon-mdi">{customSvg}</span>
-                  ) : isPolygonShape ? (
-                    shapeIcon ? <Icon path={shapeIcon} size={1} className="shape-icon-mdi" /> : null
-                  ) : (
-                    <div
-                      className="shape-icon"
-                      style={{
-                        borderRadius: getShapeStyle(),
-                      }}
-                    />
-                  )}
-                  <span>{getShapeName()}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        <ShapeSelector selectedShape={selectedShape} onShapeChange={setSelectedShape} />
 
         {/* Add Zone Button */}
         <button className="add-zone-btn" onClick={addZone}>
-          {(() => {
-            switch (selectedShape) {
-              case 'rounded_rect': return '+ Add Rounded Zone';
-              case 'circle': return '+ Add Circle Zone';
-              case 'ellipse': return '+ Add Oval Zone';
-              case 'pill': return '+ Add Pill Zone';
-              case 'triangle': return '+ Add Triangle Zone';
-              case 'pentagon': return '+ Add Pentagon Zone';
-              case 'hexagon': return '+ Add Hexagon Zone';
-              case 'octagon': return '+ Add Octagon Zone';
-              case 'star': return '+ Add Star Zone';
-              case 'diamond': return '+ Add Diamond Zone';
-              case 'heart': return '+ Add Heart Zone';
-              case 'cross': return '+ Add Cross Zone';
-              default: return '+ Add Rectangle Zone';
-            }
-          })()}
+          {getAddButtonText()}
         </button>
 
         {/* Zones List */}
@@ -972,53 +682,24 @@ function FrameCreator() {
           <div className="zones-list">
             <h4 data-count={zones.length}>Zones</h4>
             <div className="zones-grid">
-              {zones.map((zone, index) => {
-                const isSelected = selectedZoneIndex === index;
-                return (
-                  <ZoneItem
-                    key={zone.id}
-                    zone={zone}
-                    index={index}
-                    isSelected={isSelected}
-                    onToggle={() => setSelectedZoneIndex(isSelected ? null : index)}
-                    onDelete={() => {
-                      const updated = zones.filter((_, i) => i !== index);
-                      setZones(updated);
-                      if (selectedZoneIndex === index) {
-                        setSelectedZoneIndex(null);
-                      } else if (selectedZoneIndex !== null && selectedZoneIndex > index) {
-                        setSelectedZoneIndex(selectedZoneIndex - 1);
-                      }
-                      // Update the blank frame to show zones on the canvas
-                      if (currentFrame?.id === 'system-blank') {
-                        setCurrentFrame({
-                          ...currentFrame,
-                          zones: updated,
-                        });
-                      }
-                    }}
-                    onMove={moveZone}
-                    onSelect={setSelectedZone}
-                    onToggleLock={() => {
-                      const updated = zones.map((z, i) =>
-                        i === index ? { ...z, locked: !z.locked } : z
-                      );
-                      setZones(updated);
-                      if (currentFrame?.id === 'system-blank') {
-                        setCurrentFrame({
-                          ...currentFrame,
-                          zones: updated,
-                        });
-                      }
-                    }}
-                  />
-                );
-              })}
+              {zones.map((zone, index) => (
+                <ZoneItem
+                  key={zone.id}
+                  zone={zone}
+                  index={index}
+                  isSelected={selectedZoneIndex === index}
+                  onToggle={() => setSelectedZoneIndex(selectedZoneIndex === index ? null : index)}
+                  onDelete={() => handleDeleteZone(index)}
+                  onMove={moveZone}
+                  onSelect={setSelectedZone}
+                  onToggleLock={() => handleToggleLock(index)}
+                />
+              ))}
             </div>
           </div>
         )}
 
-        {/* Save & Clear Buttons - Bottom */}
+        {/* Frame Actions Footer */}
         <div className="frame-actions-footer">
           <div className="frame-actions">
             <button className="new-frame-btn" onClick={startNew} title="Start fresh">
@@ -1026,7 +707,12 @@ function FrameCreator() {
                 <path d="M12 5v14M5 12h14"/>
               </svg>
             </button>
-            <button className="load-frame-btn" onClick={() => setShowLoadDialog(true)} disabled={customFrames.length === 0} title="Load frame">
+            <button
+              className="load-frame-btn"
+              onClick={() => setShowLoadDialog(true)}
+              disabled={customFrames.length === 0}
+              title="Load frame"
+            >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
               </svg>
@@ -1050,163 +736,31 @@ function FrameCreator() {
         </div>
       </div>
 
-      {/* Save Dialog Modal - Inline Overlay */}
-      {showSaveDialog && (
-        <div className="confirm-overlay" onClick={() => setShowSaveDialog(false)}>
-          <div className="confirm-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="confirm-icon save-icon">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-                <polyline points="17 21 17 13 7 13 7 21"/>
-                <polyline points="7 3 7 8 15 8"/>
-              </svg>
-            </div>
-            <h3>{saveSuccess ? 'Saved!' : 'Save Frame'}</h3>
-            {!saveSuccess && (
-              <input
-                type="text"
-                placeholder="Enter frame name..."
-                value={newFrameName}
-                onChange={(e) => {
-                  setNewFrameName(e.target.value);
-                  setSaveError('');
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    logger.debug('[input onKeyDown] Enter pressed, calling saveFrame with:', newFrameName);
-                    saveFrame(newFrameName, false, true);
-                  }
-                }}
-                className="frame-name-input"
-                autoFocus
-              />
-            )}
-            {saveError && (
-              <div className="save-error">{saveError}</div>
-            )}
-            {saveSuccess && (
-              <p className="save-success-text">Frame saved successfully</p>
-            )}
-            {!saveSuccess && (
-              <div className="save-dialog-actions">
-                <button
-                  className="confirm-btn primary full-width"
-                  onClick={() => saveFrame(newFrameName, false, true)}
-                  title="Save and apply this frame"
-                >
-                  Save & Apply
-                </button>
-                <div className="confirm-actions">
-                  <button
-                    className="confirm-btn cancel"
-                    onClick={() => {
-                      setShowSaveDialog(false);
-                      setSaveError('');
-                      setSaveSuccess(false);
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    className="confirm-btn secondary"
-                    onClick={() => saveFrame(newFrameName, false, false)}
-                  >
-                    Save Only
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Replace Confirmation Modal */}
-      {showReplaceConfirm && (
-        <div className="confirm-overlay" onClick={cancelReplace}>
-          <div className="confirm-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="confirm-icon">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 9v4M12 17h.01"/>
-                <path d="M3 12a9 9 0 1 1 18 0 9 9 0 0 1-18 0z"/>
-              </svg>
-            </div>
-            <h3>Replace Frame?</h3>
-            <p>A frame named "<strong>{existingFrameToReplace?.name}</strong>" already exists. Do you want to replace it?</p>
-            <div className="confirm-actions">
-              <button className="confirm-btn cancel" onClick={cancelReplace}>
-                Cancel
-              </button>
-              <button className="confirm-btn danger" onClick={confirmReplace}>
-                Replace
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Load Dialog Modal */}
-      {showLoadDialog && document.getElementById('modal-portal-root') && (
-        createPortal(
-          <div className="modal-overlay" onClick={() => setShowLoadDialog(false)}>
-            <div className="modal-content load-dialog-content" onClick={(e) => e.stopPropagation()}>
-              <h3>Load Frame</h3>
-              <div className="frames-list">
-                {customFrames.length === 0 ? (
-                  <div className="empty-frames">No saved frames found</div>
-                ) : (
-                  customFrames.map((frame) => (
-                    <div
-                      key={frame.id}
-                      className="saved-frame-item"
-                      onClick={() => loadFrame(frame)}
-                    >
-                      <div className="frame-info">
-                        <span className="frame-name">{frame.name}</span>
-                        <span className="frame-zones-count">{frame.zones.length} zone{frame.zones.length !== 1 ? 's' : ''} · {frame.width}×{frame.height}</span>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-              <div className="modal-actions">
-                <button
-                  className="modal-btn cancel-btn"
-                  onClick={() => setShowLoadDialog(false)}
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>,
-          document.getElementById('modal-portal-root')!
-        )
-      )}
-
-      {/* New Confirm Modal - Inline Overlay */}
-      {showNewConfirm && (
-        <div className="confirm-overlay" onClick={() => setShowNewConfirm(false)}>
-          <div className="confirm-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="confirm-icon">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 9v4M12 17h.01"/>
-                <path d="M3 12a9 9 0 1 1 18 0 9 9 0 0 1-18 0z"/>
-              </svg>
-            </div>
-            <h3>Clear All Zones?</h3>
-            <p>Starting a new frame will clear your current work. This action cannot be undone.</p>
-            <div className="confirm-actions">
-              <button className="confirm-btn cancel" onClick={() => setShowNewConfirm(false)}>
-                Cancel
-              </button>
-              <button className="confirm-btn danger" onClick={confirmNew}>
-                Clear All
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Modals */}
+      <FrameModals
+        showSaveDialog={showSaveDialog}
+        setShowSaveDialog={setShowSaveDialog}
+        saveError={saveError}
+        setSaveError={setSaveError}
+        saveSuccess={saveSuccess}
+        setSaveSuccess={setSaveSuccess}
+        newFrameName={newFrameName}
+        setNewFrameName={setNewFrameName}
+        showReplaceConfirm={showReplaceConfirm}
+        setShowReplaceConfirm={setShowReplaceConfirm}
+        existingFrameToReplace={existingFrameToReplace}
+        pendingApplyAfterSave={pendingApplyAfterSave}
+        showLoadDialog={showLoadDialog}
+        setShowLoadDialog={setShowLoadDialog}
+        customFrames={customFrames}
+        showNewConfirm={showNewConfirm}
+        setShowNewConfirm={setShowNewConfirm}
+        saveFrame={saveFrame}
+        confirmReplace={confirmReplace}
+        cancelReplace={cancelReplace}
+        loadFrame={loadFrame}
+        confirmNew={confirmNew}
+      />
     </div>
   );
 }

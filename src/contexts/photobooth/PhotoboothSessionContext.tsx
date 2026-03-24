@@ -50,14 +50,29 @@ export function PhotoboothSessionProvider({ children }: { children: ReactNode })
   const { showToast } = useToast();
   const { account, rootFolder } = useAuth();
   const {
+    autoCount, timerDelay, delayBetweenPhotos, photoReviewTime,
     setAutoCount, setTimerDelay, setDelayBetweenPhotos, setPhotoReviewTime,
     setDelaySettingsLoaded,
   } = useCaptureTiming();
   const {
-    workingFolder,
+    workingFolder, setWorkingFolder,
+    qrUploadEnabled, qrUploadAllImages, photoNamingScheme,
+    autoGifEnabled, autoGifFormat, autoGifPhotoSource,
     setQrUploadEnabled, setQrUploadAllImages, setPhotoNamingScheme,
     setAutoGifEnabled, setAutoGifFormat, setAutoGifPhotoSource,
   } = useWorkspaceSettings();
+
+  // Ref to always have latest settings without adding them as refreshSessions deps
+  const currentSettingsRef = useRef({
+    autoCount, timerDelay, delayBetweenPhotos, photoReviewTime,
+    qrUploadEnabled, qrUploadAllImages, photoNamingScheme,
+    autoGifEnabled, autoGifFormat, autoGifPhotoSource,
+  });
+  currentSettingsRef.current = {
+    autoCount, timerDelay, delayBetweenPhotos, photoReviewTime,
+    qrUploadEnabled, qrUploadAllImages, photoNamingScheme,
+    autoGifEnabled, autoGifFormat, autoGifPhotoSource,
+  };
 
   // Session management state
   const [currentSession, setCurrentSession] = useState<PhotoboothSession | null>(null);
@@ -151,54 +166,90 @@ export function PhotoboothSessionProvider({ children }: { children: ReactNode })
       });
       setSessions(sessionList);
 
-      // Load workspace to get delay settings
-      const workspace = await invoke<any>('load_ptb_workspace', {
-        folderPath: workingFolder,
-      });
-
-      // Load delay settings if they exist in the workspace
-      if (workspace.delaySettings) {
-        const { autoCount: ac, timerDelay: td, delayBetweenPhotos: dbp, photoReviewTime: prt } = workspace.delaySettings;
-        const newSettings = {
-          autoCount: ac ?? 3,
-          timerDelay: td ?? 3,
-          delayBetweenPhotos: dbp ?? 3,
-          photoReviewTime: prt ?? 3,
-        };
-        setAutoCount(newSettings.autoCount);
-        setTimerDelay(newSettings.timerDelay);
-        setDelayBetweenPhotos(newSettings.delayBetweenPhotos);
-        setPhotoReviewTime(newSettings.photoReviewTime);
-        setDelaySettingsLoaded(true);
-
-        // Show toast when settings are loaded from .ptb file
-        if (lastFolderRef.current !== workingFolder) {
-          showToast(
-            'Settings Applied',
-            'info',
-            4000,
-            `Loaded: ${newSettings.autoCount} photos, ${newSettings.timerDelay}s start, ${newSettings.delayBetweenPhotos}s between, ${newSettings.photoReviewTime}s review`
-          );
+      if (ptbCreated) {
+        // New folder — save the user's current settings into it instead of applying defaults
+        const s = currentSettingsRef.current;
+        try {
+          await invoke('save_delay_settings', {
+            folderPath: workingFolder,
+            delaySettings: {
+              autoCount: s.autoCount,
+              timerDelay: s.timerDelay,
+              delayBetweenPhotos: s.delayBetweenPhotos,
+              photoReviewTime: s.photoReviewTime,
+            },
+          });
+          await invoke('save_photobooth_settings', {
+            folderPath: workingFolder,
+            photoboothSettings: {
+              qrUploadEnabled: s.qrUploadEnabled,
+              qrUploadAllImages: s.qrUploadAllImages,
+              photoNamingScheme: s.photoNamingScheme,
+            },
+          });
+          await invoke('save_gif_settings', {
+            folderPath: workingFolder,
+            gifSettings: {
+              autoGifEnabled: s.autoGifEnabled,
+              autoGifFormat: s.autoGifFormat,
+              autoGifPhotoSource: s.autoGifPhotoSource,
+            },
+          });
+        } catch (err) {
+          logger.error('Failed to save settings to new folder:', err);
         }
+        setDelaySettingsLoaded(true);
       } else {
-        // No delay settings in workspace, set defaults
-        setDelaySettingsLoaded(false);
-      }
+        // Existing folder — load and apply its saved settings
+        const workspace = await invoke<any>('load_ptb_workspace', {
+          folderPath: workingFolder,
+        });
 
-      // Load photobooth settings (QR upload, photo naming) from workspace
-      if (workspace.photoboothSettings) {
-        const { qrUploadEnabled, qrUploadAllImages, photoNamingScheme } = workspace.photoboothSettings;
-        setQrUploadEnabled(qrUploadEnabled ?? true);
-        setQrUploadAllImages(qrUploadAllImages ?? false);
-        setPhotoNamingScheme(photoNamingScheme ?? 'IPH_{number}');
-      }
+        if (workspace.delaySettings) {
+          const { autoCount: ac, timerDelay: td, delayBetweenPhotos: dbp, photoReviewTime: prt } = workspace.delaySettings;
+          const newSettings = {
+            autoCount: ac ?? 3,
+            timerDelay: td ?? 3,
+            delayBetweenPhotos: dbp ?? 3,
+            photoReviewTime: prt ?? 3,
+          };
+          setAutoCount(newSettings.autoCount);
+          setTimerDelay(newSettings.timerDelay);
+          setDelayBetweenPhotos(newSettings.delayBetweenPhotos);
+          setPhotoReviewTime(newSettings.photoReviewTime);
+          setDelaySettingsLoaded(true);
 
-      // Load GIF settings from workspace
-      if (workspace.gifSettings) {
-        const { autoGifEnabled, autoGifFormat, autoGifPhotoSource } = workspace.gifSettings;
-        setAutoGifEnabled(autoGifEnabled ?? false);
-        setAutoGifFormat(autoGifFormat ?? 'both');
-        setAutoGifPhotoSource(autoGifPhotoSource ?? 'collage');
+          if (lastFolderRef.current !== workingFolder) {
+            showToast(
+              'Settings Applied',
+              'info',
+              4000,
+              `Loaded: ${newSettings.autoCount} photos, ${newSettings.timerDelay}s start, ${newSettings.delayBetweenPhotos}s between, ${newSettings.photoReviewTime}s review`
+            );
+          }
+        } else {
+          setDelaySettingsLoaded(false);
+        }
+
+        if (workspace.photoboothSettings) {
+          const { qrUploadEnabled, qrUploadAllImages, photoNamingScheme } = workspace.photoboothSettings;
+          setQrUploadEnabled(qrUploadEnabled ?? true);
+          setQrUploadAllImages(qrUploadAllImages ?? false);
+          setPhotoNamingScheme(photoNamingScheme ?? 'IPH_{number}');
+        }
+
+        if (workspace.gifSettings) {
+          const { autoGifEnabled, autoGifFormat, autoGifPhotoSource } = workspace.gifSettings;
+          setAutoGifEnabled(autoGifEnabled ?? false);
+          setAutoGifFormat(autoGifFormat ?? 'both');
+          setAutoGifPhotoSource(autoGifPhotoSource ?? 'collage');
+        }
+
+        // Show sessions-loaded toast only when no settings toast was shown
+        if (lastFolderRef.current !== workingFolder && !workspace.delaySettings) {
+          const sessionCount = sessionList.length;
+          showToast(`${sessionCount} session${sessionCount !== 1 ? 's' : ''} loaded`, 'info', 3000);
+        }
       }
 
       // If no sessions exist, create one automatically
@@ -233,15 +284,9 @@ export function PhotoboothSessionProvider({ children }: { children: ReactNode })
         return;
       }
 
-      // Show toast based on whether ptb was created or loaded
+      // Show toast for new workspace (settings toast for existing folders is shown above)
       if (ptbCreated) {
         showToast('New workspace created', 'success', 3000, 'Ready to start capturing photos');
-      } else {
-        // Only show "loaded" toast if folder actually changed and we haven't shown settings toast
-        if (lastFolderRef.current !== workingFolder && !workspace.delaySettings) {
-          const sessionCount = sessionList.length;
-          showToast(`${sessionCount} session${sessionCount !== 1 ? 's' : ''} loaded`, 'info', 3000);
-        }
       }
       lastFolderRef.current = workingFolder;
 
@@ -268,6 +313,9 @@ export function PhotoboothSessionProvider({ children }: { children: ReactNode })
       }
     } catch (error) {
       logger.error('Failed to refresh sessions:', error);
+      const msg = typeof error === 'string' ? error : (error instanceof Error ? error.message : 'Unknown error');
+      showToast('Failed to load workspace', 'error', 10000, msg);
+      setWorkingFolder(null);
     } finally {
       setIsLoadingSessions(false);
     }

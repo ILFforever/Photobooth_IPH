@@ -16,8 +16,8 @@ interface UseImagePlacementProps {
   zone: FrameZone;
   placedImage: PlacedImage | undefined;
   updatePlacedImage: (zoneId: string, updates: Partial<PlacedImage>) => void;
-  imageRef: RefObject<HTMLImageElement>;
-  transformContainerRef: RefObject<HTMLDivElement>;
+  imageRef: RefObject<HTMLImageElement | null>;
+  transformContainerRef: RefObject<HTMLDivElement | null>;
   canvasZoom: number;
   canvasWidth: number | undefined;
 }

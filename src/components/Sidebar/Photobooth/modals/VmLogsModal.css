@@ -1,0 +1,372 @@
+/**
+ * VmLogsModal.css
+ *
+ * Styles for the VM status LED indicator and VM logs modal.
+ * Relies on tokens.css and reset.css loaded globally via App.tsx.
+ */
+
+/* ========================================
+ * VM Status LED
+ * ======================================== */
+
+.vm-status-led {
+  position: relative;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #333;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: transform var(--transition-base);
+  align-self: center;
+  margin-top: var(--spacing-xs);
+}
+
+.vm-status-led:hover  { transform: scale(1.15); }
+.vm-status-led:active { transform: scale(0.95); }
+
+.vm-status-led-inner {
+  position: absolute;
+  inset: 2px;
+  border-radius: 50%;
+  background: #444;
+  transition:
+    background  var(--transition-slow),
+    box-shadow  var(--transition-slow),
+    opacity     var(--transition-slow);
+}
+
+/* Offline — solid red */
+.vm-status-led.offline .vm-status-led-inner {
+  background: #ef4444;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.6);
+}
+
+/* Idle (no camera) — solid green */
+.vm-status-led.idle .vm-status-led-inner {
+  background: #22c55e;
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
+}
+
+/* Connecting — solid yellow */
+.vm-status-led.connecting .vm-status-led-inner {
+  background: var(--accent-yellow);
+  box-shadow: 0 0 8px rgba(234, 179, 8, 0.6);
+}
+
+/* Connection failed — blinking red */
+.vm-status-led.connection-failed .vm-status-led-inner {
+  background: #ef4444;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.6);
+  animation: blink-red 0.5s ease-in-out 3;
+}
+
+@keyframes blink-red {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
+}
+
+/* Camera connected — slowly pulsing green */
+.vm-status-led.camera-connected .vm-status-led-inner {
+  background: #22c55e;
+  box-shadow: 0 0 12px rgba(34, 197, 94, 0.5);
+  animation: pulse-green 6s ease-in-out infinite;
+}
+
+@keyframes pulse-green {
+  0%, 100% {
+    box-shadow: 0 0 4px rgba(34, 197, 94, 0.3);
+    opacity: 0;
+  }
+  50% {
+    box-shadow: 0 0 6px rgba(34, 197, 94, 0.5);
+    opacity: 1;
+  }
+}
+
+/* Downloading photo — fast pulsing blue */
+.vm-status-led.downloading .vm-status-led-inner {
+  background: #3b82f6;
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.6);
+  animation: pulse-blue 0.25s ease-in-out infinite;
+}
+
+@keyframes pulse-blue {
+  0%, 100% {
+    box-shadow: 0 0 8px rgba(59, 130, 246, 0.5);
+    opacity: 0;
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(59, 130, 246, 1);
+    opacity: 1;
+  }
+}
+
+/* Online (legacy) */
+.vm-status-led.online .vm-status-led-inner {
+  background: #22c55e;
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
+}
+
+/* ========================================
+ * VM Logs Modal
+ * ======================================== */
+
+.vm-logs-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  animation: fadeIn var(--transition-base);
+}
+
+.vm-logs-modal {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xl);
+  max-width: 800px;
+  width: 90%;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-xl);
+  animation: slideUp var(--transition-normal);
+}
+
+.vm-logs-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-lg) var(--spacing-xl);
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+}
+
+.vm-logs-modal-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--text-xl);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.vm-logs-status-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #444;
+}
+
+.vm-logs-status-indicator.online {
+  background: #22c55e;
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.6);
+}
+
+.vm-logs-status-indicator.offline {
+  background: #ef4444;
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.6);
+}
+
+.vm-logs-modal-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: var(--spacing-xs);
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-base);
+}
+
+.vm-logs-modal-close:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.vm-logs-modal-body {
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.vm-logs-content {
+  padding: var(--spacing-lg) var(--spacing-xl);
+  overflow-y: auto;
+  max-height: 60vh;
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.vm-logs-entry {
+  padding: var(--spacing-xs) 0;
+  border-bottom: 1px solid var(--bg-tertiary);
+}
+
+.vm-logs-entry:last-child { border-bottom: none; }
+
+.vm-logs-timestamp {
+  color: var(--text-muted);
+  margin-right: var(--spacing-sm);
+}
+
+.vm-logs-message                    { color: var(--text-secondary); }
+.vm-logs-message.error              { color: var(--color-error); }
+.vm-logs-message.warning            { color: var(--color-warning); }
+.vm-logs-message.info               { color: var(--color-info); }
+.vm-logs-message.success            { color: #22c55e; }
+.vm-logs-message.has-error          { color: var(--color-error) !important; font-weight: var(--font-medium); }
+.vm-logs-message.get-request        { color: #a855f7; font-weight: var(--font-medium); }
+.vm-logs-message.connection-log     { color: #22c55e; font-weight: var(--font-medium); }
+.vm-logs-message.controller-received   { color: #fbbf24; font-weight: var(--font-medium); }
+.vm-logs-message.controller-downloaded { color: #06b6d4; font-weight: var(--font-medium); }
+.vm-logs-message.controller-emitted    { color: var(--accent-orange); font-weight: var(--font-medium); }
+.vm-logs-message.controller-deleted    { color: var(--color-error); font-weight: var(--font-medium); }
+
+.vm-logs-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-md) var(--spacing-xl);
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  border-radius: 0 0 var(--radius-xl) var(--radius-xl);
+}
+
+.vm-logs-status-text {
+  font-size: var(--text-base);
+  color: var(--text-secondary);
+}
+
+.vm-logs-footer-buttons {
+  display: flex;
+  gap: var(--spacing-sm);
+}
+
+/* Refresh button */
+.vm-logs-refresh-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px var(--spacing-md);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  font-weight: var(--font-medium);
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.vm-logs-refresh-btn:hover {
+  background: var(--accent-blue);
+  border-color: var(--accent-blue);
+  color: white;
+}
+
+.vm-logs-refresh-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.vm-logs-refresh-btn.spinning svg { animation: spin 1s linear infinite; }
+
+/* LED info button */
+.vm-logs-led-info-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px var(--spacing-md);
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: var(--radius-md);
+  color: #3b82f6;
+  font-size: var(--text-base);
+  font-weight: var(--font-medium);
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.vm-logs-led-info-btn:hover {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: rgba(59, 130, 246, 0.4);
+}
+
+/* Restart button */
+.vm-logs-restart-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px var(--spacing-md);
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius-md);
+  color: var(--color-error);
+  font-size: var(--text-base);
+  font-weight: var(--font-medium);
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.vm-logs-restart-btn:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.vm-logs-restart-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.vm-logs-restart-btn.spinning svg { animation: spin 1s linear infinite; }
+
+/* Empty / error states */
+.vm-logs-empty,
+.vm-logs-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px var(--spacing-xl);
+  font-size: var(--text-md);
+  gap: var(--spacing-sm);
+}
+
+.vm-logs-empty { color: var(--text-muted); }
+.vm-logs-error { color: var(--color-error); }
+
+/* Restart-VM confirm modal stacks above VM logs modal */
+.restart-vm-confirm-modal > .modal-backdrop {
+  z-index: 10001 !important;
+}
+
+/* ========================================
+ * Keyframes
+ * ======================================== */
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}

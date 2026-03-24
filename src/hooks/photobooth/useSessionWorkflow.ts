@@ -31,7 +31,7 @@ interface UseSessionWorkflowParams {
   account: any;
   enqueuePhotos: (sessionId: string, photos: Array<{ filename: string; localPath: string }>, driveFolderId: string) => Promise<void>;
   currentSetPhotos: CurrentSetPhoto[];
-  selectedPhotos: Set<string>;
+  selectedPhotos: string[];
   placedImages: Map<string, PlacedImage>;
   setPlacedImages: (images: Map<string, PlacedImage>) => void;
   setFinalizeViewMode: (mode: 'capture' | 'finalize') => void;
@@ -148,16 +148,20 @@ export function useSessionWorkflow({
 
       // Clear current photos for the new session
       setCurrentSetPhotos([]);
+
+      // Auto-select center stage mode for new session
+      setDisplayMode('center');
+      updateDisplayMode('center');
     } catch (error) {
       logger.error('[PhotoboothWorkspace] Error creating next session:', error);
     }
-  }, [workingFolder, sessions, createNewSession, loadSession, setCurrentSetPhotos]);
+  }, [workingFolder, sessions, createNewSession, loadSession, setCurrentSetPhotos, setDisplayMode, updateDisplayMode]);
 
   // Handler for finalizing current session — switch to finalize view
   const handleFinalizeSession = useCallback(async () => {
     setFinalizeViewMode('finalize');
-    // Store current display mode and switch guest display to finalize mode
-    setPreviousDisplayMode(displayMode);
+    // Always return to center stage mode after finalize
+    setPreviousDisplayMode('center');
     setDisplayMode('finalize');
 
     // Generate QR code from session's Drive folder link if available
@@ -185,7 +189,7 @@ export function useSessionWorkflow({
         if (qrUploadAllImages) {
           // Upload all photos from current session
           logger.debug('[PhotoboothWorkspace::handleFinalizeSession] Uploading all session photos to Drive');
-          photoFilenames = currentSetPhotos.map(photo => photo.id);
+          photoFilenames = currentSetPhotos.map(photo => photo.filename);
         } else {
           // Upload only selected photos
           logger.debug('[PhotoboothWorkspace::handleFinalizeSession] Uploading selected photos to Drive');
@@ -200,10 +204,10 @@ export function useSessionWorkflow({
                 return parts[parts.length - 1];
               })
               .filter(Boolean);
-          } else if (selectedPhotos.size > 0) {
-            // Use selected photos from photo strip
-            const selectedPhotosList = currentSetPhotos.filter(p => selectedPhotos.has(p.id));
-            photoFilenames = selectedPhotosList.map(photo => photo.id);
+          } else if (selectedPhotos.length > 0) {
+            // Use selected photos from photo strip (preserving click order)
+            const selectedPhotosList = selectedPhotos.map(id => currentSetPhotos.find(p => p.id === id)).filter(Boolean) as CurrentSetPhoto[];
+            photoFilenames = selectedPhotosList.map(photo => photo.filename);
           }
         }
 

@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { type PhotoDownloadedEvent } from '../../services/cameraWebSocket';
 import type { PhotoboothSession, PhotoboothSessionInfo } from '../../contexts/photobooth/PhotoboothSettingsContext';
@@ -9,6 +9,29 @@ import { useToast } from '../../contexts';
 const logger = createLogger('PhotoboothWorkspace');
 
 const DAEMON_URL = 'http://localhost:58321';
+
+// Check if file is a RAW image format
+function isRawFile(filename: string): boolean {
+  const lowerName = filename.toLowerCase();
+  const rawExtensions = [
+    '.cr2', '.cr3', // Canon
+    '.nef', '.nrw', // Nikon
+    '.arw', // Sony
+    '.dng', // Adobe
+    '.raf', // Fujifilm
+    '.orf', // Olympus
+    '.pef', // Pentax
+    '.rw2', // Panasonic
+    '.raw', '.rw', // Generic
+    '.sr2', '.srf', // Sony older
+    '.mrw', // Minolta
+    '.3fr', // Hasselblad
+    '.erf', // Epson
+    '.mos', // Leaf
+    '.iiq', // Phase One
+  ];
+  return rawExtensions.some(ext => lowerName.endsWith(ext));
+}
 
 function getNextSessionNumber(sessions: PhotoboothSessionInfo[]): number {
   if (sessions.length === 0) return 1;
@@ -79,18 +102,23 @@ export function usePhotoDownloadHandler({
   removePhotoDownloadedListener,
 }: UsePhotoDownloadHandlerParams) {
   const { showToast } = useToast();
-
-  // Handle photo_downloaded events from WebSocket
   const handlePhotoDownloaded = useCallback(async (event: PhotoDownloadedEvent) => {
     logger.debug('[PhotoboothWorkspace::handlePhotoDownloaded] START');
     logger.debug('[PhotoboothWorkspace::handlePhotoDownloaded] event:', event);
 
-    // Immediately advance the sequence state machine (adds placeholder + moves to review/next)
-    // This decouples state progression from the slower download pipeline
-    sequenceNotifyCaptureComplete();
-
     const filename = event.file_path.split('/').pop() || event.file_path;
     logger.debug('[PhotoboothWorkspace::handlePhotoDownloaded] extracted filename:', filename);
+
+    // Skip RAW files (camera is likely set to RAW + JPEG mode)
+    if (isRawFile(filename)) {
+      logger.debug('[PhotoboothWorkspace::handlePhotoDownloaded] Skipping RAW file:', filename);
+      showToast('RAW File Detected', 'warning', 5000, 'Camera is set to RAW + JPEG mode. Please set camera to JPEG only for faster photobooth operation.');
+      return;
+    }
+
+    // Immediately advance the sequence state machine (adds placeholder + moves to review/next)
+    // This decouples state progression from slower download pipeline
+    sequenceNotifyCaptureComplete();
 
     if (!workingFolder) {
       // Show warning toast if working folder is not set
@@ -180,8 +208,10 @@ export function usePhotoDownloadHandler({
       }
 
       // Create new photo entry for current set
+      // Use timestamp + filename to create unique ID (prevents duplicate key errors when photos are deleted and re-taken)
       const newPhoto: CurrentSetPhoto = {
-        id: customFilename,
+        id: `${Date.now()}-${customFilename}`,
+        filename: customFilename, // Actual filename for file operations
         thumbnailUrl: photoUrl, // Use full-res for display quality
         fullUrl: photoUrl,
         timestamp: new Date().toLocaleTimeString(),

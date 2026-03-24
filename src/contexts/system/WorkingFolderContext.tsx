@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { WorkingImage } from '../../types/assets';
 
 interface WorkingFolderContextType {
@@ -15,7 +15,7 @@ interface WorkingFolderContextType {
   skeletonCount: number;
   setSkeletonCount: (count: number) => void;
   refreshTrigger: number;
-  setRefreshTrigger: (trigger: number) => void;
+  setRefreshTrigger: React.Dispatch<React.SetStateAction<number>>;
 }
 
 const WorkingFolderContext = createContext<WorkingFolderContextType | undefined>(undefined);
