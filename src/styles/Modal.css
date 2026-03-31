@@ -18,8 +18,8 @@
   justify-content: center;
   z-index: 2000;
   padding: 20px;
-  overflow: hidden;
-  touch-action: none;
+  overflow: auto;
+  touch-action: pan-y;
 }
 
 .modal-content {
@@ -162,4 +162,95 @@
 .cached-account-ghost-btn:hover {
   border-color: var(--text-muted);
   color: var(--text-primary);
+}
+
+/* ConfirmDialog — shared modal structure */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.modal {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+  min-width: 360px;
+  max-width: 480px;
+  width: 100%;
+}
+
+.confirm-dialog {
+  overflow: hidden;
+}
+
+.modal-header {
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.modal-body {
+  padding: 16px 24px;
+}
+
+.modal-body p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 24px 20px;
+}
+
+.button {
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s ease;
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.button-secondary {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+
+.button-secondary:hover:not(:disabled) {
+  background: var(--bg-primary);
+  border-color: var(--text-muted);
+}
+
+.button-danger {
+  background: #e81123;
+  color: white;
+}
+
+.button-danger:hover:not(:disabled) {
+  background: #c50f1f;
 }

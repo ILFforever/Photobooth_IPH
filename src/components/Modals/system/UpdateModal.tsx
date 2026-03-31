@@ -1,7 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Download, Loader2, AlertCircle, Package, CheckCircle2, Info, Monitor, HardDrive } from 'lucide-react';
 import type { UpdateDownloadProgress, VersionStatus } from '../../../types/updates';
 import { useToast } from '../../../contexts';
@@ -276,6 +276,8 @@ interface UpdateCardProps {
   onRetry: () => void;
 }
 
+const NOTES_LIMIT = 5;
+
 function UpdateCard({
   type,
   data,
@@ -288,6 +290,14 @@ function UpdateCard({
   onRetry,
 }: UpdateCardProps) {
   const isMsi = type === 'msi';
+  const [notesExpanded, setNotesExpanded] = useState(false);
+  const prevStateRef = useRef(state);
+  useEffect(() => {
+    if (prevStateRef.current !== state) {
+      prevStateRef.current = state;
+      setNotesExpanded(false);
+    }
+  }, [state]);
   const icon = isMsi ? <HardDrive size={20} /> : <Monitor size={20} />;
   const name = isMsi ? 'App' : 'VM';
 
@@ -322,10 +332,15 @@ function UpdateCard({
           {data.release_notes.length > 0 && (
             <div className="update-card-notes">
               <ul>
-                {data.release_notes.map((note, idx) => (
+                {(notesExpanded ? data.release_notes : data.release_notes.slice(0, NOTES_LIMIT)).map((note, idx) => (
                   <li key={idx}>{note}</li>
                 ))}
               </ul>
+              {data.release_notes.length > NOTES_LIMIT && (
+                <button className="update-notes-toggle" onClick={() => setNotesExpanded(e => !e)}>
+                  {notesExpanded ? 'Show less' : `+${data.release_notes.length - NOTES_LIMIT} more`}
+                </button>
+              )}
             </div>
           )}
           <div className={`update-card-warning ${isMsi ? 'warning-msi' : 'warning-vm'}`}>

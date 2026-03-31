@@ -395,6 +395,7 @@ export function PhotoboothProvider({ children }: { children: ReactNode }) {
 
           ctx.save();
           ctx.globalAlpha = t.opacity ?? 1;
+          ctx.globalCompositeOperation = layer.blendMode as GlobalCompositeOperation;
           ctx.translate((t.x ?? 0) + bitmap.width / 2, (t.y ?? 0) + bitmap.height / 2);
           ctx.rotate(((t.rotation ?? 0) * Math.PI) / 180);
           ctx.scale(
@@ -414,6 +415,7 @@ export function PhotoboothProvider({ children }: { children: ReactNode }) {
 
           ctx.save();
           ctx.globalAlpha = t.opacity ?? 1;
+          ctx.globalCompositeOperation = layer.blendMode as GlobalCompositeOperation;
           ctx.translate((t.x ?? 0) + bitmap.width / 2, (t.y ?? 0) + bitmap.height / 2);
           ctx.rotate(((t.rotation ?? 0) * Math.PI) / 180);
           ctx.scale(

@@ -66,14 +66,16 @@ export function calculateZoneDragSnap(
 
   const zoneCenterX = rawX + zoneWidth / 2;
   const zoneCenterY = rawY + zoneHeight / 2;
+  const zoneRightEdge = rawX + zoneWidth;
+  const zoneBottomEdge = rawY + zoneHeight;
 
   const snappedCenterX = applySnap(zoneCenterX, centerX, snapThreshold);
   const snappedCenterY = applySnap(zoneCenterY, centerY, snapThreshold);
 
   const snappedLeft = applySnap(rawX, 0, snapThreshold);
-  const snappedRight = applySnap(rawX + zoneWidth, frameWidth, snapThreshold);
+  const snappedRight = applySnap(zoneRightEdge, frameWidth, snapThreshold);
   const snappedTop = applySnap(rawY, 0, snapThreshold);
-  const snappedBottom = applySnap(rawY + zoneHeight, frameHeight, snapThreshold);
+  const snappedBottom = applySnap(zoneBottomEdge, frameHeight, snapThreshold);
 
   const snapToCenterX = snappedCenterX === centerX;
   const snapToCenterY = snappedCenterY === centerY;
@@ -85,28 +87,46 @@ export function calculateZoneDragSnap(
   let finalX = rawX;
   let finalY = rawY;
 
-  if (snapToCenterX) {
+  const distToLeft = Math.abs(rawX);
+  const distToRight = Math.abs(zoneRightEdge - frameWidth);
+  const distToCenterX = Math.abs(zoneCenterX - centerX);
+  // Suppress center snap if an edge is nearby — edge takes priority when closer than center
+  const edgeNearX = distToLeft < distToCenterX || distToRight < distToCenterX;
+  const useCenterX = snapToCenterX && !edgeNearX;
+
+  if (useCenterX) {
     finalX = snappedCenterX - zoneWidth / 2;
+  } else if (snapToLeft && snapToRight) {
+    finalX = distToLeft <= distToRight ? snappedLeft : snappedRight - zoneWidth;
   } else if (snapToLeft) {
     finalX = snappedLeft;
   } else if (snapToRight) {
     finalX = snappedRight - zoneWidth;
   }
 
-  if (snapToCenterY) {
+  const distToTop = Math.abs(rawY);
+  const distToBottom = Math.abs(zoneBottomEdge - frameHeight);
+  const distToCenterY = Math.abs(zoneCenterY - centerY);
+  const edgeNearY = distToTop < distToCenterY || distToBottom < distToCenterY;
+  const useCenterY = snapToCenterY && !edgeNearY;
+
+  if (useCenterY) {
     finalY = snappedCenterY - zoneHeight / 2;
+  } else if (snapToTop && snapToBottom) {
+    finalY = distToTop <= distToBottom ? snappedTop : snappedBottom - zoneHeight;
   } else if (snapToTop) {
     finalY = snappedTop;
   } else if (snapToBottom) {
     finalY = snappedBottom - zoneHeight;
   }
 
+
   return {
     finalX,
     finalY,
     guides: {
-      centerH: snapToCenterX,
-      centerV: snapToCenterY,
+      centerH: useCenterX,
+      centerV: useCenterY,
       left: snapToLeft,
       right: snapToRight,
       top: snapToTop,

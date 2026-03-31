@@ -854,6 +854,7 @@ function FinalizeOverlay({ layer, zIndex }: { layer: any; zIndex: number }) {
           scaleY(${t.flipVertical ? -1 : 1})
         `,
         opacity: t.opacity ?? 1,
+        mixBlendMode: (layer.blendMode ?? 'normal') as any,
         zIndex,
         pointerEvents: "none",
       }}

@@ -68,20 +68,25 @@ export function OverlayLayer({ layer, isSelected, canvasWidth, canvasHeight, zIn
         let newX = transformStartRef.current.x + deltaX;
         let newY = transformStartRef.current.y + deltaY;
 
-        // Snap to center horizontally (assuming overlay's visual center is at its position + canvas/2)
-        const overlayCenterX = newX + canvasWidth / 2;
+        // Get overlay dimensions in canvas pixels
+        const overlayEl = overlayRef.current;
+        const overlayWidth = overlayEl ? overlayEl.offsetWidth / displayScale : 0;
+        const overlayHeight = overlayEl ? overlayEl.offsetHeight / displayScale : 0;
+
+        // Overlay visual center = its top-left offset + half its size + translate
+        const overlayCenterX = overlayWidth / 2 + newX;
         const canvasCenterX = canvasWidth / 2;
         const snapToCenterH = Math.abs(overlayCenterX - canvasCenterX) < SNAP_THRESHOLD;
         if (snapToCenterH) {
-          newX = 0; // Center overlay horizontally
+          newX = canvasWidth / 2 - overlayWidth / 2; // Center overlay horizontally
         }
 
         // Snap to center vertically
-        const overlayCenterY = newY + canvasHeight / 2;
+        const overlayCenterY = overlayHeight / 2 + newY;
         const canvasCenterY = canvasHeight / 2;
         const snapToCenterV = Math.abs(overlayCenterY - canvasCenterY) < SNAP_THRESHOLD;
         if (snapToCenterV) {
-          newY = 0; // Center overlay vertically
+          newY = canvasHeight / 2 - overlayHeight / 2; // Center overlay vertically
         }
 
         // Update snap guides

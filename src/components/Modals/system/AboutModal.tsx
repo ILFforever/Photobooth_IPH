@@ -159,7 +159,7 @@ export default function AboutModal({
           </div>
 
           <div style={{ marginBottom: '1rem', lineHeight: '1.6', color: 'var(--text-secondary)' }}>
-            <div style={{ background: 'var(--bg-primary)', padding: '0.5rem', borderRadius: '8px', marginTop: '0.5rem' }}>
+            <div style={{ background: 'var(--bg-primary)', padding: '0.5rem', borderRadius: '8px', marginTop: '0.5rem', overflowY: 'auto', maxHeight: '45vh', scrollbarWidth: 'none' }}>
               <div style={{ display: 'flex', gap: '1rem', borderBottom: '1px solid var(--border-color)', marginBottom: '0.5rem', position: 'relative', paddingBottom: '0.25rem' }}>
                 {(['features', 'modes', 'tech', 'versions', 'contact'] as AboutTab[]).map((tab) => (
                   <button

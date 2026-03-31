@@ -31,6 +31,7 @@ export function useZoneEditing({
   zone,
   frameWidth,
   frameHeight,
+  isSelected,
   onSelect,
   onUpdate,
   scale,
@@ -120,7 +121,7 @@ export function useZoneEditing({
         setSnapGuides(EMPTY_SNAP_GUIDES);
 
         // Scale snap threshold by zoom level to keep snap distance consistent in screen pixels
-        const adjustedSnapThreshold = SNAP_THRESHOLD * currentZoomScale;
+        const adjustedSnapThreshold = SNAP_THRESHOLD / currentZoomScale;
 
         switch (isResizing) {
           case "resize-e": {
@@ -240,6 +241,46 @@ export function useZoneEditing({
       };
     }
   }, [isDragging, isResizing, dragStart, zoneStart, zone, scale, snapEnabled, frameWidth, frameHeight, onUpdate]);
+
+  useEffect(() => {
+    if (!isSelected) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const ARROW_KEYS = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
+      if (!ARROW_KEYS.includes(e.key)) return;
+
+      e.preventDefault();
+      const step = e.shiftKey ? 10 : 1;
+
+      const delta = {
+        ArrowUp:    { x: 0, y: -step },
+        ArrowDown:  { x: 0, y:  step },
+        ArrowLeft:  { x: -step, y: 0 },
+        ArrowRight: { x:  step, y: 0 },
+      }[e.key]!;
+
+      const newX = Math.round(zone.x + delta.x);
+      const newY = Math.round(zone.y + delta.y);
+      onUpdate({ x: newX, y: newY });
+
+      // Show center guide only when exactly aligned (within 1px after rounding)
+      const centerH = Math.abs((newX + zone.width / 2) - frameWidth / 2) <= 1;
+      const centerV = Math.abs((newY + zone.height / 2) - frameHeight / 2) <= 1;
+      setSnapGuides({ ...EMPTY_SNAP_GUIDES, centerH, centerV });
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      const ARROW_KEYS = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
+      if (ARROW_KEYS.includes(e.key)) setSnapGuides(EMPTY_SNAP_GUIDES);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
+  }, [isSelected, zone.x, zone.y, zone.width, zone.height, frameWidth, frameHeight, onUpdate]);
 
   return { isDragging, isResizing, snapGuides, handleMouseDown };
 }

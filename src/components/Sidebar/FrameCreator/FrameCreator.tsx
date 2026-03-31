@@ -353,6 +353,18 @@ function FrameCreator() {
         logger.debug('Zone pasted:', newZone);
       }
 
+      // S to toggle snapping
+      if (e.key === 's' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        setSnapEnabled(!snapEnabled);
+      }
+
+      // H to toggle overlay visibility
+      if (e.key === 'h' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        setShowAllOverlays(!showAllOverlays);
+      }
+
       // Delete or Backspace to delete selected zone
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedZoneIndex !== null && zones.length > 0) {
         e.preventDefault();
@@ -385,6 +397,10 @@ function FrameCreator() {
     getNextZoneId,
     newFrameName,
     setShowSaveDialog,
+    snapEnabled,
+    setSnapEnabled,
+    showAllOverlays,
+    setShowAllOverlays,
   ]);
 
   // Add a new zone
@@ -729,9 +745,10 @@ function FrameCreator() {
           {/* Keyboard Shortcuts Hint */}
           <div className="frame-shortcuts-hint">
             <p>Shortcuts:</p>
-            <p>Ctrl+C - Copy zone</p>
-            <p>Ctrl+V - Paste zone</p>
+            <p>Ctrl+C / Ctrl+V - Copy / Paste</p>
             <p>Del - Delete zone</p>
+            <p>↑ ↓ ← → / Shift - Nudge 1px / 10px</p>
+            <p>S / H - Snapping / Overlays</p>
           </div>
         </div>
       </div>

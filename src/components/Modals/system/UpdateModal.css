@@ -167,6 +167,22 @@
   padding-top: 0;
 }
 
+.update-notes-toggle {
+  display: block;
+  margin-top: 6px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--accent-blue);
+  font-size: 12px;
+  cursor: pointer;
+  width: auto;
+}
+
+.update-notes-toggle:hover {
+  text-decoration: underline;
+}
+
 /* Warning in card */
 .update-card-warning {
   display: flex;

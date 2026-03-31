@@ -39,6 +39,7 @@ export function OverlayPropertiesPanel({ overlay }: OverlayPropertiesPanelProps)
   const { updateOverlay, toggleOverlayVisibility } = useCollage();
   const [blendOpen, setBlendOpen] = useState(false);
   const blendRef = useRef<HTMLDivElement>(null);
+  const previewBlendModeRef = useRef<BlendMode | null>(null);
   const [editName, setEditName] = useState(overlay.name);
   const nameRef = useRef<HTMLInputElement>(null);
 
@@ -232,12 +233,27 @@ export function OverlayPropertiesPanel({ overlay }: OverlayPropertiesPanelProps)
               <Icon path={mdiChevronDown} size={0.55} />
             </button>
             {blendOpen && (
-              <div className="props-dropdown-menu">
+              <div
+                className="props-dropdown-menu"
+                onMouseLeave={() => {
+                  if (previewBlendModeRef.current !== null) {
+                    updateOverlay(overlay.id, { blendMode: previewBlendModeRef.current });
+                    previewBlendModeRef.current = null;
+                  }
+                }}
+              >
                 {BLEND_MODES.map((mode) => (
                   <button
                     key={mode.value}
                     className={`props-dropdown-item ${overlay.blendMode === mode.value ? 'active' : ''}`}
+                    onMouseEnter={() => {
+                      if (previewBlendModeRef.current === null) {
+                        previewBlendModeRef.current = overlay.blendMode;
+                      }
+                      updateOverlay(overlay.id, { blendMode: mode.value });
+                    }}
                     onClick={() => {
+                      previewBlendModeRef.current = null;
                       updateOverlay(overlay.id, { blendMode: mode.value });
                       setBlendOpen(false);
                     }}

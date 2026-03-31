@@ -329,6 +329,7 @@ export function CollageProvider({ children }: { children: ReactNode }) {
           const t = layer.transform;
           ctx.save();
           ctx.globalAlpha = t.opacity ?? 1;
+          ctx.globalCompositeOperation = layer.blendMode as GlobalCompositeOperation;
           ctx.translate((t.x ?? 0) + bitmap.width / 2, (t.y ?? 0) + bitmap.height / 2);
           ctx.rotate(((t.rotation ?? 0) * Math.PI) / 180);
           ctx.scale((t.scale ?? 1) * (t.flipHorizontal ? -1 : 1), (t.scale ?? 1) * (t.flipVertical ? -1 : 1));
@@ -357,6 +358,7 @@ export function CollageProvider({ children }: { children: ReactNode }) {
           const t = layer.transform;
           ctx.save();
           ctx.globalAlpha = t.opacity ?? 1;
+          ctx.globalCompositeOperation = layer.blendMode as GlobalCompositeOperation;
           ctx.translate((t.x ?? 0) + bitmap.width / 2, (t.y ?? 0) + bitmap.height / 2);
           ctx.rotate(((t.rotation ?? 0) * Math.PI) / 180);
           ctx.scale((t.scale ?? 1) * (t.flipHorizontal ? -1 : 1), (t.scale ?? 1) * (t.flipVertical ? -1 : 1));
@@ -517,6 +519,7 @@ export function CollageProvider({ children }: { children: ReactNode }) {
         const t = layer.transform;
         ctx!.save();
         ctx!.globalAlpha = t.opacity ?? 1;
+        ctx!.globalCompositeOperation = layer.blendMode as GlobalCompositeOperation;
         ctx!.translate((t.x ?? 0) + bitmap.width / 2, (t.y ?? 0) + bitmap.height / 2);
         ctx!.rotate(((t.rotation ?? 0) * Math.PI) / 180);
         ctx!.scale((t.scale ?? 1) * (t.flipHorizontal ? -1 : 1), (t.scale ?? 1) * (t.flipVertical ? -1 : 1));

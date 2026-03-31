@@ -281,7 +281,7 @@
   cursor: not-allowed;
 }
 
-.vm-logs-refresh-btn.spinning svg { animation: spin 1s linear infinite; }
+.vm-logs-refresh-btn .spinning { animation: spin 0.5s linear infinite; }
 
 /* LED info button */
 .vm-logs-led-info-btn {
@@ -330,7 +330,7 @@
   cursor: not-allowed;
 }
 
-.vm-logs-restart-btn.spinning svg { animation: spin 1s linear infinite; }
+.vm-logs-restart-btn .spinning { animation: spin 1s linear infinite; }
 
 /* Empty / error states */
 .vm-logs-empty,

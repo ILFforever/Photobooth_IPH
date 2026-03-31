@@ -509,7 +509,10 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
 
       <LedInfoModal
         show={showLedInfoModal}
-        onClose={() => setShowLedInfoModal(false)}
+        onClose={() => {
+          setShowLedInfoModal(false);
+          vmLogs.setShowVmLogs(true);
+        }}
       />
 
       <div className="restart-vm-confirm-modal">

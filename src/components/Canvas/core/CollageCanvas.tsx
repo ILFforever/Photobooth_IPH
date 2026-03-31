@@ -292,11 +292,6 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
             const targetPointY = canvasMiddleY + targetOffsetY;
             const newScrollTop = targetPointY - viewportMiddleY;
 
-            logger.debug("=== Zoom-to-Point ===");
-            logger.debug("zoomCenter:", zoomCenter);
-            logger.debug("canvasMiddleY:", canvasMiddleY, "targetOffsetY:", targetOffsetY);
-            logger.debug("currentScrollTop:", currentScrollTop, "newScrollTop:", newScrollTop);
-            logger.debug("====================");
 
             scrollableParent.scrollTo({
               left: currentScrollLeft,
@@ -515,8 +510,8 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
                     key={zone.id}
                     zone={zone}
                     zIndex={40 + index}
-                    frameWidth={currentFrame.width}
-                    frameHeight={currentFrame.height}
+                    frameWidth={width ?? currentFrame.width}
+                    frameHeight={height ?? currentFrame.height}
                     isSelected={selectedZone === zone.id}
                     onSelect={() => setSelectedZone(zone.id)}
                     onUpdate={(updates) => {

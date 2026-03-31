@@ -29,11 +29,26 @@ export function VmLogsModal({
   onShowLedInfo,
 }: VmLogsModalProps) {
   const logsContentRef = useRef<HTMLDivElement>(null);
+  const isAtBottomRef = useRef(true);
+  const prevShowRef = useRef(false);
 
-  // Scroll to bottom when modal opens or logs update
+  const handleLogsScroll = () => {
+    const el = logsContentRef.current;
+    if (!el) return;
+    isAtBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+  };
+
+  // On open: always scroll to bottom. On log updates: only scroll if user is at bottom.
   useEffect(() => {
-    if (show && logsContentRef.current) {
-      logsContentRef.current.scrollTop = logsContentRef.current.scrollHeight;
+    const el = logsContentRef.current;
+    if (!el || !show) return;
+    const justOpened = !prevShowRef.current;
+    prevShowRef.current = show;
+    if (justOpened) {
+      isAtBottomRef.current = true;
+    }
+    if (isAtBottomRef.current) {
+      el.scrollTop = el.scrollHeight;
     }
   }, [show, vmLogs]);
 
@@ -62,7 +77,7 @@ export function VmLogsModal({
           ) : vmLogs.length === 0 ? (
             <div className="vm-logs-empty">No logs available</div>
           ) : (
-            <div className="vm-logs-content" ref={logsContentRef}>
+            <div className="vm-logs-content" ref={logsContentRef} onScroll={handleLogsScroll}>
               {vmLogs.map((log, index) => (
                 <div key={index} className="vm-logs-entry">
                   {log.timestamp && <span className="vm-logs-timestamp">{log.timestamp}</span>}
@@ -88,20 +103,20 @@ export function VmLogsModal({
               </button>
             )}
             <button
-              className={`vm-logs-restart-btn ${isRestartingVm ? 'spinning' : ''}`}
+              className="vm-logs-restart-btn"
               onClick={onRestart}
               disabled={isRestartingVm}
               title="Restart VM"
             >
-              <RotateCw size={14} />
+              <RotateCw size={14} className={isRestartingVm ? 'spinning' : ''} />
               {isRestartingVm ? 'Restarting...' : 'Restart VM'}
             </button>
             <button
-              className={`vm-logs-refresh-btn ${isLoadingLogs ? 'spinning' : ''}`}
+              className="vm-logs-refresh-btn"
               onClick={onRefresh}
               disabled={!isVmOnline || isLoadingLogs}
             >
-              <RefreshCw size={14} />
+              <RefreshCw size={14} className={isLoadingLogs ? 'spinning' : ''} />
               Refresh
             </button>
           </div>
