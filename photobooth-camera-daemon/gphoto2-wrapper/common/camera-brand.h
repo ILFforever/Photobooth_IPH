@@ -25,6 +25,7 @@ typedef struct {
     const char *battery;
     const char *serial;
     const char *deviceversion;
+    const char *lens;
 } BrandWidgets;
 
 /* Detect camera brand from a string (model name or manufacturer) */

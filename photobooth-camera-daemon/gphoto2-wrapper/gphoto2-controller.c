@@ -485,23 +485,27 @@ static void send_camera_connected_event(Camera *camera, GPContext *context, int 
         const BrandWidgets *widgets = get_widgets_for_brand(g_current_brand);
         char *serial = get_single_config_value(camera, context, widgets->serial);
         char *deviceversion = get_single_config_value(camera, context, widgets->deviceversion);
+        char *lens = widgets->lens ? get_single_config_value(camera, context, widgets->lens) : NULL;
 
         char event[1024];
         snprintf(event, sizeof(event),
-                "{\"type\":\"camera_connected\",\"camera_id\":\"%d\",\"manufacturer\":\"%s\",\"model\":\"%s\",\"port\":\"%s\",\"usb_version\":\"%s\",\"serial_number\":\"%s\",\"firmware\":\"%s\"}\n",
+                "{\"type\":\"camera_connected\",\"camera_id\":\"%d\",\"manufacturer\":\"%s\",\"model\":\"%s\",\"port\":\"%s\",\"usb_version\":\"%s\",\"serial_number\":\"%s\",\"firmware\":\"%s\",\"lens\":\"%s\"}\n",
                 camera_index, manufacturer, model, port, usb_version,
                 serial ? serial : "",
-                deviceversion ? deviceversion : "");
+                deviceversion ? deviceversion : "",
+                lens ? lens : "");
         ssize_t written = write(g_status_fd, event, strlen(event));
         if (written > 0) {
-            log_ts("controller: Sent camera_connected event: %s %s at %s (USB: %s, Serial: %s, FW: %s)\n",
+            log_ts("controller: Sent camera_connected event: %s %s at %s (USB: %s, Serial: %s, FW: %s, Lens: %s)\n",
                     manufacturer, model, port, usb_version,
                     serial ? serial : "N/A",
-                    deviceversion ? deviceversion : "N/A");
+                    deviceversion ? deviceversion : "N/A",
+                    lens ? lens : "N/A");
         }
 
         if (serial) free(serial);
         if (deviceversion) free(deviceversion);
+        if (lens) free(lens);
     }
 }
 

@@ -15,6 +15,8 @@ pub struct CameraInfo {
     pub serial_number: String,
     #[serde(default)]
     pub firmware: String,
+    #[serde(default)]
+    pub lens: String,
 }
 
 /// Health check response

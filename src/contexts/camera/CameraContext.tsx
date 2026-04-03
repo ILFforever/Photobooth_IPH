@@ -276,7 +276,7 @@ export function CameraProvider({ children }: { children: ReactNode }) {
         setShootingMode(data.shootingmode);
       }
       if (data.battery) {
-        setBatteryLevel(data.battery.split(',')[0]);
+        setBatteryLevel(data.battery.split(',')[0].replace('%', ''));
       }
 
       statusListenersRef.current.forEach(cb => {

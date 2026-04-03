@@ -10,6 +10,7 @@
 #include "wrapper_config.h"
 #include "wrapper_open.h"
 #include "wrapper_widgets.h"
+#include "../common/camera-brand.h"
 
 /* Helper to find a widget by name in the config tree */
 static CameraWidget* find_widget(CameraWidget *widget, const char *name) {
@@ -68,38 +69,106 @@ void get_config(int camera_index) {
         return;
     }
 
-    /* Common settings we want to read - includes Fuji and Canon widget names */
-    const char *settings[] = {
-        "iso",
-        "aperture",           // Canon aperture
-        "f-number",           // Fuji aperture
+    /* Detect camera brand from summary */
+    CameraBrand brand = BRAND_UNKNOWN;
+    CameraText summary;
+    if (gp_camera_get_summary(camera, &summary, context) >= GP_OK) {
+        brand = detect_camera_brand(summary.text);
+    }
+
+    /* Common settings fetched for all brands */
+    static const char *common_settings[] = {
         "shutterspeed",
         "shutterspeed2",
-        "exposurecompensation",
-        "5010",               // Exposure Bias Compensation (Fuji PTP property)
-        "whitebalance",
-        "focusmode",
-        "exposuremetermode",  // Exposure Metering Mode (Fuji)
-        "meteringmode",       // Metering Mode (Canon)
-        "500b",               // Exposure Metering Mode (PTP property)
         "drivemode",
         "imageformat",
         "imagesize",
         "flashmode",
-        "lensname",           // Lens name (Camera Status Information)
-        "d36b",               // BatteryInfo2 (Fuji X-H2 battery level)
-        "5001",               // Canon battery PTP property
-        "batterylevel",       // Generic battery
-        "autoexposuremode",   // Canon Auto Exposure Mode
-        "autoexposuremodedial", // Canon Auto Exposure Mode Dial
-        "expprogram",         // Fuji/other shooting mode
+        "lensname",
         NULL
     };
 
+    static const char *fuji_settings[] = {
+        "iso",
+        "f-number",
+        "5010",               // Exposure Bias Compensation (PTP)
+        "whitebalance",
+        "focusmode",
+        "exposuremetermode",
+        "500b",               // Exposure Metering Mode (PTP)
+        "d36b",               // Battery (BatteryInfo2)
+        "batterylevel",
+        "expprogram",
+        NULL
+    };
+
+    static const char *canon_settings[] = {
+        "iso",
+        "aperture",
+        "exposurecompensation",
+        "whitebalance",
+        "focusmode",
+        "meteringmode",
+        "500b",
+        "5001",               // Battery (PTP)
+        "autoexposuremode",
+        "autoexposuremodedial",
+        NULL
+    };
+
+    static const char *sony_settings[] = {
+        "iso",
+        "f-number",
+        "exposurecompensation",
+        "5010",
+        "whitebalance",
+        "focusmode",
+        "exposuremetermode",
+        "500b",
+        "batterylevel",
+        "expprogram",
+        "d21d",               // Lens model (Sony PTP)
+        NULL
+    };
+
+    static const char *generic_settings[] = {
+        "iso",
+        "f-number",
+        "aperture",
+        "exposurecompensation",
+        "whitebalance",
+        "focusmode",
+        "meteringmode",
+        "exposuremetermode",
+        "batterylevel",
+        "expprogram",
+        NULL
+    };
+
+    const char **brand_settings;
+    const char *brand_name;
+    switch (brand) {
+        case BRAND_FUJI:  brand_settings = (const char **)fuji_settings;    brand_name = "Fuji";    break;
+        case BRAND_CANON: brand_settings = (const char **)canon_settings;   brand_name = "Canon";   break;
+        case BRAND_SONY:  brand_settings = (const char **)sony_settings;    brand_name = "Sony";    break;
+        default:          brand_settings = (const char **)generic_settings; brand_name = "Generic"; break;
+    }
+
+    /* Log brand and full settings list being fetched */
+    fprintf(stderr, "config: Brand=%s, fetching settings: [", brand_name);
+    for (int i = 0; brand_settings[i] != NULL; i++)
+        fprintf(stderr, "%s%s", i > 0 ? ", " : "", brand_settings[i]);
+    fprintf(stderr, "] + common: [");
+    for (int i = 0; common_settings[i] != NULL; i++)
+        fprintf(stderr, "%s%s", i > 0 ? ", " : "", common_settings[i]);
+    fprintf(stderr, "]\n");
+
     printf("{");
     int first = 1;
-    for (int i = 0; settings[i] != NULL; i++) {
-        widget = find_widget(config, settings[i]);
+    const char **setting_lists[] = { brand_settings, (const char **)common_settings, NULL };
+    for (int l = 0; setting_lists[l] != NULL; l++)
+    for (int i = 0; setting_lists[l][i] != NULL; i++) {
+        widget = find_widget(config, setting_lists[l][i]);
         if (widget) {
             const char *value = get_widget_value(widget);
             const char *label = NULL;

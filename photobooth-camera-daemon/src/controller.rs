@@ -126,6 +126,7 @@ pub async fn start_controller_process(
                                             let usb_version = status_json.get("usb_version").and_then(|v| v.as_str()).unwrap_or("").to_string();
                                             let serial_number = status_json.get("serial_number").and_then(|v| v.as_str()).unwrap_or("").to_string();
                                             let firmware = status_json.get("firmware").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                            let lens = status_json.get("lens").and_then(|v| v.as_str()).unwrap_or("").to_string();
 
                                             if !manufacturer.is_empty() && !model.is_empty() {
                                                 let cam_info = CameraInfo {
@@ -136,6 +137,7 @@ pub async fn start_controller_process(
                                                     usb_version,
                                                     serial_number,
                                                     firmware,
+                                                    lens,
                                                 };
                                                 println!("[status-pipe] Camera connected event, caching camera info: {} {}", cam_info.manufacturer, cam_info.model);
                                                 *cached_cameras.lock().await = vec![cam_info];

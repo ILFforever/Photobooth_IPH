@@ -17,6 +17,7 @@ static const BrandWidgets fuji_widgets = {
     .battery = "d36b",
     .serial = "serialnumber",
     .deviceversion = "deviceversion",
+    .lens = "lensname",
 };
 
 /* Canon widgets: use simple names, not dotted paths.
@@ -33,6 +34,22 @@ static const BrandWidgets canon_widgets = {
     .battery = "5001",           // Under other (PTP property)
     .serial = "serialnumber",
     .deviceversion = "deviceversion",
+    .lens = "lensname",
+};
+
+static const BrandWidgets sony_widgets = {
+    .aperture = "f-number",
+    .shutter = "shutterspeed",
+    .iso = "iso",
+    .ev = "exposurecompensation",
+    .wb = "whitebalance",
+    .focus = "focusmode",
+    .metering = "exposuremetermode",
+    .mode = "expprogram",
+    .battery = "batterylevel",
+    .serial = "serialnumber",
+    .deviceversion = "deviceversion",
+    .lens = "d21d",              // Sony PTP property for lens model
 };
 
 static const BrandWidgets generic_widgets = {
@@ -47,6 +64,7 @@ static const BrandWidgets generic_widgets = {
     .battery = "batterylevel",
     .serial = "serialnumber",
     .deviceversion = "deviceversion",
+    .lens = "lensname",
 };
 
 /* Detect camera brand from a string (model name or manufacturer) */
@@ -101,6 +119,7 @@ const BrandWidgets* get_widgets_for_brand(CameraBrand brand) {
     switch (brand) {
         case BRAND_FUJI:     return &fuji_widgets;
         case BRAND_CANON:    return &canon_widgets;
+        case BRAND_SONY:     return &sony_widgets;
         default:             return &generic_widgets;
     }
 }

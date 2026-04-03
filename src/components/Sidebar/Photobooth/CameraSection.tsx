@@ -388,6 +388,9 @@ export function CameraSection({
           const cleaned = cleanLensName(config.lensname.value);
           logger.debug(`Found lens info: "${config.lensname.value}" -> "${cleaned}"`);
           setLensInfo(cleaned);
+        } else if (config.d21d?.value) {
+          logger.debug(`Found Sony lens info via d21d: "${config.d21d.value}"`);
+          setLensInfo(config.d21d.value);
         } else {
           logger.debug('No lensname found in config');
         }

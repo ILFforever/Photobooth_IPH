@@ -380,33 +380,93 @@ int write_full_config_json(Camera *camera, GPContext *context, CameraBrand curre
         return -1;
     }
 
-    /* Same settings list as the wrapper's get_config() */
-    const char *settings[] = {
-        "iso",
-        "aperture",           /* Canon aperture */
-        "f-number",           /* Fuji aperture */
+    /* Common settings fetched for all brands */
+    static const char *common_settings[] = {
         "shutterspeed",
         "shutterspeed2",
-        "exposurecompensation",
-        "5010",               /* Exposure Bias Compensation (Fuji PTP) */
-        "whitebalance",
-        "focusmode",
-        "exposuremetermode",  /* Fuji */
-        "meteringmode",       /* Canon */
-        "500b",               /* PTP property */
         "drivemode",
         "imageformat",
         "imagesize",
         "flashmode",
         "lensname",
-        "d36b",               /* BatteryInfo2 (Fuji) */
-        "5001",               /* Canon battery PTP */
+        NULL
+    };
+
+    /* Brand-specific settings */
+    static const char *fuji_settings[] = {
+        "iso",
+        "f-number",
+        "5010",               /* Exposure Bias Compensation (PTP) */
+        "whitebalance",
+        "focusmode",
+        "exposuremetermode",
+        "500b",               /* Exposure Metering Mode (PTP) */
+        "d36b",               /* Battery (BatteryInfo2) */
         "batterylevel",
-        "autoexposuremode",
-        "autoexposuremodedial",
         "expprogram",
         NULL
     };
+
+    static const char *canon_settings[] = {
+        "iso",
+        "aperture",
+        "exposurecompensation",
+        "whitebalance",
+        "focusmode",
+        "meteringmode",
+        "500b",
+        "5001",               /* Battery (PTP) */
+        "autoexposuremode",
+        "autoexposuremodedial",
+        NULL
+    };
+
+    static const char *sony_settings[] = {
+        "iso",
+        "f-number",
+        "exposurecompensation",
+        "5010",
+        "whitebalance",
+        "focusmode",
+        "exposuremetermode",
+        "500b",
+        "batterylevel",
+        "expprogram",
+        "d21d",               /* Lens model (Sony PTP) */
+        NULL
+    };
+
+    static const char *generic_settings[] = {
+        "iso",
+        "f-number",
+        "aperture",
+        "exposurecompensation",
+        "whitebalance",
+        "focusmode",
+        "meteringmode",
+        "exposuremetermode",
+        "batterylevel",
+        "expprogram",
+        NULL
+    };
+
+    const char **brand_settings;
+    const char *brand_name;
+    switch (current_brand) {
+        case BRAND_FUJI:  brand_settings = (const char **)fuji_settings;    brand_name = "Fuji";    break;
+        case BRAND_CANON: brand_settings = (const char **)canon_settings;   brand_name = "Canon";   break;
+        case BRAND_SONY:  brand_settings = (const char **)sony_settings;    brand_name = "Sony";    break;
+        default:          brand_settings = (const char **)generic_settings; brand_name = "Generic"; break;
+    }
+
+    /* Log brand and full settings list being fetched */
+    log_ts("config: Brand=%s, fetching settings: [", brand_name);
+    for (int i = 0; brand_settings[i] != NULL; i++)
+        fprintf(stderr, "%s%s", i > 0 ? ", " : "", brand_settings[i]);
+    fprintf(stderr, "] + common: [");
+    for (int i = 0; common_settings[i] != NULL; i++)
+        fprintf(stderr, "%s%s", i > 0 ? ", " : "", common_settings[i]);
+    fprintf(stderr, "]\n");
 
     /* Build JSON into a large buffer */
     #define CONFIG_BUF_SIZE (128 * 1024)  /* 128KB should be plenty */
@@ -420,8 +480,11 @@ int write_full_config_json(Camera *camera, GPContext *context, CameraBrand curre
     off += snprintf(buf + off, CONFIG_BUF_SIZE - off, "{");
     int first = 1;
 
-    for (int i = 0; settings[i] != NULL; i++) {
-        CameraWidget *widget = find_widget_by_name(config, settings[i]);
+    /* Iterate brand-specific settings first, then common settings */
+    const char **setting_lists[] = { brand_settings, (const char **)common_settings, NULL };
+    for (int l = 0; setting_lists[l] != NULL; l++)
+    for (int i = 0; setting_lists[l][i] != NULL; i++) {
+        CameraWidget *widget = find_widget_by_name(config, setting_lists[l][i]);
         if (!widget) continue;
 
         const char *value = widget_value_str(widget);
