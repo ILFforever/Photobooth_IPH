@@ -501,7 +501,7 @@ int write_full_config_json(Camera *camera, GPContext *context, CameraBrand curre
 
         /* Key */
         off += snprintf(buf + off, CONFIG_BUF_SIZE - off, "\"");
-        off += json_escape_append(buf + off, CONFIG_BUF_SIZE - off, name ? name : settings[i]);
+        off += json_escape_append(buf + off, CONFIG_BUF_SIZE - off, name ? name : setting_lists[l][i]);
         off += snprintf(buf + off, CONFIG_BUF_SIZE - off, "\":{");
 
         /* Value */

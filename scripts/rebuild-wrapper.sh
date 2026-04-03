@@ -128,7 +128,7 @@ echo "Compiling gphoto2-controller..."
 $CC "${WRAPPER_DIR}/gphoto2-controller.c" \
     camera-brand.o widget_ops.o \
     camera_open.o camera_storage.o camera_capture.o camera_preview.o \
-    camera_config.o camera_filemgmt.o streaming.o \
+    camera_config.o camera_filemgmt.o \
     -I"${WRAPPER_DIR}" -I"${WRAPPER_DIR}/common" \
     -I"$SYSROOT/usr/include/gphoto2" \
     -L"$SYSROOT/usr/lib" \

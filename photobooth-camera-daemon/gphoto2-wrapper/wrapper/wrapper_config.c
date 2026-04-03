@@ -183,7 +183,7 @@ void get_config(int camera_index) {
             first = 0;
 
             /* Escape strings for JSON */
-            printf("\"%s\":{", name ? name : settings[i]);
+            printf("\"%s\":{", name ? name : setting_lists[l][i]);
 
             /* Output value */
             printf("\"value\":\"");

@@ -913,7 +913,7 @@ int main(int argc, char *argv[]) {
                     }
 
                     if (g_status_fd >= 0) {
-                        write(g_status_fd, "{\"mode\":\"liveview_streaming\"}\n", 32);
+                        write(g_status_fd, "{\"mode\":\"liveview_streaming\"}\n", 30);
                     }
                 } else {
                     consecutive_open_failures++;
@@ -1015,7 +1015,7 @@ int main(int argc, char *argv[]) {
                 }
 
                 if (g_status_fd >= 0) {
-                    write(g_status_fd, "{\"type\":\"polling_paused\"}\n", 28);
+                    write(g_status_fd, "{\"type\":\"polling_paused\"}\n", 26);
                 }
 
             } else if (strcmp(cmd_line, "RESUME_POLLING") == 0) {
@@ -1054,13 +1054,13 @@ int main(int argc, char *argv[]) {
                         usleep(200000);
 
                         if (g_status_fd >= 0) {
-                            write(g_status_fd, "{\"mode\":\"liveview_streaming\"}\n", 32);
+                            write(g_status_fd, "{\"mode\":\"liveview_streaming\"}\n", 30);
                         }
                     }
                 }
 
                 if (g_status_fd >= 0) {
-                    write(g_status_fd, "{\"type\":\"polling_resumed\"}\n", 29);
+                    write(g_status_fd, "{\"type\":\"polling_resumed\"}\n", 27);
                 }
 
             } else if (strcmp(cmd_line, "CONFIG") == 0) {
@@ -1251,7 +1251,7 @@ int main(int argc, char *argv[]) {
                 time_t now = time(NULL);
                 if (now - g_last_camera_switch >= CAMERA_SWITCH_GRACE_SEC) {
                     if (g_status_fd >= 0) {
-                        write(g_status_fd, "{\"type\":\"camera_disconnected\"}\n", 34);
+                        write(g_status_fd, "{\"type\":\"camera_disconnected\"}\n", 31);
                     }
                 }
             }
@@ -1323,7 +1323,7 @@ int main(int argc, char *argv[]) {
                 consecutive_open_failures = 1;
 
                 if (g_status_fd >= 0) {
-                    write(g_status_fd, "{\"type\":\"camera_disconnected\",\"reason\":\"stream_failure\"}\n", 62);
+                    write(g_status_fd, "{\"type\":\"camera_disconnected\",\"reason\":\"stream_failure\"}\n", 57);
                 }
                 continue;
             }
@@ -1358,7 +1358,7 @@ int main(int argc, char *argv[]) {
                         g_cached_camera_index = -1;
 
                         if (g_status_fd >= 0) {
-                            write(g_status_fd, "{\"type\":\"camera_disconnected\",\"reason\":\"usb_unplugged\"}\n", 69);
+                            write(g_status_fd, "{\"type\":\"camera_disconnected\",\"reason\":\"usb_unplugged\"}\n", 56);
                         }
                     }
                 } else if (!switch_received && g_last_camera_port[0] == '\0') {
