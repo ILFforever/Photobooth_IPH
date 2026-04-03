@@ -49,7 +49,7 @@ static const BrandWidgets sony_widgets = {
     .battery = "batterylevel",
     .serial = "serialnumber",
     .deviceversion = "deviceversion",
-    .lens = "d21d",              // Sony PTP property for lens model
+    .lens = NULL,                // Sony does not expose lens name via PTP
 };
 
 static const BrandWidgets generic_widgets = {

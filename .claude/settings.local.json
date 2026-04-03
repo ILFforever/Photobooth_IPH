@@ -173,7 +173,10 @@
       "Bash(wc -l src/components/PhotoboothView/PhotoboothWorkspace/*.css)",
       "Bash(wc -l src/components/PhotoboothView/*.css)",
       "Bash(for f:*)",
-      "Bash(do node:*)"
+      "Bash(do node:*)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:fossies.org)"
     ],
     "additionalDirectories": [
       "d:\\Photobooth_IPH",

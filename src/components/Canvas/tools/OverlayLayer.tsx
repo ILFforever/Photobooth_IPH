@@ -1,7 +1,8 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { useCollage } from '../../../contexts';
 import { OverlayLayer as OverlayLayerType } from '../../../types/overlay';
+import { SnapGuides } from '../../../utils/canvas/snapUtils';
+import { useOverlayEditing } from '../../../hooks/canvas/useOverlayEditing';
 import './OverlayLayer.css';
 
 interface OverlayLayerProps {
@@ -11,130 +12,31 @@ interface OverlayLayerProps {
   canvasHeight: number;
   zIndex: number;
   interactive?: boolean;
-  onSnapGuidesChange?: (guides: { centerH: boolean; centerV: boolean }) => void;
+  onSnapGuidesChange?: (guides: SnapGuides) => void;
   onSelect?: () => void;
 }
 
 export function OverlayLayer({ layer, isSelected, canvasWidth, canvasHeight, zIndex, interactive = true, onSnapGuidesChange, onSelect }: OverlayLayerProps) {
   const { updateOverlay, canvasZoom, setSelectedOverlayId, setSelectedZone, setIsBackgroundSelected, setActiveSidebarTab, showAllOverlays } = useCollage();
 
-  const isDraggingRef = useRef(false);
-  const isResizingRef = useRef<string | null>(null);
-  const isRotatingRef = useRef(false);
-  const dragStartRef = useRef({ x: 0, y: 0 });
-  const transformStartRef = useRef(layer.transform);
-  const overlayRef = useRef<HTMLDivElement>(null);
+  const { isDragging, isResizing, isRotating, snapGuides, handleMouseDown, overlayRef } = useOverlayEditing({
+    layer,
+    canvasWidth,
+    canvasHeight,
+    isSelected,
+    onSelect: () => {
+      setSelectedOverlayId(layer.id);
+      setSelectedZone(null);
+      setIsBackgroundSelected(false);
+      setActiveSidebarTab('layers');
+      onSelect?.();
+    },
+    onUpdate: (updates) => updateOverlay(layer.id, updates),
+    scale: canvasZoom,
+    snapEnabled: true,
+    onSnapGuidesChange,
+  });
 
-  const SNAP_THRESHOLD = 10;
-
-  // Calculate display scale for mouse events
-  const [displayScale, setDisplayScale] = useState(1);
-  useEffect(() => {
-    const canvasEl = document.querySelector('.collage-canvas') as HTMLElement;
-    if (canvasEl && canvasWidth) {
-      const rect = canvasEl.getBoundingClientRect();
-      setDisplayScale(rect.width / canvasWidth);
-    }
-  }, [canvasWidth, canvasZoom]);
-
-  const handleMouseDown = useCallback((e: React.MouseEvent, action: string, handle?: string) => {
-    e.stopPropagation();
-    e.preventDefault();
-
-    // Select this overlay and deselect others
-    setSelectedOverlayId(layer.id);
-    setSelectedZone(null);
-    setIsBackgroundSelected(false);
-    setActiveSidebarTab('layers');
-    onSelect?.();
-
-    if (action === 'drag') {
-      isDraggingRef.current = true;
-    } else if (action === 'resize') {
-      isResizingRef.current = handle || 'se';
-    } else if (action === 'rotate') {
-      isRotatingRef.current = true;
-    }
-
-    dragStartRef.current = { x: e.clientX, y: e.clientY };
-    transformStartRef.current = { ...layer.transform };
-
-    const handleMouseMove = (evt: MouseEvent) => {
-      const deltaX = (evt.clientX - dragStartRef.current.x) / displayScale;
-      const deltaY = (evt.clientY - dragStartRef.current.y) / displayScale;
-
-      if (isDraggingRef.current) {
-        // Calculate new position
-        let newX = transformStartRef.current.x + deltaX;
-        let newY = transformStartRef.current.y + deltaY;
-
-        // Get overlay dimensions in canvas pixels
-        const overlayEl = overlayRef.current;
-        const overlayWidth = overlayEl ? overlayEl.offsetWidth / displayScale : 0;
-        const overlayHeight = overlayEl ? overlayEl.offsetHeight / displayScale : 0;
-
-        // Overlay visual center = its top-left offset + half its size + translate
-        const overlayCenterX = overlayWidth / 2 + newX;
-        const canvasCenterX = canvasWidth / 2;
-        const snapToCenterH = Math.abs(overlayCenterX - canvasCenterX) < SNAP_THRESHOLD;
-        if (snapToCenterH) {
-          newX = canvasWidth / 2 - overlayWidth / 2; // Center overlay horizontally
-        }
-
-        // Snap to center vertically
-        const overlayCenterY = overlayHeight / 2 + newY;
-        const canvasCenterY = canvasHeight / 2;
-        const snapToCenterV = Math.abs(overlayCenterY - canvasCenterY) < SNAP_THRESHOLD;
-        if (snapToCenterV) {
-          newY = canvasHeight / 2 - overlayHeight / 2; // Center overlay vertically
-        }
-
-        // Update snap guides
-        onSnapGuidesChange?.({ centerH: snapToCenterH, centerV: snapToCenterV });
-
-        updateOverlay(layer.id, {
-          transform: {
-            ...layer.transform,
-            x: newX,
-            y: newY,
-          },
-        });
-      } else if (isResizingRef.current) {
-        // Calculate scale based on drag distance
-        const scaleFactor = transformStartRef.current.scale + (deltaX + deltaY) / 200;
-
-        updateOverlay(layer.id, {
-          transform: {
-            ...layer.transform,
-            scale: Math.max(0.1, Math.min(5, scaleFactor)),
-          },
-        });
-      } else if (isRotatingRef.current) {
-        // Calculate rotation angle based on mouse movement
-        const angleDelta = (deltaX + deltaY) * 0.5;
-        updateOverlay(layer.id, {
-          transform: {
-            ...layer.transform,
-            rotation: transformStartRef.current.rotation + angleDelta,
-          },
-        });
-      }
-    };
-
-    const handleMouseUp = () => {
-      isDraggingRef.current = false;
-      isResizingRef.current = null;
-      isRotatingRef.current = false;
-      onSnapGuidesChange?.({ centerH: false, centerV: false });
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-  }, [layer, displayScale, canvasWidth, canvasHeight, updateOverlay, setSelectedOverlayId, setSelectedZone, setIsBackgroundSelected, setActiveSidebarTab, onSelect, onSnapGuidesChange]);
-
-  // Generate transform CSS
   const transformStyle = `
     translate(${layer.transform.x}px, ${layer.transform.y}px)
     rotate(${layer.transform.rotation}deg)
@@ -163,6 +65,11 @@ export function OverlayLayer({ layer, isSelected, canvasWidth, canvasHeight, zIn
       className={`overlay-layer ${isSelected ? 'selected' : ''} ${!interactive ? 'non-interactive' : ''}`}
       style={overlayStyle}
       onMouseDown={interactive ? (e) => handleMouseDown(e, 'drag') : undefined}
+      onClick={(e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        onSelect?.();
+      }}
     >
       <img
         src={

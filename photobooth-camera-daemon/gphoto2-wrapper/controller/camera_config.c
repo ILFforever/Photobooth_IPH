@@ -432,7 +432,6 @@ int write_full_config_json(Camera *camera, GPContext *context, CameraBrand curre
         "500b",
         "batterylevel",
         "expprogram",
-        "d21d",               /* Lens model (Sony PTP) */
         NULL
     };
 

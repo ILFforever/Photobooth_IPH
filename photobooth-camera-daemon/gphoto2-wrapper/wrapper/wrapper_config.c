@@ -127,7 +127,6 @@ void get_config(int camera_index) {
         "500b",
         "batterylevel",
         "expprogram",
-        "d21d",               // Lens model (Sony PTP)
         NULL
     };
 

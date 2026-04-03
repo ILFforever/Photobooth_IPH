@@ -247,3 +247,94 @@ export function calculateImageDragSnap(
     },
   };
 }
+
+export interface OverlayDragSnapResult {
+  finalX: number;
+  finalY: number;
+  guides: SnapGuides;
+}
+
+/**
+ * Applies snap logic while dragging an overlay layer.
+ * Snaps to canvas center and canvas edges.
+ */
+export function calculateOverlayDragSnap(
+  rawX: number,
+  rawY: number,
+  overlayWidth: number,
+  overlayHeight: number,
+  canvasWidth: number,
+  canvasHeight: number,
+  snapThreshold: number,
+): OverlayDragSnapResult {
+  const centerX = canvasWidth / 2;
+  const centerY = canvasHeight / 2;
+
+  const overlayCenterX = rawX + overlayWidth / 2;
+  const overlayCenterY = rawY + overlayHeight / 2;
+  const overlayRightEdge = rawX + overlayWidth;
+  const overlayBottomEdge = rawY + overlayHeight;
+
+  const snappedCenterX = applySnap(overlayCenterX, centerX, snapThreshold);
+  const snappedCenterY = applySnap(overlayCenterY, centerY, snapThreshold);
+
+  const snappedLeft = applySnap(rawX, 0, snapThreshold);
+  const snappedRight = applySnap(overlayRightEdge, canvasWidth, snapThreshold);
+  const snappedTop = applySnap(rawY, 0, snapThreshold);
+  const snappedBottom = applySnap(overlayBottomEdge, canvasHeight, snapThreshold);
+
+  const snapToCenterX = snappedCenterX === centerX;
+  const snapToCenterY = snappedCenterY === centerY;
+  const snapToLeft = snappedLeft === 0;
+  const snapToRight = snappedRight === canvasWidth;
+  const snapToTop = snappedTop === 0;
+  const snapToBottom = snappedBottom === canvasHeight;
+
+  let finalX = rawX;
+  let finalY = rawY;
+
+  const distToLeft = Math.abs(rawX);
+  const distToRight = Math.abs(overlayRightEdge - canvasWidth);
+  const distToCenterX = Math.abs(overlayCenterX - centerX);
+  const edgeNearX = distToLeft < distToCenterX || distToRight < distToCenterX;
+  const useCenterX = snapToCenterX && !edgeNearX;
+
+  if (useCenterX) {
+    finalX = snappedCenterX - overlayWidth / 2;
+  } else if (snapToLeft && snapToRight) {
+    finalX = distToLeft <= distToRight ? snappedLeft : snappedRight - overlayWidth;
+  } else if (snapToLeft) {
+    finalX = snappedLeft;
+  } else if (snapToRight) {
+    finalX = snappedRight - overlayWidth;
+  }
+
+  const distToTop = Math.abs(rawY);
+  const distToBottom = Math.abs(overlayBottomEdge - canvasHeight);
+  const distToCenterY = Math.abs(overlayCenterY - centerY);
+  const edgeNearY = distToTop < distToCenterY || distToBottom < distToCenterY;
+  const useCenterY = snapToCenterY && !edgeNearY;
+
+  if (useCenterY) {
+    finalY = snappedCenterY - overlayHeight / 2;
+  } else if (snapToTop && snapToBottom) {
+    finalY = distToTop <= distToBottom ? snappedTop : snappedBottom - overlayHeight;
+  } else if (snapToTop) {
+    finalY = snappedTop;
+  } else if (snapToBottom) {
+    finalY = snappedBottom - overlayHeight;
+  }
+
+  return {
+    finalX,
+    finalY,
+    guides: {
+      centerH: useCenterX,
+      centerV: useCenterY,
+      left: snapToLeft,
+      right: snapToRight,
+      top: snapToTop,
+      bottom: snapToBottom,
+    },
+  };
+}

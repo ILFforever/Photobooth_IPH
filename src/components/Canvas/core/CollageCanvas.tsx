@@ -10,6 +10,7 @@ import { BackgroundLayer } from "./BackgroundLayer";
 import { EditableZone } from "./EditableZone";
 import { ImageZone } from "./ImageZone";
 import { ImageZoneOverflow } from "./ImageZoneOverflow";
+import { SnapGuides, EMPTY_SNAP_GUIDES } from "../../../utils/canvas/snapUtils";
 import "./CollageCanvas.css";
 
 const logger = createLogger("CollageCanvas");
@@ -54,7 +55,7 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
   const [zoomCenter, setZoomCenter] = useState({ x: 0, y: 0 });
 
   // Overlay snap guides state
-  const [overlaySnapGuides, setOverlaySnapGuides] = useState({ centerH: false, centerV: false });
+  const [overlaySnapGuides, setOverlaySnapGuides] = useState<SnapGuides>(EMPTY_SNAP_GUIDES);
 
   const prevZoomRef = useRef(canvasZoom);
   // Use refs to store latest values for completely stable callbacks
@@ -586,8 +587,15 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
                 ))}
             </div>
 
-            {/* Overlay Snap Guides — shown when dragging overlay near center */}
-            {(overlaySnapGuides.centerH || overlaySnapGuides.centerV) && selectedOverlayId && (
+            {/* Overlay Snap Guides — shown when dragging overlay */}
+            {selectedOverlayId && (
+              overlaySnapGuides.centerH ||
+              overlaySnapGuides.centerV ||
+              overlaySnapGuides.left ||
+              overlaySnapGuides.right ||
+              overlaySnapGuides.top ||
+              overlaySnapGuides.bottom
+            ) && (
               <>
                 {overlaySnapGuides.centerH && (
                   <div
@@ -615,6 +623,30 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
                       pointerEvents: "none",
                       zIndex: 200,
                     }}
+                  />
+                )}
+                {overlaySnapGuides.left && (
+                  <div
+                    className="snap-guide snap-guide-vertical"
+                    style={{ left: 0, top: 0, height: "100%", zIndex: 200 }}
+                  />
+                )}
+                {overlaySnapGuides.right && (
+                  <div
+                    className="snap-guide snap-guide-vertical"
+                    style={{ right: 0, top: 0, height: "100%", zIndex: 200 }}
+                  />
+                )}
+                {overlaySnapGuides.top && (
+                  <div
+                    className="snap-guide snap-guide-horizontal"
+                    style={{ left: 0, top: 0, width: "100%", zIndex: 200 }}
+                  />
+                )}
+                {overlaySnapGuides.bottom && (
+                  <div
+                    className="snap-guide snap-guide-horizontal"
+                    style={{ left: 0, bottom: 0, width: "100%", zIndex: 200 }}
                   />
                 )}
               </>
