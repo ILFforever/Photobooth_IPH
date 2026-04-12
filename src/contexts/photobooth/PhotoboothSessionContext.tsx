@@ -60,6 +60,8 @@ export function PhotoboothSessionProvider({ children }: { children: ReactNode })
     autoGifEnabled, autoGifFormat, autoGifPhotoSource,
     setQrUploadEnabled, setQrUploadAllImages, setPhotoNamingScheme,
     setAutoGifEnabled, setAutoGifFormat, setAutoGifPhotoSource,
+    borderFit, borderTopBottom, borderSides, exportResolutionMp,
+    setBorderFit, setBorderTopBottom, setBorderSides, setExportResolutionMp,
   } = useWorkspaceSettings();
 
   // Ref to always have latest settings without adding them as refreshSessions deps
@@ -67,11 +69,13 @@ export function PhotoboothSessionProvider({ children }: { children: ReactNode })
     autoCount, timerDelay, delayBetweenPhotos, photoReviewTime,
     qrUploadEnabled, qrUploadAllImages, photoNamingScheme,
     autoGifEnabled, autoGifFormat, autoGifPhotoSource,
+    borderFit, borderTopBottom, borderSides, exportResolutionMp,
   });
   currentSettingsRef.current = {
     autoCount, timerDelay, delayBetweenPhotos, photoReviewTime,
     qrUploadEnabled, qrUploadAllImages, photoNamingScheme,
     autoGifEnabled, autoGifFormat, autoGifPhotoSource,
+    borderFit, borderTopBottom, borderSides, exportResolutionMp,
   };
 
   // Session management state
@@ -195,6 +199,15 @@ export function PhotoboothSessionProvider({ children }: { children: ReactNode })
               autoGifPhotoSource: s.autoGifPhotoSource,
             },
           });
+          await invoke('save_print_settings', {
+            folderPath: workingFolder,
+            printSettings: {
+              borderFit: s.borderFit,
+              borderTopBottom: s.borderTopBottom,
+              borderSides: s.borderSides,
+              exportResolutionMp: s.exportResolutionMp,
+            },
+          });
         } catch (err) {
           logger.error('Failed to save settings to new folder:', err);
         }
@@ -243,6 +256,14 @@ export function PhotoboothSessionProvider({ children }: { children: ReactNode })
           setAutoGifEnabled(autoGifEnabled ?? false);
           setAutoGifFormat(autoGifFormat ?? 'both');
           setAutoGifPhotoSource(autoGifPhotoSource ?? 'collage');
+        }
+
+        if (workspace.printSettings) {
+          const { borderFit, borderTopBottom, borderSides, exportResolutionMp } = workspace.printSettings;
+          setBorderFit(borderFit ?? false);
+          setBorderTopBottom(borderTopBottom ?? 0.08);
+          setBorderSides(borderSides ?? 0.05);
+          setExportResolutionMp(exportResolutionMp ?? 15);
         }
 
         // Show sessions-loaded toast only when no settings toast was shown

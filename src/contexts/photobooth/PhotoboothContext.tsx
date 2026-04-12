@@ -67,7 +67,7 @@ interface PhotoboothContextType {
   setIsGeneratingCollage: (generating: boolean) => void;
 
   // Export function
-  exportPhotoboothCanvasAsPNG: () => Promise<{ bytes: Uint8Array; filename: string } | null>;
+  exportPhotoboothCanvasAsPNG: (targetMp?: number) => Promise<{ bytes: Uint8Array; filename: string } | null>;
 
   // Current collage filename — shared between print and upload; reset on finalize exit
   currentCollageFilename: string | null;
@@ -181,7 +181,7 @@ export function PhotoboothProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Export photobooth canvas as full-resolution PNG (optimized)
-  const exportPhotoboothCanvasAsPNG = useCallback(async (): Promise<{ bytes: Uint8Array; filename: string } | null> => {
+  const exportPhotoboothCanvasAsPNG = useCallback(async (targetMp: number = 15): Promise<{ bytes: Uint8Array; filename: string } | null> => {
     const startTime = performance.now();
     try {
       const frame = photoboothFrame;
@@ -285,7 +285,7 @@ export function PhotoboothProvider({ children }: { children: ReactNode }) {
       );
       logger.debug(`[export] Loaded ${loadedBitmaps.length} bitmaps in ${(performance.now() - loadStart).toFixed(0)}ms`);
 
-      const TARGET_PIXELS = 15_000_000; // 15MP
+      const TARGET_PIXELS = targetMp * 1_000_000;
       const currentPixels = canvasWidth * canvasHeight;
       const printScale = currentPixels >= TARGET_PIXELS ? 1 : Math.min(Math.sqrt(TARGET_PIXELS / currentPixels), 3); // Max 3x instead of 5x
 

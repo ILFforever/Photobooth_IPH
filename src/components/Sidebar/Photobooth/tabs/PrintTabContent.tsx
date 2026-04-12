@@ -10,7 +10,7 @@ interface PrintTabContentProps {
 }
 
 export function PrintTabContent({ isPrinting, onPrint }: PrintTabContentProps) {
-  const { confirmRegenerate, cancelRegenerate, doublePageMode, setDoublePageMode } = usePrintSettings();
+  const { confirmRegenerate, cancelRegenerate, doublePageMode, setDoublePageMode, borderFit, borderTopBottom, borderSides } = usePrintSettings();
   const { collageIsDirty } = usePhotobooth();
   const [showRegenerateOptions, setShowRegenerateOptions] = useState(false);
 
@@ -58,6 +58,11 @@ export function PrintTabContent({ isPrinting, onPrint }: PrintTabContentProps) {
           {doublePageMode && (
             <div className="double-page-warning">
               Double page is active — prints will be 2× side-by-side
+            </div>
+          )}
+          {doublePageMode && borderFit && (
+            <div className="double-page-warning double-page-border-warning">
+              Border Fit is active — margins: {borderTopBottom}" top/bottom, {borderSides}" sides
             </div>
           )}
         </div>

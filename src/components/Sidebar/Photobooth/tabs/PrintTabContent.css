@@ -133,6 +133,12 @@
   line-height: 1.4;
 }
 
+.double-page-border-warning {
+  background: rgba(234, 179, 8, 0.1);
+  border-top: 1px solid rgba(234, 179, 8, 0.25);
+  color: #fde047;
+}
+
 /* ========================================
  * Print Settings Container
  * ======================================== */

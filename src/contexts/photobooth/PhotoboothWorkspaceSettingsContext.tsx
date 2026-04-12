@@ -20,6 +20,15 @@ export interface WorkspaceSettingsContextType {
   setAutoGifFormat: (value: 'gif' | 'both' | 'video') => void;
   autoGifPhotoSource: 'collage' | 'all';
   setAutoGifPhotoSource: (value: 'collage' | 'all') => void;
+  // Print settings
+  borderFit: boolean;
+  setBorderFit: (value: boolean) => void;
+  borderTopBottom: number;
+  setBorderTopBottom: (value: number) => void;
+  borderSides: number;
+  setBorderSides: (value: number) => void;
+  exportResolutionMp: number;
+  setExportResolutionMp: (value: number) => void;
 }
 
 const WorkspaceSettingsContext = createContext<WorkspaceSettingsContextType | undefined>(undefined);
@@ -38,6 +47,11 @@ export function WorkspaceSettingsProvider({ children }: { children: ReactNode })
   const [autoGifEnabled, setAutoGifEnabled] = useState(false);
   const [autoGifFormat, setAutoGifFormat] = useState<'gif' | 'both' | 'video'>('both');
   const [autoGifPhotoSource, setAutoGifPhotoSource] = useState<'collage' | 'all'>('collage');
+  // Print settings
+  const [borderFit, setBorderFit] = useState(false);
+  const [borderTopBottom, setBorderTopBottom] = useState(0.08);
+  const [borderSides, setBorderSides] = useState(0.05);
+  const [exportResolutionMp, setExportResolutionMp] = useState(15);
 
   // Save delay settings to .ptb file when they change
   useEffect(() => {
@@ -103,6 +117,23 @@ export function WorkspaceSettingsProvider({ children }: { children: ReactNode })
     }
   }, [autoGifEnabled, autoGifFormat, autoGifPhotoSource, workingFolder, delaySettingsLoaded]);
 
+  // Save print settings to .ptb file when they change
+  useEffect(() => {
+    if (workingFolder && delaySettingsLoaded) {
+      const savePrintSettings = async () => {
+        try {
+          await invoke('save_print_settings', {
+            folderPath: workingFolder,
+            printSettings: { borderFit, borderTopBottom, borderSides, exportResolutionMp },
+          });
+        } catch (error) {
+          logger.error('Failed to save print settings:', error);
+        }
+      };
+      savePrintSettings();
+    }
+  }, [borderFit, borderTopBottom, borderSides, exportResolutionMp, workingFolder, delaySettingsLoaded]);
+
   return (
     <WorkspaceSettingsContext.Provider
       value={{
@@ -120,6 +151,14 @@ export function WorkspaceSettingsProvider({ children }: { children: ReactNode })
         setAutoGifFormat,
         autoGifPhotoSource,
         setAutoGifPhotoSource,
+        borderFit,
+        setBorderFit,
+        borderTopBottom,
+        setBorderTopBottom,
+        borderSides,
+        setBorderSides,
+        exportResolutionMp,
+        setExportResolutionMp,
       }}
     >
       {children}

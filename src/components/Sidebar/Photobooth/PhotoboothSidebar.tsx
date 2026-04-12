@@ -30,6 +30,7 @@ import {
   CustomSetsSection,
   NamingSchemeSection,
   PhotoboothSettingsSection,
+  PrintSettingsSection,
   WorkingFolderSection,
 } from "./sections";
 import {
@@ -48,7 +49,7 @@ interface PhotoboothSidebarProps {
 }
 
 type PhotoboothTab = 'camera' | 'photobooth' | 'print' | 'qr' | 'gif' | 'edit';
-type CollapsibleSection = 'camera' | 'liveview' | 'connection' | 'polling' | 'folder' | 'photobooth' | 'frame' | 'session' | 'naming' | 'qr' | 'gif';
+type CollapsibleSection = 'camera' | 'liveview' | 'connection' | 'polling' | 'folder' | 'photobooth' | 'frame' | 'session' | 'naming' | 'qr' | 'gif' | 'print';
 type SettingType = 'shutter' | 'aperture' | 'iso' | 'ev' | 'wb' | 'metering' | 'folder' | 'mode' | null;
 
 export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
@@ -97,6 +98,7 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
     naming: false,
     qr: false,
     gif: false,
+    print: false,
   });
   const [activeSetting, setActiveSetting] = useState<SettingType>(null);
   const [hasSelectedCamera, setHasSelectedCamera] = useState(false);
@@ -432,6 +434,11 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
                   setAutoGifFormat={setAutoGifFormat}
                   autoGifPhotoSource={autoGifPhotoSource}
                   setAutoGifPhotoSource={setAutoGifPhotoSource}
+                />
+
+                <PrintSettingsSection
+                  expanded={expandedSections.print}
+                  onToggle={() => toggleSection('print')}
                 />
               </div>
 

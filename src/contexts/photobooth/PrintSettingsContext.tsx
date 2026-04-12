@@ -17,6 +17,13 @@ interface PrintSettingsContextType {
   // Double page mode (side-by-side for Fuji 4x6 half-cut)
   doublePageMode: boolean;
   setDoublePageMode: (value: boolean) => void;
+  // Border fit (adds white margins to double-page prints)
+  borderFit: boolean;
+  setBorderFit: (value: boolean) => void;
+  borderTopBottom: number;  // inches
+  setBorderTopBottom: (value: number) => void;
+  borderSides: number;      // inches, outer edges only
+  setBorderSides: (value: number) => void;
   // Prompt state for regenerating collage
   showRegeneratePrompt: boolean;
   confirmRegenerate: () => void;
@@ -27,7 +34,7 @@ const PrintSettingsContext = createContext<PrintSettingsContextType | undefined>
 
 export function PrintSettingsProvider({ children }: { children: ReactNode }) {
   const { showToast } = useToast();
-  const { workingFolder } = useWorkspaceSettings();
+  const { workingFolder, borderFit, setBorderFit, borderTopBottom, setBorderTopBottom, borderSides, setBorderSides, exportResolutionMp } = useWorkspaceSettings();
   const { currentSession, sessions } = usePhotoboothSession();
   const { exportCanvasAsPNG } = useCollage();
   const { exportPhotoboothCanvasAsPNG, finalizeViewMode, currentCollageFilename, setCurrentCollageFilename, collageIsDirty, resetCollageDirtyState, isGeneratingCollage, setIsGeneratingCollage } = usePhotobooth();
@@ -36,8 +43,11 @@ export function PrintSettingsProvider({ children }: { children: ReactNode }) {
   const [isPrinting, setIsPrinting] = useState(false);
   const [showRegeneratePrompt, setShowRegeneratePrompt] = useState(false);
   const [doublePageMode, setDoublePageModeRaw] = useState(false);
-  // Ref so performPrint always reads the live value regardless of closure age
+  // Refs so performPrint always reads live values regardless of closure age
   const doublePageModeRef = useRef(false);
+  const borderFitRef = useRef(false);
+  const borderTopBottomRef = useRef(0.08);
+  const borderSidesRef = useRef(0.05);
   // Cached doubled-page filename — invalidated by the same collageIsDirty flag as the single-page cache
   const [currentDoubleCollageFilename, setCurrentDoubleCollageFilename] = useState<string | null>(null);
   // Cache the actual bytes to avoid disk read + decode for double page creation
@@ -48,6 +58,11 @@ export function PrintSettingsProvider({ children }: { children: ReactNode }) {
     doublePageModeRef.current = value;
     setDoublePageModeRaw(value);
   }, []);
+
+  // Keep refs in sync with workspace state so performPrint closures always read the latest value
+  borderFitRef.current = borderFit;
+  borderTopBottomRef.current = borderTopBottom;
+  borderSidesRef.current = borderSides;
 
   // Fast file save using Tauri FS plugin (bypasses Rust IPC for direct write)
   const saveFileDirect = useCallback(async (
@@ -77,19 +92,38 @@ export function PrintSettingsProvider({ children }: { children: ReactNode }) {
     }
   }, [currentCollageFilename]);
 
+  // Invalidate the doubled cache when any border setting changes (output bytes will differ)
+  useEffect(() => {
+    setCurrentDoubleCollageFilename(null);
+    cachedDoubleBytesRef.current = null;
+  }, [borderFit, borderTopBottom, borderSides]);
+
   // Creates a side-by-side doubled image (2× wide) from PNG bytes (optimized with ImageBitmap)
-  const doubleImageSideBySide = useCallback(async (bytes: Uint8Array): Promise<Uint8Array> => {
+  // withBorder: adds 0.08" top/bottom + 0.05" outer left/right white margins (no center gap — printer cuts there)
+  const doubleImageSideBySide = useCallback(async (bytes: Uint8Array, withBorder: boolean): Promise<Uint8Array> => {
     const blob = new Blob([bytes as unknown as BlobPart], { type: 'image/png' });
     const bitmap = await createImageBitmap(blob);
 
+    // Derive effective DPI from the actual image: single photo is 4" wide, 6" tall (Fuji 4×6 half-cut)
+    const effectiveDPI = bitmap.width / 4;
+    const borderTB = withBorder ? Math.round(borderTopBottomRef.current * effectiveDPI) : 0;
+    const borderLR = withBorder ? Math.round(borderSidesRef.current * effectiveDPI) : 0;
+
     const canvas = document.createElement('canvas');
-    canvas.width = bitmap.width * 2;
-    canvas.height = bitmap.height;
+    canvas.width = bitmap.width * 2 + borderLR * 2;
+    canvas.height = bitmap.height + borderTB * 2;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) throw new Error('Canvas context unavailable');
 
-    ctx.drawImage(bitmap, 0, 0);
-    ctx.drawImage(bitmap, bitmap.width, 0);
+    if (withBorder) {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    // Left photo: offset by left border + top border
+    ctx.drawImage(bitmap, borderLR, borderTB);
+    // Right photo: placed immediately after left photo (no center gap)
+    ctx.drawImage(bitmap, borderLR + bitmap.width, borderTB);
     bitmap.close();
 
     const resultBlob = await new Promise<Blob>((resolve, reject) => {
@@ -126,7 +160,7 @@ export function PrintSettingsProvider({ children }: { children: ReactNode }) {
           showToast('Using existing collage', 'success', 2000, currentDoubleCollageFilename);
         } else if (cachedCollageBytesRef.current) {
           // Use cached bytes to double without disk read + decode
-          const printBytes = await doubleImageSideBySide(cachedCollageBytesRef.current);
+          const printBytes = await doubleImageSideBySide(cachedCollageBytesRef.current, borderFitRef.current);
           filename = `Collage_${randomId()}_2x.png`;
 
           await saveFileDirect(workingFolder, folder, filename, printBytes);
@@ -140,7 +174,7 @@ export function PrintSettingsProvider({ children }: { children: ReactNode }) {
           const response = await fetch(convertFileSrc(cachedPath));
           const arrayBuffer = await response.arrayBuffer();
 
-          const printBytes = await doubleImageSideBySide(new Uint8Array(arrayBuffer));
+          const printBytes = await doubleImageSideBySide(new Uint8Array(arrayBuffer), borderFitRef.current);
           filename = `Collage_${randomId()}_2x.png`;
 
           await saveFileDirect(workingFolder, folder, filename, printBytes);
@@ -159,8 +193,8 @@ export function PrintSettingsProvider({ children }: { children: ReactNode }) {
       // Export the canvas - use photobooth export when in finalize mode, otherwise use collage export
       const exportStart = performance.now();
       const exportResult = finalizeViewMode === 'finalize'
-        ? await exportPhotoboothCanvasAsPNG()
-        : await exportCanvasAsPNG();
+        ? await exportPhotoboothCanvasAsPNG(exportResolutionMp)
+        : await exportCanvasAsPNG(exportResolutionMp);
       logger.debug(`[performPrint] Canvas export: ${(performance.now() - exportStart).toFixed(0)}ms`);
 
       if (!exportResult) {
@@ -188,7 +222,7 @@ export function PrintSettingsProvider({ children }: { children: ReactNode }) {
       // If double page mode is on, produce and cache the doubled file
       if (isDoublePage) {
         const doubleStart = performance.now();
-        const printBytes = await doubleImageSideBySide(exportResult.bytes);
+        const printBytes = await doubleImageSideBySide(exportResult.bytes, borderFitRef.current);
 
         const doubledFilename = `Collage_${randomId()}_2x.png`;
         await saveFileDirect(workingFolder, folder, doubledFilename, printBytes);
@@ -213,7 +247,7 @@ export function PrintSettingsProvider({ children }: { children: ReactNode }) {
     }
 
     setIsPrinting(false);
-  }, [finalizeViewMode, currentCollageFilename, currentDoubleCollageFilename, collageIsDirty, exportPhotoboothCanvasAsPNG, exportCanvasAsPNG, setCurrentCollageFilename, resetCollageDirtyState, setIsGeneratingCollage, showToast, workingFolder, sessions, currentSession, doubleImageSideBySide, saveFileDirect]);
+  }, [finalizeViewMode, currentCollageFilename, currentDoubleCollageFilename, collageIsDirty, exportPhotoboothCanvasAsPNG, exportCanvasAsPNG, setCurrentCollageFilename, resetCollageDirtyState, setIsGeneratingCollage, showToast, workingFolder, sessions, currentSession, doubleImageSideBySide, saveFileDirect, exportResolutionMp]);
 
   // Print the current collage using Windows Photo Printing Wizard
   const printCollage = useCallback(async () => {
@@ -264,6 +298,12 @@ export function PrintSettingsProvider({ children }: { children: ReactNode }) {
     isPrinting,
     doublePageMode,
     setDoublePageMode,
+    borderFit,
+    setBorderFit,
+    borderTopBottom,
+    setBorderTopBottom,
+    borderSides,
+    setBorderSides,
     showRegeneratePrompt,
     confirmRegenerate,
     cancelRegenerate,

@@ -1,5 +1,5 @@
 use crate::photobooth_sessions::types::{
-    DelaySettings, DriveUploadedImage, GifSettings, GoogleDriveMetadata, PhotoboothSessionInfo, PhotoboothSettings, PhotoExifData, PtbPhoto,
+    DelaySettings, DriveUploadedImage, GifSettings, GoogleDriveMetadata, PhotoboothSessionInfo, PhotoboothSettings, PhotoExifData, PrintSettings, PtbPhoto,
     PtbSessionData, PtbWorkspace,
 };
 use crate::working_folder::commands::generate_cached_thumbnail_high_res;
@@ -139,6 +139,7 @@ async fn load_ptb_workspace_internal(folder_path: String) -> Result<(PtbWorkspac
             delay_settings: DelaySettings::default(),
             photobooth_settings: PhotoboothSettings::default(),
             gif_settings: GifSettings::default(),
+            print_settings: PrintSettings::default(),
         };
 
         // Save the new workspace to disk
@@ -224,6 +225,21 @@ pub async fn save_gif_settings(
     let (mut workspace, _) = load_ptb_workspace_internal(folder_path.clone()).await?;
 
     workspace.gif_settings = gif_settings;
+    workspace.last_used_at = chrono::Utc::now().to_rfc3339();
+
+    save_ptb_workspace(folder_path, workspace).await?;
+    Ok(())
+}
+
+/// Save print settings to the .ptb workspace file
+#[tauri::command]
+pub async fn save_print_settings(
+    folder_path: String,
+    print_settings: PrintSettings,
+) -> Result<(), String> {
+    let (mut workspace, _) = load_ptb_workspace_internal(folder_path.clone()).await?;
+
+    workspace.print_settings = print_settings;
     workspace.last_used_at = chrono::Utc::now().to_rfc3339();
 
     save_ptb_workspace(folder_path, workspace).await?;

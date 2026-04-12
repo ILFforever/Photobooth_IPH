@@ -1,0 +1,88 @@
+/**
+ * PrintSettingsSection.css
+ *
+ * Border fit toggle, custom border size inputs, and info notice
+ * for the Print Settings collapsible section in the settings tab.
+ */
+
+.print-border-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.print-border-input-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.print-border-input-row label {
+  flex: 1;
+  margin: 0;
+}
+
+.print-border-input {
+  width: 72px;
+  padding: 5px var(--spacing-sm);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-family: inherit;
+  text-align: right;
+  transition: border-color var(--transition-base);
+}
+
+.print-border-input:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+}
+
+.print-border-input::-webkit-outer-spin-button,
+.print-border-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.print-border-input[type=number] {
+  -moz-appearance: textfield;
+}
+
+.print-resolution-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.print-info-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  padding: 2px;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: color var(--transition-base);
+}
+
+.print-info-btn:hover {
+  color: #3b82f6;
+}
+
+.print-settings-section .setting-notice {
+  padding: 8px var(--spacing-md);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+}
+
+.print-settings-section .setting-notice.notice-info {
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  color: #93c5fd;
+}

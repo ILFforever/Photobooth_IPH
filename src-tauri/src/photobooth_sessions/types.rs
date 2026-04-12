@@ -132,6 +132,35 @@ impl Default for GifSettings {
     }
 }
 
+/// Print settings (border fit for double-page mode)
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct PrintSettings {
+    #[serde(default)]
+    pub border_fit: bool,
+    #[serde(default = "default_border_top_bottom")]
+    pub border_top_bottom: f64, // inches
+    #[serde(default = "default_border_sides")]
+    pub border_sides: f64,      // inches, outer edges only
+    #[serde(default = "default_export_resolution_mp")]
+    pub export_resolution_mp: f64, // megapixels target for export scaling
+}
+
+fn default_border_top_bottom() -> f64 { 0.08 }
+fn default_border_sides() -> f64 { 0.05 }
+fn default_export_resolution_mp() -> f64 { 15.0 }
+
+impl Default for PrintSettings {
+    fn default() -> Self {
+        Self {
+            border_fit: false,
+            border_top_bottom: 0.08,
+            border_sides: 0.05,
+            export_resolution_mp: 15.0,
+        }
+    }
+}
+
 /// Root .ptb file structure - stored at working folder root
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -147,6 +176,8 @@ pub struct PtbWorkspace {
     pub photobooth_settings: PhotoboothSettings,
     #[serde(default)]
     pub gif_settings: GifSettings,
+    #[serde(default)]
+    pub print_settings: PrintSettings,
 }
 
 /// EXIF metadata for a photo

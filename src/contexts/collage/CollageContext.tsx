@@ -68,7 +68,7 @@ interface CollageContextType {
   copiedZone: FrameZone | null;
   setCopiedZone: (zone: FrameZone | null) => void;
   captureCanvasThumbnail: () => Promise<string | null>;
-  exportCanvasAsPNG: () => Promise<{ bytes: Uint8Array; filename: string } | null>;
+  exportCanvasAsPNG: (targetMp?: number) => Promise<{ bytes: Uint8Array; filename: string } | null>;
 
   // Custom set tracking
   selectedCustomSetName: string | null;
@@ -413,7 +413,7 @@ export function CollageProvider({ children }: { children: ReactNode }) {
       : null;
 
   // Export canvas as full-resolution PNG
-  const exportCanvasAsPNG = useCallback(async (): Promise<{ bytes: Uint8Array; filename: string } | null> => {
+  const exportCanvasAsPNG = useCallback(async (targetMp: number = 15): Promise<{ bytes: Uint8Array; filename: string } | null> => {
     const startTime = performance.now();
     try {
       const frame = currentFrame;
@@ -468,7 +468,8 @@ export function CollageProvider({ children }: { children: ReactNode }) {
       logger.debug(`[export] Loaded ${loadedBitmaps.length} bitmaps in ${(performance.now() - startTime).toFixed(0)}ms`);
 
       const currentPixels = canvasWidth * canvasHeight;
-      const printScale = currentPixels >= 15_000_000 ? 1 : Math.min(Math.sqrt(15_000_000 / currentPixels), 5);
+      const TARGET_PIXELS = targetMp * 1_000_000;
+      const printScale = currentPixels >= TARGET_PIXELS ? 1 : Math.min(Math.sqrt(TARGET_PIXELS / currentPixels), 5);
 
       let canvas: HTMLCanvasElement | OffscreenCanvas;
       let ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;

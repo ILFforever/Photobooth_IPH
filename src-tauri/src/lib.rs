@@ -157,6 +157,7 @@ pub fn run() {
             save_delay_settings,
             save_photobooth_settings,
             save_gif_settings,
+            save_print_settings,
             create_photobooth_session,
             delete_photobooth_session,
             delete_session_photo,
