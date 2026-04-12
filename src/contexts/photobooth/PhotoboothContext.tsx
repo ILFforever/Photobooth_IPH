@@ -348,7 +348,27 @@ export function PhotoboothProvider({ children }: { children: ReactNode }) {
         ctx.fillRect(0, 0, canvasWidth, canvasHeight);
       }
 
-      // OPTIMIZATION 5: Draw zone images using ImageBitmap (much faster than Image element)
+      // Draw below-frames overlays (must be before zone images)
+      for (const item of loadedBitmaps) {
+        if (item.type?.startsWith('below-overlay:') && item.bitmap && item.layer) {
+          const { layer, bitmap } = item;
+          const t = layer.transform;
+
+          ctx.save();
+          ctx.globalAlpha = t.opacity ?? 1;
+          ctx.globalCompositeOperation = layer.blendMode as GlobalCompositeOperation;
+          ctx.translate((t.x ?? 0) + bitmap.width / 2, (t.y ?? 0) + bitmap.height / 2);
+          ctx.rotate(((t.rotation ?? 0) * Math.PI) / 180);
+          ctx.scale(
+            (t.scale ?? 1) * (t.flipHorizontal ? -1 : 1),
+            (t.scale ?? 1) * (t.flipVertical ? -1 : 1)
+          );
+          ctx.drawImage(bitmap, -bitmap.width / 2, -bitmap.height / 2);
+          ctx.restore();
+        }
+      }
+
+      // Draw zone images using ImageBitmap (much faster than Image element)
       for (const item of loadedBitmaps) {
         if (item.type?.startsWith('zone:') && item.bitmap && item.zone && item.placed) {
           const { zone, placed, bitmap } = item;
@@ -381,28 +401,7 @@ export function PhotoboothProvider({ children }: { children: ReactNode }) {
             drawW = zone.height * imgAspect;
           }
 
-          // Direct bitmap draw (GPU accelerated)
           ctx.drawImage(bitmap, -drawW / 2, -drawH / 2, drawW, drawH);
-          ctx.restore();
-        }
-      }
-
-      // Draw below-frames overlays
-      for (const item of loadedBitmaps) {
-        if (item.type?.startsWith('below-overlay:') && item.bitmap && item.layer) {
-          const { layer, bitmap } = item;
-          const t = layer.transform;
-
-          ctx.save();
-          ctx.globalAlpha = t.opacity ?? 1;
-          ctx.globalCompositeOperation = layer.blendMode as GlobalCompositeOperation;
-          ctx.translate((t.x ?? 0) + bitmap.width / 2, (t.y ?? 0) + bitmap.height / 2);
-          ctx.rotate(((t.rotation ?? 0) * Math.PI) / 180);
-          ctx.scale(
-            (t.scale ?? 1) * (t.flipHorizontal ? -1 : 1),
-            (t.scale ?? 1) * (t.flipVertical ? -1 : 1)
-          );
-          ctx.drawImage(bitmap, -bitmap.width / 2, -bitmap.height / 2);
           ctx.restore();
         }
       }

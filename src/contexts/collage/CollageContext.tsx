@@ -58,6 +58,8 @@ interface CollageContextType {
   setCustomCanvasSizes: (sizes: CanvasSize[]) => void;
   activeSidebarTab: 'file' | 'edit' | 'frames' | 'layers' | 'custom-sets' | 'export' | 'background';
   setActiveSidebarTab: (tab: 'file' | 'edit' | 'frames' | 'layers' | 'custom-sets' | 'export' | 'background') => void;
+  previousSidebarTab: 'file' | 'edit' | 'frames' | 'layers' | 'custom-sets' | 'export' | 'background' | null;
+  goBackSidebarTab: () => void;
   customFrames: Frame[];
   setCustomFrames: (frames: Frame[]) => void;
   reloadFrames: () => Promise<void>;
@@ -130,7 +132,22 @@ export function CollageProvider({ children }: { children: ReactNode }) {
   const [isBackgroundSelected, setIsBackgroundSelected] = useState<boolean>(false);
   const [canvasZoom, setCanvasZoom] = useState<number>(1);
   const [customCanvasSizes, setCustomCanvasSizes] = useState<CanvasSize[]>([]);
-  const [activeSidebarTab, setActiveSidebarTab] = useState<'file' | 'edit' | 'frames' | 'layers' | 'custom-sets' | 'export' | 'background'>('background');
+  const [activeSidebarTab, setActiveSidebarTabRaw] = useState<'file' | 'edit' | 'frames' | 'layers' | 'custom-sets' | 'export' | 'background'>('background');
+  const [previousSidebarTab, setPreviousSidebarTab] = useState<'file' | 'edit' | 'frames' | 'layers' | 'custom-sets' | 'export' | 'background' | null>(null);
+
+  const setActiveSidebarTab = useCallback((tab: 'file' | 'edit' | 'frames' | 'layers' | 'custom-sets' | 'export' | 'background') => {
+    setActiveSidebarTabRaw(prev => {
+      setPreviousSidebarTab(prev);
+      return tab;
+    });
+  }, []);
+
+  const goBackSidebarTab = useCallback(() => {
+    if (previousSidebarTab) {
+      setActiveSidebarTabRaw(previousSidebarTab);
+      setPreviousSidebarTab(null);
+    }
+  }, [previousSidebarTab]);
   const [customFrames, setCustomFrames] = useState<Frame[]>([]);
   const [autoMatchBackground, setAutoMatchBackground] = useState(false);
   const [backgroundDimensions, setBackgroundDimensions] = useState<{ width: number; height: number } | null>(null);
@@ -736,6 +753,8 @@ export function CollageProvider({ children }: { children: ReactNode }) {
         setCustomCanvasSizes,
         activeSidebarTab,
         setActiveSidebarTab,
+        previousSidebarTab,
+        goBackSidebarTab,
         customFrames,
         setCustomFrames,
         reloadFrames,

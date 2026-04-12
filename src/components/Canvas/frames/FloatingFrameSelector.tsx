@@ -64,8 +64,6 @@ function BackgroundPillButton({
       style={{ position: 'relative', display: 'inline-block' }}
     >
       <motion.button
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
         onClick={onClick}
         className={`frame-pill-button ${isActive ? "active" : ""}`}
         style={{
@@ -687,18 +685,15 @@ const FloatingFrameSelector = () => {
     }
   };
 
-  // Slide animation variants for content
+  // Tab content fade variants
   const slideVariants = {
-    enter: (direction: number) => ({
-      x: direction > 0 ? 50 : -50,
+    enter: (_direction: number) => ({
       opacity: 0,
     }),
     center: {
-      x: 0,
       opacity: 1,
     },
-    exit: (direction: number) => ({
-      x: direction < 0 ? 50 : -50,
+    exit: (_direction: number) => ({
       opacity: 0,
     }),
   };
@@ -735,8 +730,6 @@ const FloatingFrameSelector = () => {
       <div className="pill-bar" style={pillBarStyle}>
         {/* Frame Selector Button */}
         <motion.button
-          whileHover={isFrameDisabled ? {} : { scale: 1.05 }}
-          whileTap={isFrameDisabled ? {} : { scale: 0.95 }}
           onClick={isFrameDisabled ? undefined : handleToggleFrame}
           className={`frame-pill-button ${
             openFloatingPanel === "frame" ? "active" : ""
@@ -769,8 +762,6 @@ const FloatingFrameSelector = () => {
 
         {/* Canvas Size Selector Button */}
         <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
           onClick={handleToggleCanvas}
           className={`frame-pill-button ${
             openFloatingPanel === "canvas" ? "active" : ""
@@ -795,10 +786,10 @@ const FloatingFrameSelector = () => {
       <AnimatePresence>
         {openFloatingPanel && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            transition={{ duration: 0.2 }}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            transition={{ duration: 0.15, ease: "easeOut" }}
             style={{
               ...getPanelStyle(),
               width: getPanelWidth(),
@@ -843,14 +834,14 @@ const FloatingFrameSelector = () => {
                         position: 'relative',
                         width: '32px',
                         height: '18px',
-                        background: autoMatchBackground ? 'var(--accent-blue)' : 'rgba(255,255,255,0.2)',
+                        background: autoMatchBackground ? '#000000' : 'rgba(255,255,255,0.2)',
                         borderRadius: '9px',
                         transition: 'background 0.2s',
                       }}>
                         <div style={{
                           position: 'absolute',
                           top: '2px',
-                          left: autoMatchBackground ? '14px' : '2px',
+                          left: autoMatchBackground ? '16px' : '2px',
                           width: '14px',
                           height: '14px',
                           background: 'white',
@@ -904,7 +895,7 @@ const FloatingFrameSelector = () => {
                     initial="enter"
                     animate="center"
                     exit="exit"
-                    transition={{ duration: 0.2, ease: "easeInOut" }}
+                    transition={{ duration: 0.12, ease: "easeOut" }}
                     style={{
                       position: "absolute",
                       width: "100%",
@@ -927,8 +918,6 @@ const FloatingFrameSelector = () => {
                         {/* Create Custom Frame Button */}
                         <motion.div
                           key="create-frame-btn"
-                          whileHover={{ scale: 1.02 }}
-                          whileTap={{ scale: 0.98 }}
                           onClick={() => setActiveSidebarTab('frames')}
                           className="frame-option import-bg-button"
                         >
@@ -959,8 +948,6 @@ const FloatingFrameSelector = () => {
                           frames.map((frame) => (
                             <motion.div
                               key={frame.id}
-                              whileHover={{ scale: 1.02 }}
-                              whileTap={{ scale: 0.98 }}
                               onClick={() => deleteMode === 'frame' ? handleDeleteFrame(frame.id) : handleSelectFrame(frame)}
                               className={`frame-option ${
                                 currentFrame?.id === frame.id ? "selected" : ""
@@ -1030,7 +1017,7 @@ const FloatingFrameSelector = () => {
                     initial="enter"
                     animate="center"
                     exit="exit"
-                    transition={{ duration: 0.2, ease: "easeInOut" }}
+                    transition={{ duration: 0.12, ease: "easeOut" }}
                     style={{
                       position: "absolute",
                       width: "100%",
@@ -1076,8 +1063,6 @@ const FloatingFrameSelector = () => {
                     {/* Custom Canvas Button */}
                     <motion.div
                       key="custom-canvas-btn"
-                      whileHover={{ scale: autoMatchBackground ? 1 : 1.02 }}
-                      whileTap={{ scale: autoMatchBackground ? 1 : 0.98 }}
                       onClick={() => !autoMatchBackground && setShowCustomCanvasDialog(true)}
                       className="frame-option import-bg-button"
                       style={{
@@ -1112,8 +1097,6 @@ const FloatingFrameSelector = () => {
                     {customCanvasSizes.map((size) => (
                       <motion.div
                         key={size.name}
-                        whileHover={{ scale: autoMatchBackground ? 1 : 1.02 }}
-                        whileTap={{ scale: autoMatchBackground ? 1 : 0.98 }}
                         onClick={() => deleteMode === 'canvas' ? handleDeleteCustomCanvas(size) : (!autoMatchBackground && handleSelectCanvasSize(size))}
                         className={`frame-option ${
                           canvasSize?.name === size.name ? "selected" : ""
@@ -1161,9 +1144,7 @@ const FloatingFrameSelector = () => {
                     {CANVAS_SIZES.map((size) => (
                       <motion.div
                         key={size.name}
-                        whileHover={{ scale: autoMatchBackground ? 1 : 1.02 }}
-                        whileTap={{ scale: autoMatchBackground ? 1 : 0.98 }}
-                        onClick={() => !autoMatchBackground && handleSelectCanvasSize(size)}
+                          onClick={() => !autoMatchBackground && handleSelectCanvasSize(size)}
                         className={`frame-option ${
                           canvasSize?.name === size.name ? "selected" : ""
                         } ${deleteMode === 'canvas' ? 'disabled' : ''}`}
@@ -1206,7 +1187,7 @@ const FloatingFrameSelector = () => {
                     initial="enter"
                     animate="center"
                     exit="exit"
-                    transition={{ duration: 0.2, ease: "easeInOut" }}
+                    transition={{ duration: 0.12, ease: "easeOut" }}
                     style={{
                       position: "absolute",
                       width: "100%",
@@ -1223,8 +1204,6 @@ const FloatingFrameSelector = () => {
                     {!loading && backgrounds.length > 0 && (
                       <motion.div
                         key="import-bg-btn"
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
                         onClick={handleImportBackground}
                         className="frame-option import-bg-button"
                       >
@@ -1301,8 +1280,6 @@ const FloatingFrameSelector = () => {
                           return (
                           <motion.div
                             key={bg.id}
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
                             onClick={() => deleteMode === 'background' && bg.background_type === 'image' ? handleDeleteBackground(bg) : (deleteMode !== 'background' && handleSelectBackground(bg))}
                             className={`frame-option ${
                               background === bgValueForCompare ? "selected" : ""
@@ -1396,74 +1373,33 @@ const FloatingFrameSelector = () => {
               }}
             >
               <motion.div
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.9, opacity: 0 }}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 12 }}
+                transition={{ duration: 0.15, ease: "easeOut" }}
                 onClick={(e) => e.stopPropagation()}
-                style={{
-                  background: 'rgba(30, 30, 30, 0.95)',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
-                  borderRadius: '12px',
-                  padding: '2rem',
-                  maxWidth: '450px',
-                  textAlign: 'center',
-                  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
-                }}
+                className="auto-info-modal"
               >
-                <div style={{ fontSize: '48px', marginBottom: '1rem' }}><Icon path={mdiImageSizeSelectLarge} size={2} /></div>
-                <h3 style={{
-                  color: 'white',
-                  fontSize: '1.5rem',
-                  fontWeight: '600',
-                  marginBottom: '0.5rem',
-                }}>
-                  Auto-Match Canvas Size
-                </h3>
-                <p style={{
-                  color: 'rgba(255, 255, 255, 0.7)',
-                  fontSize: '0.95rem',
-                  lineHeight: '1.5',
-                  marginBottom: '1.5rem',
-                }}>
+                <div className="auto-info-modal-icon-wrap">
+                  <Icon path={mdiImageSizeSelectLarge} size={2} />
+                </div>
+                <h3 className="auto-info-modal-title">Auto-Match Canvas Size</h3>
+                <p className="auto-info-modal-desc">
                   When enabled, the canvas size will automatically match your background image dimensions.
                 </p>
-                <div style={{
-                  background: 'rgba(59, 130, 246, 0.1)',
-                  border: '1px solid rgba(59, 130, 246, 0.3)',
-                  borderRadius: '8px',
-                  padding: '1rem',
-                  marginBottom: '1.5rem',
-                  textAlign: 'left',
-                }}>
-                  <div style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: '0.85rem', marginBottom: '0.5rem' }}>
-                    How it works:
-                  </div>
-                  <ol style={{
-                    color: 'rgba(255, 255, 255, 0.7)',
-                    fontSize: '0.85rem',
-                    lineHeight: '1.6',
-                    paddingLeft: '1.5rem',
-                    margin: 0,
-                  }}>
-                    <li style={{ marginBottom: '0.75rem' }}>Turn on Auto toggle (or enable it before selecting a background)</li>
-                    <li style={{ marginBottom: '0.75rem' }}>Select a background image</li>
-                    <li style={{ marginBottom: '0.75rem' }}>Canvas automatically adjusts to match background dimensions</li>
-                    <li>Canvas info displays "Automatic" with background dimensions</li>
-                  </ol>
+                <div className="auto-info-modal-steps">
+                  <div className="auto-info-modal-steps-label">How it works</div>
+                  <ul className="auto-info-modal-list">
+                    <li>Turn on the Auto toggle in the Canvas Size panel</li>
+                    <li>Select a background image</li>
+                    <li>Canvas automatically adjusts to match background dimensions</li>
+                    <li>The pill shows "Automatic" with the detected dimensions</li>
+                  </ul>
                 </div>
                 <button
                   type="button"
+                  className="auto-info-modal-close"
                   onClick={() => setShowAutoInfoModal(false)}
-                  style={{
-                    background: 'var(--accent-blue)',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '6px',
-                    padding: '0.75rem 2rem',
-                    fontSize: '0.95rem',
-                    fontWeight: '600',
-                    cursor: 'pointer',
-                  }}
                 >
                   Got it
                 </button>

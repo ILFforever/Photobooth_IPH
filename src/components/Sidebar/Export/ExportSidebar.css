@@ -136,6 +136,212 @@
   transform: none;
 }
 
+/* --- Options Group (collapsible) --- */
+
+.export-options-group {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-primary, #1e1e1e);
+  border: 1px solid var(--border-color, #3d3d3d);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.export-options-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--bg-secondary, #2a2a2a);
+  border: none;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  transition: background 0.12s ease;
+}
+
+.export-options-header:hover {
+  background: var(--bg-tertiary, #333);
+}
+
+.export-options-header-title {
+  flex: 1;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted, #6b6b6b);
+}
+
+.export-options-active-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #3b82f6;
+  flex-shrink: 0;
+}
+
+.export-options-chevron {
+  color: var(--text-muted, #6b6b6b);
+  flex-shrink: 0;
+}
+
+/* Resolution row */
+.export-option-section-label {
+  padding: 8px 12px 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-muted, #6b6b6b);
+}
+
+.export-resolution-presets {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  padding: 0 12px 10px;
+}
+
+.export-resolution-btn {
+  padding: 5px 4px;
+  background: var(--bg-tertiary, #2d2d2d);
+  border: 1px solid var(--border-color, #3d3d3d);
+  border-radius: 5px;
+  color: var(--text-secondary, #a0a0a0);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  text-align: center;
+}
+
+.export-resolution-btn:hover {
+  border-color: var(--text-muted, #6b6b6b);
+  color: var(--text-primary, #e4e4e4);
+}
+
+.export-resolution-btn.active {
+  background: #000;
+  border-color: #333;
+  color: #fff;
+}
+
+.export-custom-resolution {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px 10px;
+}
+
+.export-custom-resolution .export-border-input-row {
+  width: 80px;
+}
+
+.export-custom-resolution-hint {
+  font-size: 10px;
+  color: var(--text-muted, #6b6b6b);
+}
+
+/* Option rows (toggle rows) */
+.export-option-row {
+  transition: background 0.12s ease;
+}
+
+.export-option-row.is-on {
+  background: rgba(59, 130, 246, 0.04);
+}
+
+.export-option-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.export-option-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.export-option-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary, #e4e4e4);
+}
+
+.export-option-desc {
+  font-size: 11px;
+  color: var(--text-muted, #6b6b6b);
+  line-height: 1.3;
+}
+
+.export-option-divider {
+  height: 1px;
+  background: var(--border-color, #3d3d3d);
+}
+
+/* Border input grid */
+.export-border-inputs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 4px 12px 10px;
+  background: rgba(0, 0, 0, 0.12);
+  border-top: 1px solid var(--border-color, #3d3d3d);
+}
+
+.export-border-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.export-border-label {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-muted, #6b6b6b);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.export-border-input-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg-secondary, #2d2d2d);
+  border: 1px solid var(--border-color, #3d3d3d);
+  border-radius: 5px;
+  padding: 4px 8px;
+}
+
+.export-border-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text-primary, #e4e4e4);
+  font-size: 12px;
+  min-width: 0;
+  outline: none;
+  -moz-appearance: textfield;
+}
+
+.export-border-input::-webkit-outer-spin-button,
+.export-border-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+}
+
+.export-border-unit {
+  font-size: 11px;
+  color: var(--text-muted, #6b6b6b);
+  flex-shrink: 0;
+}
+
 /* --- Empty State --- */
 
 .export-empty {

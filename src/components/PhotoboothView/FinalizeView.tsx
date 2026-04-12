@@ -17,6 +17,7 @@ import { autoPlacePhotos, PhotoForPlacement } from "../../utils/autoPlacement";
 import { useToast } from "../../contexts";
 import "./FinalizeView.css";
 import { createLogger } from '../../utils/logger';
+import { useKeyboardZoom } from '../../hooks/useKeyboardZoom';
 
 const logger = createLogger('FinalizeView');
 
@@ -248,6 +249,9 @@ export default function FinalizeView({
       };
     }
   }, [handleWheel, handleTouchStart, handleTouchMove]);
+
+  // Handle Ctrl+Plus / Ctrl+Minus keyboard zoom
+  useKeyboardZoom(localZoomRef, setLocalZoomRef, setZoomCenterRef);
 
   // Handle clicks on background to deselect
   const handleBackgroundClick = useCallback(
@@ -817,7 +821,7 @@ export default function FinalizeView({
               {/* Zoom hint overlay - shows when user hasn't zoomed yet */}
               {!hasEverZoomed && localZoom === 1 && (
                 <div className="finalize-zoom-hint">
-                  <span>Hold Ctrl + Scroll to zoom</span>
+                  <span>Ctrl + Scroll or Ctrl +/− to zoom</span>
                 </div>
               )}
             </div>

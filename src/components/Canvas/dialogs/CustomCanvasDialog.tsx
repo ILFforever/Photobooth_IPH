@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import { useCollage } from "../../../contexts";
 import { createLogger } from "../../../utils/logger";
+import "./CustomCanvasDialog.css";
 
 const logger = createLogger('CustomCanvasDialog');
 
@@ -48,6 +49,12 @@ const UNIT_TO_PX: Record<Unit, number> = {
   'in': 300,
 };
 
+const CATEGORY_LABELS: Record<string, string> = {
+  standard: 'Standard Paper',
+  social: 'Social Media',
+  photo: 'Photo Prints',
+};
+
 interface CustomCanvasDialogProps {
   isOpen: boolean;
   onClose: () => void;
@@ -60,13 +67,13 @@ export default function CustomCanvasDialog({ isOpen, onClose }: CustomCanvasDial
   const [unit, setUnit] = useState<Unit>('px');
   const [name, setName] = useState<string>('');
   const [selectedTemplate, setSelectedTemplate] = useState<PresetTemplate | null>(null);
+  const [submitted, setSubmitted] = useState(false);
 
   // Calculate dimensions in pixels
   const pixelDimensions = useMemo(() => {
     const w = parseFloat(width) || 0;
     const h = parseFloat(height) || 0;
     const factor = UNIT_TO_PX[unit];
-
     return {
       width: Math.round(w * factor),
       height: Math.round(h * factor),
@@ -81,11 +88,10 @@ export default function CustomCanvasDialog({ isOpen, onClose }: CustomCanvasDial
     return w / h;
   }, [width, height]);
 
-  // Format aspect ratio as a readable string (e.g., "4:3", "16:9")
+  // Format aspect ratio as a readable string
   const aspectRatioText = useMemo(() => {
-    if (aspectRatio === 0) return '-';
+    if (aspectRatio === 0) return '—';
 
-    // Find common ratios
     const commonRatios: { ratio: number; text: string }[] = [
       { ratio: 1, text: '1:1' },
       { ratio: 4/3, text: '4:3' },
@@ -101,40 +107,32 @@ export default function CustomCanvasDialog({ isOpen, onClose }: CustomCanvasDial
     const match = commonRatios.find(r => Math.abs(aspectRatio - r.ratio) < 0.05);
     if (match) return match.text;
 
-    // Calculate simplified ratio
-    const gcd = (a: number, b: number): number => {
-      return b === 0 ? a : gcd(b, a % b);
-    };
-
+    const gcd = (a: number, b: number): number => b === 0 ? a : gcd(b, a % b);
     const precision = 100;
-    const ar = aspectRatio;
-    const w = Math.round(ar * precision);
+    const w = Math.round(aspectRatio * precision);
     const h = precision;
     const divisor = gcd(w, h);
-
     return `${w / divisor}:${h / divisor}`;
   }, [aspectRatio]);
 
-  // Handle template selection
   const handleSelectTemplate = (template: PresetTemplate) => {
     setSelectedTemplate(template);
     setWidth(template.width.toString());
     setHeight(template.height.toString());
     setUnit(template.unit);
     setName(template.name);
+    setSubmitted(false);
   };
 
-  // Handle create canvas
   const handleCreate = async () => {
-    if (!width || !height || !name) {
-      return;
-    }
+    setSubmitted(true);
+    if (!width || !height || !name) return;
 
     const newCanvas = {
       width: pixelDimensions.width,
       height: pixelDimensions.height,
       name,
-      created_at: Math.floor(Date.now() / 1000), // Unix timestamp in seconds
+      created_at: Math.floor(Date.now() / 1000),
     };
 
     setCanvasSize({
@@ -143,499 +141,238 @@ export default function CustomCanvasDialog({ isOpen, onClose }: CustomCanvasDial
       name,
     });
 
-    // Save to appdata using dedicated command
     try {
       await invoke('save_custom_canvas_size', { canvas: newCanvas });
     } catch (error) {
       logger.error('Failed to save custom canvas:', error);
     }
 
-    // Reset form
     setWidth('');
     setHeight('');
     setName('');
     setSelectedTemplate(null);
+    setSubmitted(false);
     onClose();
   };
 
-  // Reset form when dialog opens
   useEffect(() => {
     if (isOpen) {
       setWidth('');
       setHeight('');
       setName('');
       setSelectedTemplate(null);
+      setSubmitted(false);
     }
   }, [isOpen]);
 
-  // Group templates by category
-  const templatesByCategory = useMemo(() => {
-    const grouped: Record<string, PresetTemplate[]> = {
-      standard: [],
-      social: [],
-      photo: [],
+  // Handle Escape key
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+      if (e.key === 'Enter') handleCreate();
     };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [isOpen, width, height, name]);
 
-    PRESET_TEMPLATES.forEach(template => {
-      grouped[template.category].push(template);
-    });
-
+  const templatesByCategory = useMemo(() => {
+    const grouped: Record<string, PresetTemplate[]> = { standard: [], social: [], photo: [] };
+    PRESET_TEMPLATES.forEach(t => grouped[t.category].push(t));
     return grouped;
   }, []);
+
+  const isValid = !!(width && height && name);
+  const showNameError = submitted && !name;
+  const showWidthError = submitted && !width;
+  const showHeightError = submitted && !height;
+
+  // Preview dimensions: fit within 120×120
+  const previewSize = useMemo(() => {
+    if (aspectRatio <= 0) return null;
+    const maxW = 120, maxH = 120;
+    if (aspectRatio >= 1) {
+      return { width: maxW, height: Math.round(maxW / aspectRatio) };
+    } else {
+      return { width: Math.round(maxH * aspectRatio), height: maxH };
+    }
+  }, [aspectRatio]);
 
   return (
     <AnimatePresence>
       {isOpen && (
         <>
-          {/* Backdrop */}
           <motion.div
+            className="ccd-backdrop"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            style={{
-              position: 'fixed',
-              inset: 0,
-              background: 'rgba(0, 0, 0, 0.7)',
-              zIndex: 9998,
-              backdropFilter: 'blur(4px)',
-            }}
           />
 
-          {/* Dialog */}
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              position: 'fixed',
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
-              zIndex: 9999,
-              pointerEvents: 'auto',
-            }}
-          >
+          <div className="ccd-positioner" onClick={(e) => e.stopPropagation()}>
             <motion.div
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="ccd-dialog"
+              initial={{ opacity: 0, scale: 0.95, y: 12 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              style={{
-                width: '90vw',
-                maxWidth: '900px',
-                maxHeight: '85vh',
-                background: 'linear-gradient(145deg, rgba(30, 30, 35, 0.98), rgba(20, 20, 25, 0.98))',
-                borderRadius: '16px',
-                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
-                display: 'flex',
-                flexDirection: 'column',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-                overflow: 'hidden',
-              }}
+              exit={{ opacity: 0, scale: 0.95, y: 12 }}
+              transition={{ duration: 0.15, ease: [0.2, 0, 0, 1] }}
             >
-            {/* Header */}
-            <div style={{
-              padding: '24px 32px',
-              borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-            }}>
-              <div>
-                <h2 style={{
-                  margin: 0,
-                  fontSize: '24px',
-                  fontWeight: 600,
-                  color: '#ffffff',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                }}>
-                  <span>✏️</span>
-                  Custom Canvas Size
-                </h2>
-                <p style={{
-                  margin: '4px 0 0 0',
-                  fontSize: '14px',
-                  color: 'rgba(255, 255, 255, 0.6)',
-                }}>
-                  Create a custom canvas or use a preset template
-                </p>
-              </div>
-              <motion.button
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
-                onClick={onClose}
-                style={{
-                  width: '36px',
-                  height: '36px',
-                  borderRadius: '8px',
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  border: 'none',
-                  color: '#ffffff',
-                  fontSize: '20px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  transition: 'all 0.2s',
-                }}
-              >
-                ✕
-              </motion.button>
-            </div>
-
-            {/* Content */}
-            <div style={{
-              padding: '32px',
-              overflowY: 'auto',
-              flex: 1,
-              display: 'grid',
-              gridTemplateColumns: '1fr 300px',
-              gap: '32px',
-            }}>
-              {/* Left side - Templates */}
-              <div>
-                <h3 style={{
-                  margin: '0 0 16px 0',
-                  fontSize: '16px',
-                  fontWeight: 600,
-                  color: 'rgba(255, 255, 255, 0.9)',
-                }}>
-                  Preset Templates
-                </h3>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                  {Object.entries(templatesByCategory).map(([category, templates]) => (
-                    <div key={category}>
-                      <h4 style={{
-                        margin: '0 0 8px 0',
-                        fontSize: '13px',
-                        fontWeight: 500,
-                        color: 'rgba(255, 255, 255, 0.5)',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px',
-                      }}>
-                        {category === 'standard' && '📄 Standard Paper'}
-                        {category === 'social' && '📱 Social Media'}
-                        {category === 'photo' && '🖼️ Photo Prints'}
-                      </h4>
-                      <div style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
-                        gap: '8px',
-                      }}>
-                        {templates.map(template => (
-                          <motion.button
-                            key={template.name}
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
-                            onClick={() => handleSelectTemplate(template)}
-                            style={{
-                              padding: '12px',
-                              borderRadius: '8px',
-                              background: selectedTemplate?.name === template.name
-                                ? 'rgba(59, 130, 246, 0.2)'
-                                : 'rgba(255, 255, 255, 0.05)',
-                              border: selectedTemplate?.name === template.name
-                                ? '2px solid rgba(59, 130, 246, 0.5)'
-                                : '1px solid rgba(255, 255, 255, 0.1)',
-                              color: '#ffffff',
-                              fontSize: '13px',
-                              cursor: 'pointer',
-                              textAlign: 'left',
-                              transition: 'all 0.2s',
-                              display: 'flex',
-                              flexDirection: 'column',
-                              gap: '4px',
-                            }}
-                          >
-                            <span style={{ fontWeight: 600 }}>{template.name}</span>
-                            <span style={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.5)' }}>
-                              {template.width}×{template.height} {template.unit}
-                            </span>
-                          </motion.button>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Right side - Custom input & preview */}
-              <div style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '24px',
-              }}>
-                {/* Live preview */}
+              {/* Header */}
+              <div className="ccd-header">
                 <div>
-                  <h3 style={{
-                    margin: '0 0 12px 0',
-                    fontSize: '14px',
-                    fontWeight: 600,
-                    color: 'rgba(255, 255, 255, 0.9)',
-                  }}>
-                    Live Preview
-                  </h3>
-                  <div style={{
-                    background: 'rgba(0, 0, 0, 0.3)',
-                    borderRadius: '12px',
-                    padding: '24px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    minHeight: '160px',
-                    border: '1px solid rgba(255, 255, 255, 0.1)',
-                  }}>
-                    {aspectRatio > 0 ? (
-                      <motion.div
-                        key={aspectRatio}
-                        initial={{ scale: 0.8, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        transition={{ duration: 0.2 }}
-                        style={{
-                          width: aspectRatio > 1 ? '100px' : '80px',
-                          maxWidth: '120px',
-                          maxHeight: '120px',
-                          background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.3), rgba(147, 51, 234, 0.3))',
-                          border: '2px solid rgba(59, 130, 246, 0.5)',
-                          borderRadius: '4px',
-                          aspectRatio: `${aspectRatio}`,
-                          boxShadow: '0 8px 16px rgba(0, 0, 0, 0.3)',
-                        }}
-                      />
-                    ) : (
-                      <div style={{
-                        width: '80px',
-                        height: '100px',
-                        background: 'rgba(255, 255, 255, 0.05)',
-                        border: '2px dashed rgba(255, 255, 255, 0.2)',
-                        borderRadius: '4px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: 'rgba(255, 255, 255, 0.3)',
-                        fontSize: '12px',
-                      }}>
-                        Preview
+                  <h2 className="ccd-title">Custom Canvas Size</h2>
+                  <p className="ccd-subtitle">Create a custom canvas or choose a preset</p>
+                </div>
+                <button
+                  className="ccd-close-btn"
+                  onClick={onClose}
+                  aria-label="Close dialog"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Content */}
+              <div className="ccd-content">
+                {/* Left — Templates */}
+                <div>
+                  <h3 className="ccd-section-label">Preset Templates</h3>
+                  <div className="ccd-templates">
+                    {Object.entries(templatesByCategory).map(([category, templates]) => (
+                      <div key={category}>
+                        <h4 className="ccd-category-label">
+                          {CATEGORY_LABELS[category]}
+                        </h4>
+                        <div className="ccd-template-grid">
+                          {templates.map(template => (
+                            <button
+                              key={template.name}
+                              className={`ccd-template-btn${selectedTemplate?.name === template.name ? ' selected' : ''}`}
+                              onClick={() => handleSelectTemplate(template)}
+                            >
+                              <span className="ccd-template-name">{template.name}</span>
+                              <span className="ccd-template-dims">
+                                {template.width}×{template.height} {template.unit}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                    )}
-                  </div>
-                  <div style={{
-                    marginTop: '12px',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    fontSize: '13px',
-                    color: 'rgba(255, 255, 255, 0.6)',
-                  }}>
-                    <span>Aspect Ratio: <strong style={{ color: '#ffffff' }}>{aspectRatioText}</strong></span>
-                    <span>{pixelDimensions.width}×{pixelDimensions.height} px</span>
+                    ))}
                   </div>
                 </div>
 
-                {/* Custom input */}
-                <div>
-                  <h3 style={{
-                    margin: '0 0 12px 0',
-                    fontSize: '14px',
-                    fontWeight: 600,
-                    color: 'rgba(255, 255, 255, 0.9)',
-                  }}>
-                    Custom Size
-                  </h3>
-                  <div style={{
-                    background: 'rgba(255, 255, 255, 0.05)',
-                    borderRadius: '12px',
-                    padding: '16px',
-                    border: '1px solid rgba(255, 255, 255, 0.1)',
-                  }}>
-                    {/* Canvas name */}
-                    <div style={{ marginBottom: '16px' }}>
-                      <label style={{
-                        display: 'block',
-                        fontSize: '12px',
-                        fontWeight: 500,
-                        color: 'rgba(255, 255, 255, 0.7)',
-                        marginBottom: '6px',
-                      }}>
-                        Canvas Name
-                      </label>
-                      <input
-                        type="text"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        placeholder="My Custom Canvas"
-                        style={{
-                          width: '100%',
-                          padding: '10px 12px',
-                          borderRadius: '6px',
-                          background: 'rgba(0, 0, 0, 0.3)',
-                          border: '1px solid rgba(255, 255, 255, 0.1)',
-                          color: '#ffffff',
-                          fontSize: '14px',
-                          outline: 'none',
-                          boxSizing: 'border-box',
-                        }}
-                      />
+                {/* Right — Preview + Inputs */}
+                <div className="ccd-right">
+                  {/* Live Preview */}
+                  <div>
+                    <h3 className="ccd-section-label" style={{ fontSize: 'var(--text-lg)' }}>Preview</h3>
+                    <div className="ccd-preview-box">
+                      {previewSize ? (
+                        <motion.div
+                          key={`${previewSize.width}x${previewSize.height}`}
+                          className="ccd-preview-canvas"
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          transition={{ duration: 0.15 }}
+                          style={{ width: previewSize.width, height: previewSize.height }}
+                        />
+                      ) : (
+                        <div className="ccd-preview-empty">canvas</div>
+                      )}
                     </div>
+                    <div className="ccd-preview-meta">
+                      <span>Ratio: <strong>{aspectRatioText}</strong></span>
+                      {pixelDimensions.width > 0 && (
+                        <span>{pixelDimensions.width}×{pixelDimensions.height} px</span>
+                      )}
+                    </div>
+                  </div>
 
-                    {/* Dimensions */}
-                    <div style={{ marginBottom: '12px' }}>
-                      <label style={{
-                        display: 'block',
-                        fontSize: '12px',
-                        fontWeight: 500,
-                        color: 'rgba(255, 255, 255, 0.7)',
-                        marginBottom: '6px',
-                      }}>
-                        Dimensions
-                      </label>
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <div style={{ flex: 1 }}>
+                  {/* Custom inputs */}
+                  <div>
+                    <h3 className="ccd-section-label" style={{ fontSize: 'var(--text-lg)' }}>Custom Size</h3>
+                    <div className="ccd-inputs">
+                      {/* Canvas name */}
+                      <div className="ccd-field">
+                        <label className="ccd-label">Canvas Name</label>
+                        <input
+                          className={`ccd-input${showNameError ? ' error' : ''}`}
+                          type="text"
+                          value={name}
+                          onChange={(e) => setName(e.target.value)}
+                          placeholder="e.g. My 4×6 Print"
+                        />
+                        {showNameError && (
+                          <span className="ccd-error-msg">Name is required</span>
+                        )}
+                      </div>
+
+                      {/* Dimensions */}
+                      <div className="ccd-field">
+                        <label className="ccd-label">Dimensions</label>
+                        <div className="ccd-input-row">
                           <input
+                            className={`ccd-input${showWidthError ? ' error' : ''}`}
                             type="number"
                             value={width}
                             onChange={(e) => setWidth(e.target.value)}
                             placeholder="Width"
                             min="0"
                             step="0.1"
-                            style={{
-                              width: '100%',
-                              padding: '10px 12px',
-                              borderRadius: '6px',
-                              background: 'rgba(0, 0, 0, 0.3)',
-                              border: '1px solid rgba(255, 255, 255, 0.1)',
-                              color: '#ffffff',
-                              fontSize: '14px',
-                              outline: 'none',
-                              boxSizing: 'border-box',
-                            }}
                           />
-                        </div>
-                        <span style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          color: 'rgba(255, 255, 255, 0.4)',
-                          fontSize: '18px',
-                        }}>×</span>
-                        <div style={{ flex: 1 }}>
+                          <span className="ccd-times">×</span>
                           <input
+                            className={`ccd-input${showHeightError ? ' error' : ''}`}
                             type="number"
                             value={height}
                             onChange={(e) => setHeight(e.target.value)}
                             placeholder="Height"
                             min="0"
                             step="0.1"
-                            style={{
-                              width: '100%',
-                              padding: '10px 12px',
-                              borderRadius: '6px',
-                              background: 'rgba(0, 0, 0, 0.3)',
-                              border: '1px solid rgba(255, 255, 255, 0.1)',
-                              color: '#ffffff',
-                              fontSize: '14px',
-                              outline: 'none',
-                              boxSizing: 'border-box',
-                            }}
                           />
                         </div>
+                        {(showWidthError || showHeightError) && (
+                          <span className="ccd-error-msg">Width and height are required</span>
+                        )}
                       </div>
-                    </div>
 
-                    {/* Unit selector */}
-                    <div style={{ marginBottom: '16px' }}>
-                      <label style={{
-                        display: 'block',
-                        fontSize: '12px',
-                        fontWeight: 500,
-                        color: 'rgba(255, 255, 255, 0.7)',
-                        marginBottom: '6px',
-                      }}>
-                        Unit
-                      </label>
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        {(['px', 'mm', 'cm', 'in'] as Unit[]).map(u => (
-                          <button
-                            key={u}
-                            onClick={() => setUnit(u)}
-                            style={{
-                              flex: 1,
-                              padding: '8px',
-                              borderRadius: '6px',
-                              background: unit === u
-                                ? 'rgba(59, 130, 246, 0.3)'
-                                : 'rgba(0, 0, 0, 0.3)',
-                              border: unit === u
-                                ? '2px solid rgba(59, 130, 246, 0.5)'
-                                : '1px solid rgba(255, 255, 255, 0.1)',
-                              color: '#ffffff',
-                              fontSize: '13px',
-                              cursor: 'pointer',
-                              transition: 'all 0.2s',
-                              textTransform: 'uppercase',
-                            }}
-                          >
-                            {u}
-                          </button>
-                        ))}
+                      {/* Unit selector */}
+                      <div className="ccd-field">
+                        <label className="ccd-label">Unit</label>
+                        <div className="ccd-units">
+                          {(['px', 'mm', 'cm', 'in'] as Unit[]).map(u => (
+                            <button
+                              key={u}
+                              className={`ccd-unit-btn${unit === u ? ' active' : ''}`}
+                              onClick={() => setUnit(u)}
+                            >
+                              {u}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            {/* Footer */}
-            <div style={{
-              padding: '20px 32px',
-              borderTop: '1px solid rgba(255, 255, 255, 0.1)',
-              display: 'flex',
-              justifyContent: 'flex-end',
-              gap: '12px',
-            }}>
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={onClose}
-                style={{
-                  padding: '12px 24px',
-                  borderRadius: '8px',
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  color: '#ffffff',
-                  fontSize: '14px',
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                }}
-              >
-                Cancel
-              </motion.button>
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={handleCreate}
-                disabled={!width || !height || !name}
-                style={{
-                  padding: '12px 24px',
-                  borderRadius: '8px',
-                  background: (!width || !height || !name)
-                    ? 'rgba(59, 130, 246, 0.3)'
-                    : 'linear-gradient(135deg, rgba(59, 130, 246, 0.8), rgba(147, 51, 234, 0.8))',
-                  border: 'none',
-                  color: '#ffffff',
-                  fontSize: '14px',
-                  fontWeight: 600,
-                  cursor: (!width || !height || !name) ? 'not-allowed' : 'pointer',
-                  transition: 'all 0.2s',
-                  opacity: (!width || !height || !name) ? 0.5 : 1,
-                }}
-              >
-                Create Canvas
-              </motion.button>
-            </div>
-          </motion.div>
-        </div>
+              {/* Footer */}
+              <div className="ccd-footer">
+                <button className="ccd-btn-cancel" onClick={onClose}>
+                  Cancel
+                </button>
+                <button
+                  className="ccd-btn-create"
+                  onClick={handleCreate}
+                  disabled={submitted && !isValid}
+                >
+                  Create Canvas
+                </button>
+              </div>
+            </motion.div>
+          </div>
         </>
       )}
     </AnimatePresence>

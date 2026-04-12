@@ -1,4 +1,5 @@
 import { useRef, useMemo, useState, useCallback, useEffect } from "react";
+import { useKeyboardZoom } from "../../../hooks/useKeyboardZoom";
 import { motion } from "framer-motion";
 import { ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
 import { useCollage } from "../../../contexts";
@@ -47,6 +48,8 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
     importOverlayFiles,
     isFrameCreatorSaving,
     snapEnabled,
+    setOpenFloatingPanel,
+    goBackSidebarTab,
   } = useCollage();
 
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -267,6 +270,9 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [activeSidebarTab, selectedZone, copiedZone, currentFrame, setCopiedZone, setCurrentFrame, setSelectedZone]);
 
+  // Handle Ctrl+Plus / Ctrl+Minus keyboard zoom
+  useKeyboardZoom(localZoomRef, setLocalZoomRef, setZoomCenterRef, setCanvasZoomRef);
+
   // Auto-scroll to zoom center when zooming
   // Ensures the point under the mouse stays stable during zoom
   useEffect(() => {
@@ -448,9 +454,12 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
           ref={containerRef}
           style={containerStyle}
           onClick={() => {
+            const wasZoneSelected = selectedZone !== null;
             setSelectedZone(null);
             setIsBackgroundSelected(false);
             setSelectedOverlayId(null);
+            setOpenFloatingPanel(null);
+            if (wasZoneSelected) goBackSidebarTab();
           }}
         >
           {/* Invisible spacer to allow scrolling when zoomed */}
