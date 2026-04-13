@@ -528,6 +528,40 @@
   margin-top: var(--spacing-xs);
 }
 
+
+.naming-scheme-hints {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.naming-scheme-hint-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.naming-scheme-token {
+  font-family: 'SF Mono', 'Monaco', 'Consolas', 'Courier New', monospace;
+  font-size: 10px;
+  color: var(--accent-blue);
+  background: rgba(0, 120, 212, 0.1);
+  border: 1px solid rgba(0, 120, 212, 0.25);
+  border-radius: 3px;
+  padding: 0px 4px;
+  flex-shrink: 0;
+}
+
+.naming-scheme-example {
+  font-family: 'SF Mono', 'Monaco', 'Consolas', 'Courier New', monospace;
+  font-size: 10px;
+  color: var(--text-secondary, var(--text-muted));
+}
+
 /* ========================================
  * Info Icon Button
  * ======================================== */

@@ -222,6 +222,7 @@ pub fn run() {
             check_app_updates,
             check_vm_updates,
             check_all_updates,
+            get_version_changelog,
             install_vm_update,
             download_msi_update,
             launch_msi_installer,

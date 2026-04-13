@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
-import { Monitor, X, BookOpen } from "lucide-react";
+import { Monitor, X, BookOpen, Sparkles } from "lucide-react";
 import { createLogger } from "../../../utils/logger";
 import "../../../styles/Modal.css";
 import "./AppSettingsModal.css";
@@ -12,6 +12,7 @@ interface AppSettingsModalProps {
   show: boolean;
   onClose: () => void;
   onShowGuide?: () => void;
+  onShowChangelog?: () => void;
 }
 
 interface AppSettings {
@@ -65,7 +66,7 @@ function SettingRow({ label, desc, children }: { label: string; desc?: string; c
   );
 }
 
-export default function AppSettingsModal({ show, onClose, onShowGuide }: AppSettingsModalProps) {
+export default function AppSettingsModal({ show, onClose, onShowGuide, onShowChangelog }: AppSettingsModalProps) {
   const [settings, setSettings] = useState<AppSettings>(DEFAULTS);
   const [loaded, setLoaded] = useState(false);
   const [activeTab, setActiveTab] = useState<SettingsTab>('window');
@@ -155,6 +156,18 @@ export default function AppSettingsModal({ show, onClose, onShowGuide }: AppSett
                         >
                           <BookOpen size={13} />
                           Show Guide
+                        </button>
+                      </SettingRow>
+                      <SettingRow
+                        label="What's New"
+                        desc="View the changelog for the current version"
+                      >
+                        <button
+                          className="settings-action-btn"
+                          onClick={() => { onShowChangelog?.(); onClose(); }}
+                        >
+                          <Sparkles size={13} />
+                          View Changelog
                         </button>
                       </SettingRow>
                     </div>

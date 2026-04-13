@@ -289,7 +289,7 @@ export function usePhotoDownloadHandler({
       logger.error('[PhotoboothWorkspace::handlePhotoDownloaded] ERROR:', error);
     }
     logger.debug('[PhotoboothWorkspace::handlePhotoDownloaded] END');
-  }, [workingFolder, currentSession, sessions, updateCurrentSessionFromDownload, loadSession, sequenceNotifyCaptureComplete, updateGuestDisplay, currentSetPhotos, selectedPhotoIndex, displayMode, account, qrUploadAllImages, enqueuePhotos]);
+  }, [workingFolder, currentSession, sessions, photoNamingScheme, updateCurrentSessionFromDownload, loadSession, sequenceNotifyCaptureComplete, updateGuestDisplay, currentSetPhotos, selectedPhotoIndex, displayMode, account, qrUploadAllImages, enqueuePhotos]);
 
   // Subscribe to photo_downloaded events
   useEffect(() => {

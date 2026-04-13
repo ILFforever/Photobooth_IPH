@@ -876,8 +876,13 @@ pub async fn download_photo_from_daemon(
         .and_then(|e| e.to_str())
         .unwrap_or("jpg");
 
-    // Replace {number} placeholder with 4-digit zero-padded number
-    let custom_filename = scheme.replace("{number}", &format!("{:04}", next_photo_num));
+    // Replace {number} placeholder with 4-digit zero-padded number.
+    // If {number} is not in the scheme, append the number to prevent file overwrites.
+    let custom_filename = if scheme.contains("{number}") {
+        scheme.replace("{number}", &format!("{:04}", next_photo_num))
+    } else {
+        format!("{}_{:04}", scheme, next_photo_num)
+    };
 
     // Add extension if not already present in the scheme
     let custom_filename = if custom_filename.contains('.') {

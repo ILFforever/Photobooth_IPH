@@ -828,6 +828,42 @@ pub async fn check_all_updates() -> Result<VersionStatus, String> {
     })
 }
 
+/// Fetch release notes for a specific app version
+#[tauri::command]
+pub async fn get_version_changelog(version: String) -> Result<Vec<String>, String> {
+    let url = format!(
+        "{}/api/versions/changelog?type=msi&version={}",
+        crate::version::UPDATE_API_BASE,
+        version
+    );
+    log_file!("[UPDATE] Fetching changelog for version {} at: {}", version, url);
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+    let response = client.get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch changelog: {}", e))?;
+
+    if response.status() == 404 {
+        return Ok(vec![]);
+    }
+
+    if !response.status().is_success() {
+        return Err(format!("Server returned status: {}", response.status()));
+    }
+
+    let notes: Vec<String> = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse changelog: {}", e))?;
+
+    Ok(notes)
+}
+
 /// Download and install MSI update
 #[tauri::command]
 pub async fn download_msi_update(window: tauri::Window) -> Result<String, String> {

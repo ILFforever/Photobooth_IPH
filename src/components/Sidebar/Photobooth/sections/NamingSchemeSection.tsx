@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, Info } from 'lucide-react';
 
 interface NamingSchemeSectionProps {
   expanded: boolean;
@@ -37,8 +37,21 @@ export function NamingSchemeSection({
             placeholder="IPH_{number}"
             style={{ width: '100%' }}
           />
-          <div className="setting-hint" style={{ marginTop: '8px' }}>
-            Use {'{number}'} as placeholder for 4-digit number (e.g., IPH_0001)
+          <div className="qr-info-banner" style={{ marginBottom: 0, marginTop: '8px' }}>
+            <Info size={14} className="info-icon" />
+            <div className="info-text">
+              The counter resets to <strong>0001</strong> at the start of each session.
+            </div>
+          </div>
+          <div className="naming-scheme-hints">
+            <div className="naming-scheme-hint-row">
+              <code className="naming-scheme-token">{'{number}'}</code>
+              <span>inserts a 4-digit counter — e.g., <code className="naming-scheme-example">IPH_0001</code></span>
+            </div>
+            <div className="naming-scheme-hint-row">
+              <code className="naming-scheme-token">omitted</code>
+              <span>number is appended automatically — e.g., <code className="naming-scheme-example">IPH_0001</code></span>
+            </div>
           </div>
         </div>
       )}

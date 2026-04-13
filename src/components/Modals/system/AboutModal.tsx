@@ -50,6 +50,7 @@ export default function AboutModal({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [ffmpegSize, setFfmpegSize] = useState<number | null>(null);
+  const [currentVersionNotes, setCurrentVersionNotes] = useState<string[]>([]);
 
   useEffect(() => {
     if (show && !appInfo) {
@@ -90,6 +91,11 @@ export default function AboutModal({
         versionStatus,
         virtualboxVersion: requirements.requirements.virtualbox_version
       });
+      // Fetch release notes for the currently installed version
+      try {
+        const notes = await invoke<string[]>('get_version_changelog', { version: versionStatus.app.current_version });
+        setCurrentVersionNotes(notes);
+      } catch { /* ignore */ }
     } catch (e) {
       logger.error('Failed to check for updates:', e);
     } finally {
@@ -348,10 +354,10 @@ export default function AboutModal({
                                 )}
                               </div>
                             </div>
-                            {vs?.app.release_notes && vs.app.release_notes.length > 0 && (
+                            {currentVersionNotes.length > 0 && (
                               <div className="versions-release-notes">
                                 <div className="versions-release-notes-title">What's new</div>
-                                <ul>{vs.app.release_notes.map((n, i) => <li key={i}>{n}</li>)}</ul>
+                                <ul>{currentVersionNotes.map((n, i) => <li key={i}>{n}</li>)}</ul>
                               </div>
                             )}
 

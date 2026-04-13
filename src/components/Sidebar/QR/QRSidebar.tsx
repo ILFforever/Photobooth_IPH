@@ -39,7 +39,7 @@ export default function QRSidebar({
   const [showHistory, setShowHistory] = useState(false);
 
   return (
-    <div className="sidebar">
+    <div className="sidebar qr-sidebar-root">
       <motion.div
         initial={{ opacity: 0, x: -20 }}
         animate={{ opacity: 1, x: 0 }}

@@ -1,0 +1,236 @@
+.changelog-modal {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  width: 100%;
+  max-width: 460px;
+  box-shadow: var(--shadow-xl);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Header ── */
+.changelog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.changelog-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.changelog-logo-wrap {
+  width: 36px;
+  height: 36px;
+}
+
+.changelog-logo {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  display: block;
+}
+
+.changelog-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.changelog-version {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.changelog-close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.changelog-close-btn:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+/* ── Featured heroes ── */
+.changelog-featured-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 20px 0;
+}
+
+.changelog-featured {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px;
+  background: linear-gradient(135deg, rgba(0, 120, 212, 0.1) 0%, rgba(0, 120, 212, 0.04) 100%);
+  border: 1px solid rgba(0, 120, 212, 0.25);
+  border-radius: 10px;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Sweep shimmer — runs once on entry, signals "fresh" */
+@keyframes changelog-shimmer {
+  0%   { transform: translateX(-100%) skewX(-12deg); opacity: 0; }
+  15%  { opacity: 1; }
+  85%  { opacity: 1; }
+  100% { transform: translateX(200%) skewX(-12deg); opacity: 0; }
+}
+
+.changelog-featured::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.06) 50%,
+    transparent 100%
+  );
+  width: 50%;
+  animation: changelog-shimmer 1.1s ease-in-out 0.35s 1 forwards;
+  pointer-events: none;
+}
+
+.changelog-featured-icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: var(--accent-blue);
+  border-radius: 9px;
+  color: white;
+  flex-shrink: 0;
+}
+
+.changelog-featured-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.changelog-featured-label {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #60a5fa;
+  margin-bottom: 5px;
+}
+
+.changelog-featured-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.2;
+  margin-bottom: 5px;
+}
+
+.changelog-featured-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* ── Notes list ── */
+.changelog-body {
+  padding: 14px 20px 4px;
+  overflow-y: auto;
+  max-height: 260px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-color) transparent;
+}
+
+.changelog-notes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.changelog-note-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 13px;
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+
+.changelog-note-item:last-child {
+  border-bottom: none;
+  padding-bottom: 2px;
+}
+
+.changelog-note-item:first-child {
+  padding-top: 0;
+}
+
+.changelog-note-dot {
+  flex-shrink: 0;
+  width: 4px;
+  height: 4px;
+  background: var(--accent-blue);
+  border-radius: 50%;
+  margin-top: 7px;
+  opacity: 0.7;
+}
+
+/* ── Empty fallback ── */
+.changelog-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 0 12px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.changelog-empty p {
+  margin: 0;
+  font-size: 13px;
+}
+
+/* ── Footer ── */
+.changelog-footer {
+  padding: 14px 20px 18px;
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid var(--border-color);
+  margin-top: 12px;
+}
+
+.changelog-btn {
+  min-width: 88px;
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .changelog-featured::before {
+    animation: none;
+  }
+}

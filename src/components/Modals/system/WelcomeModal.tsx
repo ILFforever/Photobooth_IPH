@@ -1,21 +1,42 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
-import { Camera, QrCode, ChevronRight, ChevronLeft, Keyboard, HardDrive, Wifi, Monitor, LayoutTemplate } from "lucide-react";
+import { Camera, QrCode, ChevronRight, ChevronLeft, Keyboard, HardDrive, Wifi, Monitor, LayoutTemplate, Sparkles } from "lucide-react";
 import Icon from "@mdi/react";
 import { mdiImageMultiple } from "@mdi/js";
 import iphLogo from "../../../assets/images/IPH.png";
 import "../../../styles/Modal.css";
 import "./WelcomeModal.css";
+import type { FeaturedItem } from './ChangelogModal';
 
 interface WelcomeModalProps {
   onClose: () => void;
 }
 
-const TOTAL_STEPS = 3;
+const WHATS_NEW: FeaturedItem[] = [
+  {
+    icon: Sparkles,
+    label: 'New Feature',
+    title: "What's New Panel",
+    description: 'See release highlights and new features each time the app updates.',
+  },
+];
+
+const TOTAL_STEPS = 4;
 
 export default function WelcomeModal({ onClose }: WelcomeModalProps) {
   const [step, setStep] = useState(0);
+  const [currentVersion, setCurrentVersion] = useState('');
+  const [releaseNotes, setReleaseNotes] = useState<string[]>([]);
+
+  useEffect(() => {
+    invoke<{ version: string }>('get_app_info').then(info => {
+      setCurrentVersion(info.version);
+      invoke<string[]>('get_version_changelog', { version: info.version })
+        .then(notes => setReleaseNotes(notes))
+        .catch(() => {});
+    }).catch(() => {});
+  }, []);
 
   const handleClose = async () => {
     try {
@@ -270,6 +291,57 @@ export default function WelcomeModal({ onClose }: WelcomeModalProps) {
                       </div>
                     </div>
                   </div>
+                </motion.div>
+              )}
+              {step === 3 && (
+                <motion.div
+                  key="step-3"
+                  initial={{ opacity: 0, x: 24 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -24 }}
+                  transition={{ duration: 0.2 }}
+                  className="welcome-step"
+                >
+                  <div className="welcome-step-header">
+                    <div className="welcome-step-tag">Release {currentVersion}</div>
+                    <h2 className="welcome-step-title">What's New</h2>
+                    <p className="welcome-step-desc">Here's what changed in this version.</p>
+                  </div>
+
+                  <div className="welcome-whats-new-list">
+                    {WHATS_NEW.map((item, idx) => {
+                      const ItemIcon = item.icon;
+                      return (
+                        <motion.div
+                          key={idx}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: 0.05 + idx * 0.07, duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+                          className="welcome-whats-new-card"
+                        >
+                          <div className="welcome-whats-new-icon">
+                            <ItemIcon size={20} />
+                          </div>
+                          <div className="welcome-whats-new-body">
+                            <span className="welcome-whats-new-label">{item.label}</span>
+                            <div className="welcome-whats-new-title">{item.title}</div>
+                            <div className="welcome-whats-new-desc">{item.description}</div>
+                          </div>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+
+                  {releaseNotes && releaseNotes.length > 0 && (
+                    <ul className="welcome-release-notes">
+                      {releaseNotes.map((note, idx) => (
+                        <li key={idx} className="welcome-release-note-item">
+                          <span className="welcome-release-note-dot" />
+                          <span>{note.replace(/^-+\s*/, '')}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>

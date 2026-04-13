@@ -95,54 +95,41 @@ pub async fn delete_custom_canvas_size(app: tauri::AppHandle, name: String) -> R
     Ok(())
 }
 
-/// Get app settings directory in app data
-fn get_settings_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+/// Get the path to the single settings file
+fn get_settings_file(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let app_data_dir = app
         .path()
         .app_data_dir()
         .map_err(|e| format!("Failed to get app data dir: {}", e))?;
-    Ok(app_data_dir)
+    Ok(app_data_dir.join("settings.json"))
 }
 
-/// Save an app setting (key-value pair stored as a JSON file)
+/// Read the settings map from disk (returns empty map if missing or invalid)
+fn read_settings_map(path: &PathBuf) -> serde_json::Map<String, serde_json::Value> {
+    fs::read_to_string(path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .and_then(|v: serde_json::Value| v.as_object().cloned())
+        .unwrap_or_default()
+}
+
+/// Save an app setting into the shared settings.json
 #[tauri::command]
 pub async fn save_app_setting(app: tauri::AppHandle, key: String, value: String) -> Result<(), String> {
-    let settings_dir = get_settings_dir(&app)?;
-    let setting_path = settings_dir.join(format!("setting_{}.json", key));
-
-    let setting_data = serde_json::json!({ "value": value });
-    let json = serde_json::to_string_pretty(&setting_data)
-        .map_err(|e| format!("Failed to serialize setting: {}", e))?;
-
-    fs::write(setting_path, json).map_err(|e| format!("Failed to write setting file: {}", e))?;
-
+    let path = get_settings_file(&app)?;
+    let mut map = read_settings_map(&path);
+    map.insert(key, serde_json::Value::String(value));
+    let json = serde_json::to_string_pretty(&map)
+        .map_err(|e| format!("Failed to serialize settings: {}", e))?;
+    fs::write(&path, json).map_err(|e| format!("Failed to write settings file: {}", e))?;
     Ok(())
 }
 
-/// Get an app setting by key (returns null if not found)
+/// Get an app setting by key from the shared settings.json (returns null if not found)
 #[tauri::command]
 pub async fn get_app_setting(app: tauri::AppHandle, key: String) -> Result<Option<String>, String> {
-    let settings_dir = get_settings_dir(&app)?;
-    let setting_path = settings_dir.join(format!("setting_{}.json", key));
-
-    if !setting_path.exists() {
-        return Ok(None);
-    }
-
-    let content =
-        fs::read_to_string(setting_path).map_err(|e| format!("Failed to read setting file: {}", e))?;
-
-    if content.trim().is_empty() {
-        return Ok(None);
-    }
-
-    let setting_data: serde_json::Value =
-        serde_json::from_str(&content).map_err(|e| format!("Failed to parse setting file: {}", e))?;
-
-    let value = setting_data
-        .get("value")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
-
+    let path = get_settings_file(&app)?;
+    let map = read_settings_map(&path);
+    let value = map.get(&key).and_then(|v| v.as_str()).map(|s| s.to_string());
     Ok(value)
 }

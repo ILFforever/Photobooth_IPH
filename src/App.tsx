@@ -23,6 +23,9 @@ import {RequirementsModal} from "./components/Modals";
 import {CleanupModal} from "./components/Modals";
 import {UpdateModal} from "./components/Modals";
 import {WelcomeModal} from "./components/Modals";
+import {ChangelogModal} from "./components/Modals";
+import type { ChangelogFeaturedItem } from "./components/Modals";
+import { Sparkles } from "lucide-react";
 import { CollageWorkspace } from "./components/Canvas";
 import Sidebar from "./components/Sidebar/Sidebar";
 import { QRSidebar } from "./components/Sidebar/QR";
@@ -40,6 +43,18 @@ type AppMode = 'photobooth' | 'collage' | 'qr';
 
 const logger = createLogger('App');
 
+// Featured highlight per version — add an entry when shipping a notable new feature.
+// The icon must be a Lucide component (imported at top of file).
+const FEATURED_BY_VERSION: Record<string, ChangelogFeaturedItem[]> = {
+  '1.7.4': [
+    {
+      icon: Sparkles,
+      label: 'New Feature',
+      title: "What's New Panel",
+      description: 'See release highlights and new features each time the app updates.',
+    },
+  ],
+};
 
 interface SystemRequirements {
   virtualbox_installed: boolean;
@@ -96,6 +111,8 @@ function App() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showCleanup, setShowCleanup] = useState(false);
   const [showWelcome, setShowWelcome] = useState(false);
+  const [showChangelog, setShowChangelog] = useState(false);
+  const [changelogFeatured, setChangelogFeatured] = useState<ChangelogFeaturedItem[] | undefined>(undefined);
 
   // Track fullscreen state to disable drag region
   useEffect(() => {
@@ -176,6 +193,29 @@ function App() {
         }
       } catch {
         setShowWelcome(true);
+      }
+    })();
+  }, []);
+
+  // Show changelog when app has been updated to a new version
+  useEffect(() => {
+    (async () => {
+      try {
+        const appInfo = await invoke<{ version: string }>('get_app_info');
+        const currentVersion = appInfo.version;
+        const lastSeen = await invoke<string | null>('get_app_setting', { key: 'last_seen_version' });
+        const welcomeShown = await invoke<string | null>('get_app_setting', { key: 'welcome_shown' });
+        const isUpdate = lastSeen !== null
+          ? lastSeen !== currentVersion
+          : welcomeShown === 'true'; // no last_seen but welcome already shown = updating from older version
+        setChangelogFeatured(FEATURED_BY_VERSION[currentVersion]);
+        if (isUpdate) {
+          setShowChangelog(true);
+        }
+        // Always update last_seen_version to current
+        await invoke('save_app_setting', { key: 'last_seen_version', value: currentVersion });
+      } catch {
+        // ignore — first launch or settings unavailable
       }
     })();
   }, []);
@@ -471,6 +511,7 @@ function App() {
             show={showSettingsModal}
             onClose={() => setShowSettingsModal(false)}
             onShowGuide={() => setShowWelcome(true)}
+            onShowChangelog={() => setShowChangelog(true)}
           />
         )}
       </AnimatePresence>
@@ -508,6 +549,16 @@ function App() {
         {showWelcome && (
           <WelcomeModal
             onClose={() => setShowWelcome(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Changelog Modal - shown after an app update */}
+      <AnimatePresence>
+        {showChangelog && (
+          <ChangelogModal
+            featured={changelogFeatured}
+            onClose={() => setShowChangelog(false)}
           />
         )}
       </AnimatePresence>
