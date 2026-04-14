@@ -856,12 +856,21 @@ pub async fn get_version_changelog(version: String) -> Result<Vec<String>, Strin
         return Err(format!("Server returned status: {}", response.status()));
     }
 
-    let notes: Vec<String> = response
+    #[derive(serde::Deserialize)]
+    struct ChangelogEntry {
+        release_notes: Vec<String>,
+    }
+    #[derive(serde::Deserialize)]
+    struct ChangelogResponse {
+        changelog: Vec<ChangelogEntry>,
+    }
+
+    let body: ChangelogResponse = response
         .json()
         .await
         .map_err(|e| format!("Failed to parse changelog: {}", e))?;
 
-    Ok(notes)
+    Ok(body.changelog.into_iter().next().map(|e| e.release_notes).unwrap_or_default())
 }
 
 /// Download and install MSI update
