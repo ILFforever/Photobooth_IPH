@@ -1,8 +1,24 @@
 import { Layers, Camera, Image as ImageIcon, Grid3x3, ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
 import "./DisplayContent.css";
-import { mdiFlashTriangleOutline } from '@mdi/js';
+import { mdiPowerPlugOff } from '@mdi/js';
 import Icon from '@mdi/react';
-import { memo, useCallback, useRef, useState } from "react";
+import { memo, useCallback, useRef, useState, useEffect } from "react";
+import { convertFileSrc } from '@tauri-apps/api/core';
+import QRCode from 'qrcode';
+import { DisplayLayout, DisplayElement } from '../../types/displayLayout';
+
+// Module-level cache — mock QR is generated once and reused across all instances
+let mockQrPromise: Promise<string> | null = null;
+function getMockQrDataUrl(): Promise<string> {
+  if (!mockQrPromise) {
+    mockQrPromise = QRCode.toDataURL('https://iphphotobooth.com', {
+      width: 300,
+      margin: 1,
+      color: { dark: '#000000', light: '#ffffff' },
+    });
+  }
+  return mockQrPromise;
+}
 
 type DisplayMode = 'single' | 'center' | 'canvas' | 'finalize';
 
@@ -27,15 +43,14 @@ interface DisplayContentProps {
   hdmiStreamUrl?: string | null;
   showCapturePreview?: boolean;
   capturedPhotoUrl?: string | null;
-  onCapturePreviewLoad?: () => void; // Called when the preview image has finished loading
-  // Finalize mode data
+  onCapturePreviewLoad?: () => void;
   finalizeImageUrl?: string | null;
   finalizeQrData?: string | null;
-  // Center mode photo browsing
   centerBrowseIndex?: number | null;
   onCenterPhotoClick?: (index: number) => void;
   onCenterBack?: () => void;
   onCenterNavClick?: (direction: 'prev' | 'next') => void;
+  displayLayout?: DisplayLayout | null;
 }
 
 export default memo(function DisplayContent({
@@ -58,6 +73,7 @@ export default memo(function DisplayContent({
   onCenterPhotoClick,
   onCenterBack,
   onCenterNavClick,
+  displayLayout = null,
 }: DisplayContentProps) {
   // Pagination state for canvas mode
   const [currentPage, setCurrentPage] = useState(0);
@@ -145,7 +161,7 @@ export default memo(function DisplayContent({
             renderLiveView("single-liveview-video")
           ) : (
             <div className="single-photo-content">
-              <Icon path={mdiFlashTriangleOutline} size={3} />
+              <Icon path={mdiPowerPlugOff } size={3} />
               <span className="single-photo-label">No live view connected</span>
             </div>
           )}
@@ -407,6 +423,16 @@ export default memo(function DisplayContent({
         );
       }
 
+      if (displayLayout && displayLayout.elements.length > 0) {
+        return (
+          <FinalizeLayoutDisplay
+            displayLayout={displayLayout}
+            finalizeImageUrl={finalizeImageUrl}
+            finalizeQrData={finalizeQrData}
+          />
+        );
+      }
+
       if (finalizeQrData) {
         return (
           <div className="finalize-display">
@@ -448,3 +474,230 @@ export default memo(function DisplayContent({
       return null;
   }
 })
+
+function FinalizeLayoutDisplay({
+  displayLayout,
+  finalizeImageUrl,
+  finalizeQrData,
+}: {
+  displayLayout: DisplayLayout;
+  finalizeImageUrl: string;
+  finalizeQrData: string | null;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [fitScale, setFitScale] = useState(1);
+
+  const canvasW = displayLayout.canvasWidth ?? 1920;
+  const canvasH = displayLayout.canvasHeight ?? 1080;
+
+  useEffect(() => {
+    const updateFit = () => {
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      setFitScale(Math.min(rect.width / canvasW, rect.height / canvasH));
+    };
+    updateFit();
+    const observer = new ResizeObserver(updateFit);
+    if (containerRef.current) observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, [canvasW, canvasH]);
+
+  const scaledW = Math.round(canvasW * fitScale);
+  const scaledH = Math.round(canvasH * fitScale);
+
+  return (
+    <div ref={containerRef} style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', animation: 'fadeIn 0.3s ease' }}>
+      <div style={{ width: scaledW, height: scaledH, position: 'relative', flexShrink: 0 }}>
+        <div
+          style={{
+            width: canvasW,
+            height: canvasH,
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            transformOrigin: 'top left',
+            transform: `scale(${fitScale})`,
+            backgroundColor: displayLayout.backgroundColor,
+            backgroundImage: displayLayout.backgroundImage
+              ? `url(${displayLayout.backgroundImage.startsWith('asset://') ? convertFileSrc(displayLayout.backgroundImage.replace('asset://', '')) : displayLayout.backgroundImage})`
+              : undefined,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            overflow: 'hidden',
+          }}
+        >
+          {displayLayout.elements
+            .sort((a, b) => a.layerOrder - b.layerOrder)
+            .filter(el => el.visible)
+            .map(el => (
+              <FinalizeElement
+                key={el.id}
+                element={el}
+                finalizeImageUrl={finalizeImageUrl}
+                finalizeQrData={finalizeQrData}
+              />
+            ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FinalizeElement({
+  element,
+  finalizeImageUrl,
+  finalizeQrData,
+}: {
+  element: DisplayElement;
+  finalizeImageUrl: string;
+  finalizeQrData: string | null;
+}) {
+  const [mockQrUrl, setMockQrUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (element.role !== 'qr' || finalizeQrData) return;
+    getMockQrDataUrl().then(setMockQrUrl);
+  }, [element.role, finalizeQrData]);
+
+  const t = element.transform;
+
+  // Debug logging
+  console.log('[FinalizeElement] element.role:', element.role, 'sourcePath:', element.sourcePath, 'textContent:', element.textContent, 'visible:', element.visible);
+
+  // QR codes should never be flipped or use blend modes to ensure they are always scanable
+  const isQR = element.role === 'qr';
+  const flipH = isQR ? false : t.flipHorizontal;
+  const flipV = isQR ? false : t.flipVertical;
+  const blendMode = isQR ? 'normal' : element.blendMode;
+
+  const transformStyle = `translate(${t.x}px, ${t.y}px) rotate(${t.rotation}deg) scale(${t.scale}) scaleX(${flipH ? -1 : 1}) scaleY(${flipV ? -1 : 1})`;
+
+  const style: React.CSSProperties = {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    transformOrigin: 'center center',
+    transform: transformStyle,
+    opacity: t.opacity,
+    mixBlendMode: blendMode as any,
+    zIndex: element.layerOrder,
+  };
+
+  switch (element.role) {
+    case 'collage': {
+      const cw = element.collageWidth ?? 480;
+      const ch = element.collageHeight ?? 540;
+      return (
+        <div style={style}>
+          <img src={finalizeImageUrl} alt="Collage" draggable={false} style={{ display: 'block', width: cw, height: ch, objectFit: 'fill', pointerEvents: 'none' }} />
+        </div>
+      );
+    }
+    case 'qr': {
+      const qrSrc = finalizeQrData
+        ? `data:image/png;base64,${finalizeQrData}`
+        : mockQrUrl ?? null;
+      if (!qrSrc) return null;
+      return (
+        <div style={style}>
+          <img src={qrSrc} alt="QR Code" draggable={false} style={{ display: 'block', width: 300, height: 300, pointerEvents: 'none', opacity: finalizeQrData ? 1 : 0.4 }} />
+        </div>
+      );
+    }
+    case 'text': {
+      // Properly format font family - wrap in quotes if it contains spaces and is not a CSS variable
+      const formatFontFamily = (font: string | undefined) => {
+        if (!font) return 'inherit';
+        if (font.startsWith('var(')) return font;
+        // If font name contains spaces, wrap in quotes and add fallbacks
+        const quotedFont = font.includes(' ') ? `"${font}"` : font;
+        // Add fallback chain: selected font → system sans → sans-serif
+        return `${quotedFont}, var(--font-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Helvetica Neue", Arial, sans-serif`;
+      };
+      return (
+        <div style={{
+          ...style,
+          fontSize: element.fontSize || 24,
+          color: element.fontColor || '#ffffff',
+          fontWeight: element.fontWeight || '400',
+          fontFamily: formatFontFamily(element.fontFamily),
+          whiteSpace: 'nowrap',
+          userSelect: 'none',
+        }}>
+          {element.textContent || ''}
+        </div>
+      );
+    }
+    case 'emoji':
+      return (
+        <div style={{ ...style, fontSize: element.fontSize || 80, userSelect: 'none', lineHeight: 1 }}>
+          {element.textContent || '😊'}
+        </div>
+      );
+    case 'logo':
+    case 'gif': {
+      console.log('[FinalizeElement] ENTERED logo/gif case for', element.role, 'sourcePath:', element.sourcePath);
+      if (!element.sourcePath) {
+        console.log('[FinalizeElement] logo/gif RETURNING NULL - no sourcePath');
+        return null;
+      }
+      const imgSrc = element.sourcePath.startsWith('asset://') ? convertFileSrc(element.sourcePath.replace('asset://', '')) : element.sourcePath;
+      console.log('[FinalizeElement] logo/gif', element.role, 'src:', imgSrc);
+      return (
+        <div style={style}>
+          <img
+            src={imgSrc}
+            alt={element.role}
+            draggable={false}
+            onLoad={(e) => console.log('[FinalizeElement] loaded', element.role, (e.target as HTMLImageElement).naturalWidth, 'x', (e.target as HTMLImageElement).naturalHeight)}
+            onError={(e) => console.error('[FinalizeElement] FAILED to load', element.role, imgSrc, e)}
+            style={{ display: 'block', maxWidth: 'none', pointerEvents: 'none' }}
+          />
+        </div>
+      );
+    }
+    case 'shape': {
+      const w = element.shapeWidth ?? 200;
+      const h = element.shapeHeight ?? 200;
+      if (element.shapeType === 'heart') {
+        const sw = element.shapeBorderWidth ?? 0;
+        return (
+          <div style={style}>
+            <svg width={w} height={h} viewBox="0 0 100 100" style={{ display: 'block', pointerEvents: 'none' }}>
+              <path
+                d="M50 80 C20 62, 2 48, 2 30 A24 24 0 0 1 50 22 A24 24 0 0 1 98 30 C98 48, 80 62, 50 80 Z"
+                fill={element.shapeFill ?? '#e11d48'}
+                stroke={sw > 0 ? (element.shapeBorderColor ?? 'transparent') : 'none'}
+                strokeWidth={sw}
+              />
+            </svg>
+          </div>
+        );
+      }
+      const clipPaths: Record<string, string> = {
+        triangle:  'polygon(50% 0%, 0% 100%, 100% 100%)',
+        diamond:   'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)',
+        star:      'polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)',
+        hexagon:   'polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)',
+        pentagon:  'polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)',
+        cross:     'polygon(20% 0%, 80% 0%, 80% 20%, 100% 20%, 100% 80%, 80% 80%, 80% 100%, 20% 100%, 20% 80%, 0% 80%, 0% 20%, 20% 20%)',
+      };
+      return (
+        <div style={style}>
+          <div style={{
+            width: w,
+            height: h,
+            background: element.shapeFill ?? '#3b82f6',
+            border: (element.shapeBorderWidth ?? 0) > 0 ? `${element.shapeBorderWidth}px solid ${element.shapeBorderColor ?? 'transparent'}` : 'none',
+            borderRadius: element.shapeType === 'circle' ? '50%' : element.shapeType === 'rounded-rectangle' ? `${element.shapeBorderRadius ?? 24}px` : '0px',
+            clipPath: element.shapeType ? clipPaths[element.shapeType] : undefined,
+            pointerEvents: 'none',
+            boxSizing: 'border-box',
+          }} />
+        </div>
+      );
+    }
+    default:
+      return null;
+  }
+}

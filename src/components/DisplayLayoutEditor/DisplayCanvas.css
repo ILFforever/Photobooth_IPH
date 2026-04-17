@@ -1,0 +1,302 @@
+/* Canvas area styles */
+
+/* ========================================
+ * Canvas Area
+ * ======================================== */
+.display-canvas-area {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  background-color: #191b1e;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+  background-size: 80px 80px, 80px 80px, 16px 16px, 16px 16px;
+  position: relative;
+}
+
+.display-canvas-area::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 40%, rgba(0, 0, 0, 0.3) 100%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.display-canvas-container {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-lg);
+  overflow: auto;
+  position: relative;
+  z-index: 2;
+}
+
+.display-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: top left;
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+  cursor: default;
+}
+
+.display-canvas:hover {
+  cursor: grab;
+}
+
+.display-canvas:active {
+  cursor: grabbing;
+}
+
+/* ========================================
+ * Empty State
+ * ======================================== */
+.display-canvas-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.display-canvas-empty-content {
+  text-align: center;
+  max-width: 480px;
+  padding: var(--spacing-3xl);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  animation: fadeIn var(--transition-slow) ease-out;
+}
+
+.display-canvas-empty-icon {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto var(--spacing-lg);
+  opacity: 0.8;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.display-canvas-empty-title {
+  font-size: var(--text-3xl);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+  margin: 0 0 var(--spacing-md) 0;
+  letter-spacing: var(--tracking-tight);
+}
+
+.display-canvas-empty-description {
+  font-size: var(--text-lg);
+  line-height: var(--leading-normal);
+  color: var(--text-secondary);
+  margin: 0 0 var(--spacing-2xl) 0;
+  max-width: 400px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.display-canvas-empty-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.display-canvas-empty-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  padding: 10px var(--spacing-2xl);
+  background: var(--accent-blue);
+  color: white;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: var(--text-lg);
+  font-weight: var(--font-medium);
+  cursor: pointer;
+  transition: background var(--transition-base), box-shadow var(--transition-base), transform var(--transition-base);
+}
+
+.display-canvas-empty-cta:hover {
+  background: var(--accent-blue-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.display-canvas-empty-cta:active {
+  transform: translateY(0);
+}
+
+.display-canvas-empty-import {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: var(--text-base);
+  cursor: pointer;
+  padding: 4px var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  transition: color var(--transition-base);
+}
+
+.display-canvas-empty-import:hover {
+  color: var(--text-secondary);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ========================================
+ * Floating Delete Button
+ * ======================================== */
+.display-element-delete-btn {
+  position: absolute;
+  top: -12px;
+  right: -12px;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-full);
+  border: 1.5px solid rgba(255, 80, 80, 0.7);
+  background: var(--bg-primary);
+  color: rgba(255, 80, 80, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: var(--z-sticky);
+  padding: 0;
+  transition: all var(--transition-base);
+}
+
+.display-element-delete-btn:hover {
+  background: rgba(255, 80, 80, 0.15);
+  border-color: rgba(255, 80, 80, 1);
+  color: #ff5050;
+}
+
+/* ========================================
+ * Snap Guides (Cyan Glow Style)
+ * ======================================== */
+.snap-guide {
+  position: absolute;
+  pointer-events: none;
+  z-index: var(--z-base);
+  opacity: 0;
+  animation: snapGuideFadeIn var(--transition-base) ease-out forwards;
+}
+
+.snap-guide-horizontal {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(0, 212, 255, 0.3) 20%,
+    rgba(0, 212, 255, 0.8) 50%,
+    rgba(0, 212, 255, 0.3) 80%,
+    transparent 100%
+  );
+  box-shadow: 0 0 4px rgba(0, 212, 255, 0.8);
+}
+
+.snap-guide-vertical {
+  width: 1px;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(0, 212, 255, 0.3) 20%,
+    rgba(0, 212, 255, 0.8) 50%,
+    rgba(0, 212, 255, 0.3) 80%,
+    transparent 100%
+  );
+  box-shadow: 0 0 4px rgba(0, 212, 255, 0.8);
+}
+
+@keyframes snapGuideFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ========================================
+ * Canvas Interaction Hints
+ * ======================================== */
+.display-canvas-hints {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: var(--spacing-lg);
+  padding: var(--spacing-md) var(--spacing-lg);
+  background: rgba(26, 26, 26, 0.95);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  z-index: var(--z-fixed);
+  animation: slideUpFade var(--transition-normal) ease-out;
+}
+
+.display-hint-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-base);
+}
+
+.display-hint-key {
+  padding: 3px 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color-light);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-weight: var(--font-medium);
+  color: var(--text-primary);
+  font-size: var(--text-xs);
+}
+
+.display-hint-arrows {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+}
+
+.display-hint-arrows svg {
+  display: block;
+}
+
+.display-hint-label {
+  color: var(--text-secondary);
+}
+
+@keyframes slideUpFade {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}

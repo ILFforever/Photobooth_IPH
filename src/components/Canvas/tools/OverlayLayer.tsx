@@ -1,5 +1,4 @@
 import { convertFileSrc } from '@tauri-apps/api/core';
-import { useCollage } from '../../../contexts';
 import { OverlayLayer as OverlayLayerType } from '../../../types/overlay';
 import { SnapGuides } from '../../../utils/canvas/snapUtils';
 import { useOverlayEditing } from '../../../hooks/canvas/useOverlayEditing';
@@ -14,27 +13,37 @@ interface OverlayLayerProps {
   interactive?: boolean;
   onSnapGuidesChange?: (guides: SnapGuides) => void;
   onSelect?: () => void;
+  onUpdate?: (updates: Partial<OverlayLayerType>) => void;
+  scale?: number;
+  visible?: boolean;
+  canvasSelector?: string;
 }
 
-export function OverlayLayer({ layer, isSelected, canvasWidth, canvasHeight, zIndex, interactive = true, onSnapGuidesChange, onSelect }: OverlayLayerProps) {
-  const { updateOverlay, canvasZoom, setSelectedOverlayId, setSelectedZone, setIsBackgroundSelected, setActiveSidebarTab, showAllOverlays } = useCollage();
-
+export function OverlayLayer({
+  layer,
+  isSelected,
+  canvasWidth,
+  canvasHeight,
+  zIndex,
+  interactive = true,
+  onSnapGuidesChange,
+  onSelect,
+  onUpdate,
+  scale,
+  visible = true,
+  canvasSelector = '.collage-canvas',
+}: OverlayLayerProps) {
   const { isDragging, isResizing, isRotating, snapGuides, handleMouseDown, overlayRef } = useOverlayEditing({
     layer,
     canvasWidth,
     canvasHeight,
     isSelected,
-    onSelect: () => {
-      setSelectedOverlayId(layer.id);
-      setSelectedZone(null);
-      setIsBackgroundSelected(false);
-      setActiveSidebarTab('layers');
-      onSelect?.();
-    },
-    onUpdate: (updates) => updateOverlay(layer.id, updates),
-    scale: canvasZoom,
+    onSelect: onSelect || (() => {}),
+    onUpdate: onUpdate || (() => {}),
+    scale,
     snapEnabled: true,
     onSnapGuidesChange,
+    canvasSelector,
   });
 
   const transformStyle = `
@@ -55,7 +64,7 @@ export function OverlayLayer({ layer, isSelected, canvasWidth, canvasHeight, zIn
     mixBlendMode: layer.blendMode as any,
     pointerEvents: interactive ? 'auto' : 'none',
     zIndex: zIndex,
-    display: (layer.visible && showAllOverlays) ? 'block' : 'none',
+    display: visible ? 'block' : 'none',
     willChange: 'transform',
   };
 
@@ -86,35 +95,14 @@ export function OverlayLayer({ layer, isSelected, canvasWidth, canvasHeight, zIn
         }}
       />
 
-      {/* Transform handles when selected */}
       {isSelected && (
         <>
-          {/* Selection border */}
           <div className="overlay-selection-border" />
-
-          {/* Resize handles */}
-          <div
-            className="resize-handle nw"
-            onMouseDown={(e) => handleMouseDown(e, 'resize', 'nw')}
-          />
-          <div
-            className="resize-handle ne"
-            onMouseDown={(e) => handleMouseDown(e, 'resize', 'ne')}
-          />
-          <div
-            className="resize-handle sw"
-            onMouseDown={(e) => handleMouseDown(e, 'resize', 'sw')}
-          />
-          <div
-            className="resize-handle se"
-            onMouseDown={(e) => handleMouseDown(e, 'resize', 'se')}
-          />
-
-          {/* Rotation handle */}
-          <div
-            className="rotation-handle"
-            onMouseDown={(e) => handleMouseDown(e, 'rotate')}
-          />
+          <div className="resize-handle nw" onMouseDown={(e) => handleMouseDown(e, 'resize', 'nw')} />
+          <div className="resize-handle ne" onMouseDown={(e) => handleMouseDown(e, 'resize', 'ne')} />
+          <div className="resize-handle sw" onMouseDown={(e) => handleMouseDown(e, 'resize', 'sw')} />
+          <div className="resize-handle se" onMouseDown={(e) => handleMouseDown(e, 'resize', 'se')} />
+          <div className="rotation-handle" onMouseDown={(e) => handleMouseDown(e, 'rotate')} />
         </>
       )}
     </div>

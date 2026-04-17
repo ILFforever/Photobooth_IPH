@@ -21,7 +21,9 @@ mod gif_generator;
 mod system_requirements;
 mod version;
 mod ffmpeg_sidecar;
+mod display_layouts;
 mod ffmpeg_manager;
+mod system_fonts;
 
 // Re-export state
 use state::AppState;
@@ -40,6 +42,7 @@ use hdmi_capture::*;
 use utils::*;
 use working_folder::*;
 use custom_sets::*;
+use display_layouts::*;
 use photobooth_sessions::*;
 use upload_queue::*;
 use upload_queue::queue::UploadQueue;
@@ -116,6 +119,7 @@ pub fn run() {
             select_file,
             get_file_info,
             // Working Folder
+            open_working_folder,
             select_working_folder,
             get_images_in_folder,
             get_images_with_metadata,
@@ -151,6 +155,14 @@ pub fn run() {
             export_custom_set,
             import_custom_set,
             update_custom_set_background,
+            // Display Layouts
+            save_display_layout,
+            load_display_layouts,
+            get_display_layout,
+            delete_display_layout,
+            duplicate_display_layout,
+            export_display_layout,
+            import_display_layout,
             // Photobooth Sessions
             load_ptb_workspace,
             save_ptb_workspace,
@@ -241,6 +253,8 @@ pub fn run() {
             generate_slideshow_video,
             // QR Code
             utils::qr_code::generate_qr_code,
+            // System Fonts
+            system_fonts::get_system_fonts,
         ])
         .on_window_event(|window, event| {
             use tauri::Emitter;

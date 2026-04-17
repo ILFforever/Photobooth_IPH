@@ -109,28 +109,33 @@ const CollageSidebar = () => {
         </motion.button>
       </div>
 
-      {/* Content Area - All components stay mounted */}
+      {/* Content Area - Optimized with conditional unmounting for memory saving */}
       <div className="sidebar-content">
         <div className={`sidebar-panel ${activeSidebarTab === 'file' ? 'panel-visible' : 'panel-hidden'}`}>
-          <WorkingFolderGallery />
+          {activeSidebarTab === 'file' && <WorkingFolderGallery />}
         </div>
+        
+        {/* We keep ImageManipulator and FrameCreator always mounted because they might have 
+            complex local state (like unsaved edits or selections) that we don't want to lose
+            when quickly switching tabs. */}
         <div className={`sidebar-panel ${activeSidebarTab === 'edit' ? 'panel-visible' : 'panel-hidden'}`}>
           <ImageManipulator />
-        </div>
-        <div className={`sidebar-panel ${activeSidebarTab === 'background' ? 'panel-visible' : 'panel-hidden'}`}>
-          <BackgroundSidebar />
         </div>
         <div className={`sidebar-panel ${activeSidebarTab === 'frames' ? 'panel-visible' : 'panel-hidden'}`}>
           <FrameCreator />
         </div>
+
+        <div className={`sidebar-panel ${activeSidebarTab === 'background' ? 'panel-visible' : 'panel-hidden'}`}>
+          {activeSidebarTab === 'background' && <BackgroundSidebar />}
+        </div>
         <div className={`sidebar-panel ${activeSidebarTab === 'layers' ? 'panel-visible' : 'panel-hidden'}`}>
-          <LayersSidebar />
+          {activeSidebarTab === 'layers' && <LayersSidebar />}
         </div>
         <div className={`sidebar-panel ${activeSidebarTab === 'custom-sets' ? 'panel-visible' : 'panel-hidden'}`}>
-          <CustomSetsSidebar />
+          {activeSidebarTab === 'custom-sets' && <CustomSetsSidebar />}
         </div>
         <div className={`sidebar-panel ${activeSidebarTab === 'export' ? 'panel-visible' : 'panel-hidden'}`}>
-          <ExportSidebar />
+          {activeSidebarTab === 'export' && <ExportSidebar />}
         </div>
       </div>
 

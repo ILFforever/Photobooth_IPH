@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { emitTo } from '@tauri-apps/api/event';
+import { DisplayLayout } from '../../types/displayLayout';
 import { createLogger } from '../../utils/logger';
 const logger = createLogger('useSecondScreen');
 
@@ -132,6 +133,12 @@ export function useSecondScreen() {
     }
   }, [isSecondScreenOpen]);
 
+  const updateDisplayLayout = useCallback((layout: DisplayLayout | null) => {
+    if (isSecondScreenOpen) {
+      emitTo(GUEST_DISPLAY_LABEL, 'guest-display:display-layout', layout);
+    }
+  }, [isSecondScreenOpen]);
+
   return {
     isSecondScreenOpen,
     openSecondScreen,
@@ -142,5 +149,6 @@ export function useSecondScreen() {
     addPhoto,
     selectCenterPhoto,
     updateCountdown,
+    updateDisplayLayout,
   };
 }

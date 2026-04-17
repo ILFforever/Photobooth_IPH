@@ -2,6 +2,8 @@ import { useRef, useMemo, useState, useCallback, useEffect } from "react";
 import { useKeyboardZoom } from "../../../hooks/useKeyboardZoom";
 import { motion } from "framer-motion";
 import { ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
+import Icon from '@mdi/react';
+import { mdiImageOutline, mdiTapeMeasure  } from '@mdi/js';
 import { useCollage } from "../../../contexts";
 import { FrameZone } from "../../../types/frame";
 import { FloatingFrameSelector } from "../frames";
@@ -343,7 +345,9 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
       >
         <div className="canvas-placeholder">
           <div className="placeholder-content">
-            <span className="placeholder-icon">📐</span>
+            <div className="placeholder-icon">
+              <Icon path={mdiTapeMeasure } size={2.5} />
+            </div>
             <h3>No Canvas Size Selected</h3>
             <p>Select a canvas size or choose a background to auto-fit</p>
           </div>
@@ -389,7 +393,7 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
     boxShadow:
       "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
     borderRadius: "4px",
-    overflow: "hidden",
+    overflow: "visible",
     flexShrink: 0 as const,
   };
 
@@ -397,7 +401,7 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
     width: `${width}px`,
     height: `${height}px`,
     position: "relative" as const,
-    overflow: "hidden",
+    overflow: "visible",
     borderRadius: "4px",
     transform: `scale(${finalScale})`,
     transformOrigin: "top left",
@@ -444,7 +448,9 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
       {!background ? (
         <div className="canvas-placeholder">
           <div className="placeholder-content">
-            <span className="placeholder-icon">🎨</span>
+            <div className="placeholder-icon">
+              <Icon path={mdiImageOutline} size={2.5} />
+            </div>
             <h3>No Background Selected</h3>
             <p>Choose a background to start creating your collage</p>
           </div>
@@ -496,6 +502,8 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
                       setIsBackgroundSelected(false);
                       setActiveSidebarTab("layers");
                     }}
+                    onUpdate={(updates) => updateOverlay(layer.id, updates)}
+                    scale={canvasZoom}
                   />
                 ))}
 
@@ -505,7 +513,7 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
                   style={{
                     position: "absolute",
                     inset: 0,
-                    zIndex: 9999,
+                    zIndex: 9000,
                     cursor: "not-allowed",
                   }}
                   onClick={(e) => e.stopPropagation()}
@@ -592,6 +600,8 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
                       setIsBackgroundSelected(false);
                       setActiveSidebarTab("layers");
                     }}
+                    onUpdate={(updates) => updateOverlay(layer.id, updates)}
+                    scale={canvasZoom}
                   />
                 ))}
             </div>

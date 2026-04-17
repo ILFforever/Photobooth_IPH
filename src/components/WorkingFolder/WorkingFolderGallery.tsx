@@ -142,6 +142,7 @@ export function WorkingFolderGallery() {
   const {
     folderPath,
     setFolderPath,
+    images,
     setImages,
     loading,
     setLoading,
@@ -168,6 +169,24 @@ export function WorkingFolderGallery() {
     loadedImagesMapRef.current = loadedImagesMap;
     refreshTriggerRef.current = refreshTrigger;
   });
+
+  // Re-trigger thumbnail loading if we have a folder but thumbnails were released
+  useEffect(() => {
+    if (folderPath && images.length > 0 && loadedImagesMap.size === 0 && !loading) {
+      logger.debug('Thumbnails missing but folder active, re-scanning...');
+      // Re-invoke existing path logic to get progressive loading events
+      setLoading(true);
+      invoke<{ path: string; images: WorkingImage[] }>('open_working_folder', { path: folderPath })
+        .then(result => {
+          setImages(result.images);
+          const finalMap = new Map<number, WorkingImage>();
+          result.images.forEach((img, index) => finalMap.set(index, img));
+          setLoadedImagesMap(finalMap);
+        })
+        .catch(err => logger.error('Failed to re-scan folder:', err))
+        .finally(() => setLoading(false));
+    }
+  }, [folderPath, images.length, loadedImagesMap.size, loading, setImages, setLoadedImagesMap, setLoading]);
 
   // Time-based sleep detection
   useEffect(() => {
@@ -287,26 +306,13 @@ export function WorkingFolderGallery() {
     }
   };
 
-  // Convert map to sorted array for filtering
-  const loadedImages = Array.from(loadedImagesMap.entries())
-    .sort(([a], [b]) => a - b)
-    .map(([, img]) => img);
+  // The source of truth for the list should be the 'images' array if available,
+  // falling back to 'loadedImagesMap' if 'images' hasn't been synced yet.
+  const displaySource = images.length > 0 ? images : Array.from(loadedImagesMap.values());
 
-  const filteredImages = loadedImages.filter(img =>
+  const filteredImages = displaySource.filter(img =>
     img.filename.toLowerCase().includes(searchTerm.toLowerCase())
   );
-
-  // Create a stable array of items (images + skeletons) with fixed positions
-  const displayItems = loading && skeletonCount > 0
-    ? Array.from({ length: skeletonCount }, (_, index) => {
-        const img = loadedImagesMap.get(index);
-        return img ? { type: 'image', data: img, originalIndex: index } : { type: 'skeleton', index };
-      })
-    : filteredImages.map(img => ({ type: 'image', data: img }));
-
-  // During loading, sort by original index (file order) - loaded images will naturally appear in correct order
-  // Unloaded skeletons remain in their original positions
-  const sortedDisplayItems = displayItems; // No extra sorting needed - displayItems is already in correct order
 
   return (
     <div className="working-folder-gallery">
@@ -326,7 +332,7 @@ export function WorkingFolderGallery() {
         </div>
       )}
 
-      {loadedImages.length > 0 && (
+      {displaySource.length > 0 && (
         <div className="search-bar">
           <input
             type="text"
@@ -339,25 +345,27 @@ export function WorkingFolderGallery() {
       )}
 
       <div className="images-container">
-        {sortedDisplayItems.length > 0 ? (
-          // Progressive loading with stable positions
+        {filteredImages.length > 0 ? (
           <div className="images-grid">
-            {sortedDisplayItems.map((item, index) =>
-              item.type === 'image' && item.data ? (
+            {filteredImages.map((img, index) => {
+              // Check if we have the actual thumbnail data in the map
+              const loadedImg = loadedImagesMap.get(index) || img;
+              const isThumbnailLoaded = loadedImagesMap.has(index);
+
+              return isThumbnailLoaded || images.length > 0 ? (
                 <DraggableImage
-                  key={`${item.data.path}-${refreshTrigger}`}
-                  img={item.data}
-                  isSelected={selectedImage === item.data.path}
-                  onSelect={() => setSelectedImage(item.data.path)}
+                  key={`${img.path}-${refreshTrigger}`}
+                  img={loadedImg}
+                  isSelected={selectedImage === img.path}
+                  onSelect={() => setSelectedImage(img.path)}
                   refreshTrigger={refreshTrigger}
                 />
               ) : (
                 <SkeletonImageCard key={`skeleton-${index}`} />
-              )
-            )}
+              );
+            })}
           </div>
         ) : loading ? (
-          // Initial loading state before we know the count
           <div className="empty-state">
             <p>Scanning folder...</p>
           </div>

@@ -12,7 +12,9 @@ import * as fs from "@tauri-apps/plugin-fs";
 import { emitTo } from "@tauri-apps/api/event";
 import { Frame, FrameZone } from "../../types/frame";
 import { PlacedImage } from "../../types/collage";
-import { usePhotobooth } from "../../contexts";
+import { usePhotobooth, useWorkspaceSettings } from "../../contexts";
+import { DisplayLayout } from "../../types/displayLayout";
+import { invoke } from "@tauri-apps/api/core";
 import { autoPlacePhotos, PhotoForPlacement } from "../../utils/autoPlacement";
 import { useToast } from "../../contexts";
 import "./FinalizeView.css";
@@ -51,6 +53,7 @@ interface FinalizeViewProps {
     finalizeImageUrl?: string | null;
     finalizeQrData?: string | null;
   }) => void;
+  updateDisplayLayout: (layout: DisplayLayout | null) => void;
   isSecondScreenOpen: boolean;
   openSecondScreen: () => void;
   /** Base64 PNG QR code data (optional, from upload result) */
@@ -66,6 +69,7 @@ export default function FinalizeView({
   sessionFolderName,
   onBack,
   updateGuestDisplay,
+  updateDisplayLayout,
   isSecondScreenOpen,
   openSecondScreen,
   qrData = null,
@@ -92,7 +96,18 @@ export default function FinalizeView({
     setCollageIsDirty,
     collageIsDirty,
   } = usePhotobooth();
+  const { selectedDisplayLayoutId } = useWorkspaceSettings();
   const { showToast } = useToast();
+
+  const getDisplayLayoutForGuest = useCallback(async (): Promise<DisplayLayout | null> => {
+    if (!selectedDisplayLayoutId) return null;
+    try {
+      return await invoke<DisplayLayout>('get_display_layout', { layoutId: selectedDisplayLayoutId });
+    } catch (e) {
+      logger.error('Failed to fetch display layout for guest:', e);
+      return null;
+    }
+  }, [selectedDisplayLayoutId]);
 
   const [isDisplayingOnGuest, setIsDisplayingOnGuest] = useState(false);
   const [isCompositing, setIsCompositing] = useState(false);
@@ -473,6 +488,7 @@ export default function FinalizeView({
         finalizeImageUrl: imageUrl,
         finalizeQrData: qrData || null,
       };
+      const layout = await getDisplayLayoutForGuest();
 
       if (justOpened) {
         // updateGuestDisplay won't work here — isSecondScreenOpen is stale in its closure.
@@ -480,8 +496,10 @@ export default function FinalizeView({
         for (const delay of [500, 1000, 2000]) {
           await new Promise((resolve) => setTimeout(resolve, delay));
           emitTo("guest-display", "guest-display:update", displayData);
+          emitTo("guest-display", "guest-display:display-layout", layout);
         }
       } else {
+        updateDisplayLayout(layout);
         updateGuestDisplay(displayData);
       }
       setIsDisplayingOnGuest(true);
@@ -506,6 +524,8 @@ export default function FinalizeView({
     displayedImageIsDirty,
     isSecondScreenOpen,
     updateGuestDisplay,
+    updateDisplayLayout,
+    getDisplayLayoutForGuest,
     openSecondScreen,
     qrData,
     currentCollageFilename,

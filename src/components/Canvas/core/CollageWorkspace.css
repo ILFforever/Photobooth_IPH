@@ -7,7 +7,7 @@
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  background: var(--bg-primary);
+  background: #191b1e;
 }
 
 .workspace-canvas {
@@ -16,21 +16,23 @@
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
-  background: var(--bg-primary);
+  background-color: #191b1e;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+  background-size: 80px 80px, 80px 80px, 16px 16px, 16px 16px;
   position: relative;
 }
 
-/* Canvas container with photobooth-style frame */
-.workspace-canvas::before {
+.workspace-canvas::after {
   content: '';
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
-  opacity: 0.3;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 40%, rgba(0, 0, 0, 0.3) 100%);
   pointer-events: none;
+  z-index: 1;
 }
 
 /* Responsive */

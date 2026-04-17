@@ -1,0 +1,433 @@
+/* Common styles for Display Layout Editor components */
+
+/* ========================================
+ * Icon Buttons
+ * ======================================== */
+.display-sidebar-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+  transition: background var(--transition-base);
+  color: var(--text-secondary);
+}
+
+.display-sidebar-icon-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.display-sidebar-icon-btn.danger:hover {
+  background: var(--accent-red-light);
+  color: var(--accent-red);
+}
+
+.display-sidebar-icon-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ========================================
+ * Input Fields
+ * ======================================== */
+.display-sidebar-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.display-sidebar-field label {
+  font-size: var(--text-xs);
+  font-weight: var(--font-medium);
+  color: var(--text-muted);
+  padding-left: 1px;
+}
+
+.display-sidebar-input,
+.display-sidebar-select {
+  width: 100%;
+  padding: 5px 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  outline: none;
+  cursor: pointer;
+  transition: background var(--transition-base), border-color var(--transition-base), box-shadow var(--transition-base);
+  box-sizing: border-box;
+}
+
+.display-sidebar-input:hover,
+.display-sidebar-select:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--border-color-light);
+}
+
+.display-sidebar-input:focus {
+  background: rgba(0, 0, 0, 0.4);
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 1px rgba(0, 120, 212, 0.25);
+  color: #fff;
+}
+
+/* ========================================
+ * Collapsible Sections
+ * ======================================== */
+.props-group-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  width: 100%;
+  padding: 8px 0;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: background var(--transition-base);
+}
+
+.props-group-header:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.props-group-header svg {
+  color: var(--text-secondary);
+  transition: transform var(--transition-base);
+}
+
+.props-group-content {
+  padding: var(--spacing-md) 0;
+  animation: slideDown var(--transition-normal) ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.props-group-primary {
+  padding: var(--spacing-lg) 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.props-group-primary .props-field {
+  margin-bottom: var(--spacing-md);
+}
+
+.props-group-primary .props-field:last-child {
+  margin-bottom: 0;
+}
+
+/* ========================================
+ * Range Sliders (ISO-style: Pill Track & Spherical Ball)
+ * ======================================== */
+.display-layout-editor input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 24px;
+  background: transparent;
+  outline: none;
+  cursor: pointer;
+  border: none;
+  padding: 0;
+  margin: 0;
+  user-select: none;           /* Prevent text selection */
+  caret-color: transparent;    /* Hide typing marker */
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Track - Deep recessed pill */
+.display-layout-editor input[type="range"]::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 6px;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5);
+  transition: background 0.2s ease;
+}
+
+.display-layout-editor input[type="range"]::-moz-range-track {
+  width: 100%;
+  height: 6px;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+/* Thumb - Flat spherical ball */
+.display-layout-editor input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  height: 16px;
+  width: 16px;
+  border-radius: 50%;
+  background: #d1d5db;
+  box-shadow: 
+    0 2px 4px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  margin-top: -6px; /* Centering: (track_height/2) - (thumb_height/2) - border */
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  border: none;
+}
+
+.display-layout-editor input[type="range"]::-moz-range-thumb {
+  height: 16px;
+  width: 16px;
+  border-radius: 50%;
+  background: #d1d5db;
+  box-shadow: 
+    0 2px 4px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  border: none;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Active/Focus states */
+.display-layout-editor input[type="range"]:hover::-webkit-slider-runnable-track {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.display-layout-editor input[type="range"]:active::-webkit-slider-thumb {
+  transform: scale(0.95);
+  background: var(--accent-blue);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+}
+
+.display-layout-editor input[type="range"]:active::-moz-range-thumb {
+  transform: scale(0.95);
+  background: var(--accent-blue);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+}
+
+/* Inline wrapper for labels + sliders */
+.props-inline-slider {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  width: 100%;
+}
+
+.props-slider-value-inline {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  min-width: 36px;
+  text-align: right;
+}
+
+/* ========================================
+ * Buttons
+ * ======================================== */
+.display-sidebar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  cursor: pointer;
+  transition: background var(--transition-base), border-color var(--transition-base), transform var(--transition-fast);
+}
+
+.display-sidebar-btn:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--border-color-light);
+  transform: translateY(-1px);
+}
+
+.display-sidebar-btn:active {
+  transform: translateY(1px);
+}
+
+.display-sidebar-btn.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: auto;
+}
+
+.display-sidebar-btn.disabled:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--border-color);
+  transform: none;
+}
+
+.display-sidebar-btn.secondary {
+  background: transparent;
+  border-color: var(--border-color);
+  color: var(--text-secondary);
+}
+
+.display-sidebar-btn.secondary:hover {
+  color: var(--accent-red);
+  background: var(--accent-red-light);
+}
+
+/* ========================================
+ * Color Inputs
+ * ======================================== */
+.display-sidebar-color-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.display-sidebar-color-input {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+  cursor: pointer;
+  background: transparent;
+  transition: border-color var(--transition-base);
+}
+
+.display-sidebar-color-input:hover {
+  border-color: var(--border-color-light);
+}
+
+.display-sidebar-color-value {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+/* ========================================
+ * Panel Headers
+ * ======================================== */
+.display-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-md) var(--spacing-md) 10px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.display-panel-title {
+  font-size: var(--text-base);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+}
+
+.display-panel-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: var(--accent-blue);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  cursor: pointer;
+  transition: background var(--transition-base);
+}
+
+.display-panel-action-btn:hover {
+  background: var(--accent-blue-hover);
+}
+
+/* ========================================
+ * Zoom Controls
+ * ======================================== */
+.display-zoom-controls {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+}
+
+.display-zoom-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: #252525;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #ccc;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.display-zoom-btn:hover:not(:disabled) {
+  background: #333;
+  border-color: #444;
+  color: #fff;
+}
+
+.display-zoom-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.display-zoom-level {
+  min-width: 42px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 500;
+  color: #999;
+  user-select: none;
+}
+
+/* ========================================
+ * Scrollbar Styling
+ * ======================================== */
+.display-layout-editor ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.display-layout-editor ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.display-layout-editor ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+.display-layout-editor ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Firefox scrollbar */
+.display-layout-editor * {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}

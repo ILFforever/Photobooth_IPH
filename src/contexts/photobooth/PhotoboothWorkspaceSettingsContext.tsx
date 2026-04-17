@@ -29,6 +29,9 @@ export interface WorkspaceSettingsContextType {
   setBorderSides: (value: number) => void;
   exportResolutionMp: number;
   setExportResolutionMp: (value: number) => void;
+  // Display layout
+  selectedDisplayLayoutId: string | null;
+  setSelectedDisplayLayoutId: (id: string | null) => void;
 }
 
 const WorkspaceSettingsContext = createContext<WorkspaceSettingsContextType | undefined>(undefined);
@@ -52,6 +55,8 @@ export function WorkspaceSettingsProvider({ children }: { children: ReactNode })
   const [borderTopBottom, setBorderTopBottom] = useState(0.08);
   const [borderSides, setBorderSides] = useState(0.05);
   const [exportResolutionMp, setExportResolutionMp] = useState(15);
+  // Display layout selection
+  const [selectedDisplayLayoutId, setSelectedDisplayLayoutId] = useState<string | null>(null);
 
   // Save delay settings to .ptb file when they change
   useEffect(() => {
@@ -159,6 +164,8 @@ export function WorkspaceSettingsProvider({ children }: { children: ReactNode })
         setBorderSides,
         exportResolutionMp,
         setExportResolutionMp,
+        selectedDisplayLayoutId,
+        setSelectedDisplayLayoutId,
       }}
     >
       {children}

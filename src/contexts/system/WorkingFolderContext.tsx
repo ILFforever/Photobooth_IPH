@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useCallback } from 'react';
 import { WorkingImage } from '../../types/assets';
 
 interface WorkingFolderContextType {
@@ -16,6 +16,7 @@ interface WorkingFolderContextType {
   setSkeletonCount: (count: number) => void;
   refreshTrigger: number;
   setRefreshTrigger: React.Dispatch<React.SetStateAction<number>>;
+  releaseThumbnails: () => void;
 }
 
 const WorkingFolderContext = createContext<WorkingFolderContextType | undefined>(undefined);
@@ -28,6 +29,12 @@ export function WorkingFolderProvider({ children }: { children: ReactNode }) {
   const [loadedImagesMap, setLoadedImagesMap] = useState<Map<number, WorkingImage>>(new Map());
   const [skeletonCount, setSkeletonCount] = useState(0);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  const releaseThumbnails = useCallback(() => {
+    // We keep the 'images' array so the list isn't lost,
+    // but clear the map that holds the actual loaded thumbnail data.
+    setLoadedImagesMap(new Map());
+  }, []);
 
   return (
     <WorkingFolderContext.Provider
@@ -46,6 +53,7 @@ export function WorkingFolderProvider({ children }: { children: ReactNode }) {
         setSkeletonCount,
         refreshTrigger,
         setRefreshTrigger,
+        releaseThumbnails,
       }}
     >
       {children}

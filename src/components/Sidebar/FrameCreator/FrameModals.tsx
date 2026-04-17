@@ -58,11 +58,14 @@ export function FrameModals({
   loadFrame,
   confirmNew,
 }: FrameModalsProps) {
+  const portalRoot = document.getElementById('modal-portal-root');
+  if (!portalRoot) return null;
+
   return (
     <>
-      {/* Save Dialog Modal — Inline Overlay */}
-      {showSaveDialog && (
-        <div className="confirm-overlay" onClick={() => setShowSaveDialog(false)}>
+      {/* Save Dialog Modal — Portal */}
+      {showSaveDialog && createPortal(
+        <div className="confirm-overlay" onClick={() => setShowSaveDialog(false)} style={{ position: 'fixed' }}>
           <div className="confirm-modal" onClick={(e) => e.stopPropagation()}>
             <div className="confirm-icon save-icon">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -114,12 +117,13 @@ export function FrameModals({
               </div>
             )}
           </div>
-        </div>
+        </div>,
+        portalRoot
       )}
 
-      {/* Replace Confirmation Modal */}
-      {showReplaceConfirm && (
-        <div className="confirm-overlay" onClick={cancelReplace}>
+      {/* Replace Confirmation Modal — Portal */}
+      {showReplaceConfirm && createPortal(
+        <div className="confirm-overlay" onClick={cancelReplace} style={{ position: 'fixed' }}>
           <div className="confirm-modal" onClick={(e) => e.stopPropagation()}>
             <div className="confirm-icon">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -140,45 +144,44 @@ export function FrameModals({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        portalRoot
       )}
 
       {/* Load Dialog Modal — Portal */}
-      {showLoadDialog && document.getElementById('modal-portal-root') && (
-        createPortal(
-          <div className="modal-overlay" onClick={() => setShowLoadDialog(false)}>
-            <div className="modal-content load-dialog-content" onClick={(e) => e.stopPropagation()}>
-              <h3>Load Frame</h3>
-              <div className="frames-list">
-                {customFrames.length === 0 ? (
-                  <div className="empty-frames">No saved frames found</div>
-                ) : (
-                  customFrames.map((frame) => (
-                    <div key={frame.id} className="saved-frame-item" onClick={() => loadFrame(frame)}>
-                      <div className="frame-info">
-                        <span className="frame-name">{frame.name}</span>
-                        <span className="frame-zones-count">
-                          {frame.zones.length} zone{frame.zones.length !== 1 ? 's' : ''} · {frame.width}×{frame.height}
-                        </span>
-                      </div>
+      {showLoadDialog && createPortal(
+        <div className="modal-overlay" onClick={() => setShowLoadDialog(false)}>
+          <div className="modal-content load-dialog-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Load Frame</h3>
+            <div className="frames-list">
+              {customFrames.length === 0 ? (
+                <div className="empty-frames">No saved frames found</div>
+              ) : (
+                customFrames.map((frame) => (
+                  <div key={frame.id} className="saved-frame-item" onClick={() => loadFrame(frame)}>
+                    <div className="frame-info">
+                      <span className="frame-name">{frame.name}</span>
+                      <span className="frame-zones-count">
+                        {frame.zones.length} zone{frame.zones.length !== 1 ? 's' : ''} · {frame.width}×{frame.height}
+                      </span>
                     </div>
-                  ))
-                )}
-              </div>
-              <div className="modal-actions">
-                <button className="modal-btn cancel-btn" onClick={() => setShowLoadDialog(false)}>
-                  Cancel
-                </button>
-              </div>
+                  </div>
+                ))
+              )}
             </div>
-          </div>,
-          document.getElementById('modal-portal-root')!
-        )
+            <div className="modal-actions">
+              <button className="modal-btn cancel-btn" onClick={() => setShowLoadDialog(false)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>,
+        portalRoot
       )}
 
-      {/* New Confirm Modal — Inline Overlay */}
-      {showNewConfirm && (
-        <div className="confirm-overlay" onClick={() => setShowNewConfirm(false)}>
+      {/* New Confirm Modal — Portal */}
+      {showNewConfirm && createPortal(
+        <div className="confirm-overlay" onClick={() => setShowNewConfirm(false)} style={{ position: 'fixed' }}>
           <div className="confirm-modal" onClick={(e) => e.stopPropagation()}>
             <div className="confirm-icon">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -197,7 +200,8 @@ export function FrameModals({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        portalRoot
       )}
     </>
   );

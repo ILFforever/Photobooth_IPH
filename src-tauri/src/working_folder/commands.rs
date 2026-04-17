@@ -295,6 +295,23 @@ pub async fn remove_temp_image(app: tauri::AppHandle, path: String) -> Result<()
 }
 
 #[tauri::command]
+pub async fn open_working_folder(app: tauri::AppHandle, path: String) -> Result<WorkingFolderInfo, String> {
+    println!("=== OPEN WORKING FOLDER START ===");
+    println!("Path: {}", path);
+
+    // Scan folder for images
+    println!("Starting folder scan...");
+    let images = scan_folder_for_images(&path, &app).await?;
+    println!("Folder scan complete. Found {} images", images.len());
+
+    println!("=== OPEN WORKING FOLDER END ===");
+    Ok(WorkingFolderInfo {
+        path,
+        images,
+    })
+}
+
+#[tauri::command]
 pub async fn select_working_folder(app: tauri::AppHandle) -> Result<WorkingFolderInfo, String> {
     println!("=== SELECT WORKING FOLDER START ===");
 

@@ -10,6 +10,7 @@ import {
   mdiCamera,
   mdiImageMultiple,
   mdiQrcode,
+  mdiMonitor,
   mdiInformationOutline,
   mdiPower,
   mdiOpenInNew,
@@ -19,11 +20,12 @@ import {
 import iphLogo from "../../assets/images/IPH W.png";
 import { openAuthUrl } from "../../utils/googleAuth";
 
-type AppMode = 'photobooth' | 'collage' | 'qr';
+type AppMode = 'photobooth' | 'collage' | 'qr' | 'display';
 
 const modeConfig: Record<AppMode, { label: string; icon: string }> = {
   photobooth: { label: 'Photobooth', icon: mdiCamera },
   collage: { label: 'Collage Creator', icon: mdiImageMultiple },
+  display: { label: 'Display Layout', icon: mdiMonitor },
   qr: { label: 'QR Generator', icon: mdiQrcode },
 };
 

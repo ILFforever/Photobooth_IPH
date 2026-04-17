@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { emit } from '@tauri-apps/api/event';
 import DisplayContent from "./DisplayContent";
+import { DisplayLayout } from '../../types/displayLayout';
 import { createLogger } from '../../utils/logger';
 
 const logger = createLogger('GuestDisplay');
@@ -28,6 +29,7 @@ interface PhotoState {
   capturedPhotoUrl: string | null;
   finalizeImageUrl: string | null;
   finalizeQrData: string | null;
+  displayLayout: DisplayLayout | null;
 }
 
 // Helper function to convert base64 string to Blob (used by HDMI)
@@ -52,6 +54,7 @@ export default function GuestDisplay() {
     capturedPhotoUrl: null,
     finalizeImageUrl: null,
     finalizeQrData: null,
+    displayLayout: null,
   });
 
   // Center mode photo browsing
@@ -197,7 +200,7 @@ export default function GuestDisplay() {
 
     // Setup all listeners
     const setupListeners = async () => {
-      const [unlisten1, unlisten2, unlisten3, unlisten4, unlisten5, unlisten6] = await Promise.all([
+      const [unlisten1, unlisten2, unlisten3, unlisten4, unlisten5, unlisten6, unlisten7] = await Promise.all([
         listen('guest-display:update', (event: { payload: Partial<PhotoState> }) => {
           const payload = event.payload;
           setPhotoState(prev => {
@@ -233,8 +236,11 @@ export default function GuestDisplay() {
         listen('guest-display:countdown', (event: { payload: { active: boolean; value: number } }) => {
           setCountdown(event.payload);
         }),
+        listen<DisplayLayout | null>('guest-display:display-layout', (event) => {
+          setPhotoState(prev => ({ ...prev, displayLayout: event.payload }));
+        }),
       ]);
-      unlisteners = [unlisten1, unlisten2, unlisten3, unlisten4, unlisten5, unlisten6];
+      unlisteners = [unlisten1, unlisten2, unlisten3, unlisten4, unlisten5, unlisten6, unlisten7];
     };
 
     setupListeners().then(() => {
@@ -248,7 +254,7 @@ export default function GuestDisplay() {
     };
   }, []);
 
-  const { currentSetPhotos, selectedPhotoIndex, displayMode, showCapturePreview, capturedPhotoUrl, finalizeImageUrl, finalizeQrData } = photoState;
+  const { currentSetPhotos, selectedPhotoIndex, displayMode, showCapturePreview, capturedPhotoUrl, finalizeImageUrl, finalizeQrData, displayLayout } = photoState;
 
   // Keep ref in sync so frame listeners can check without re-subscribing
   showsLiveViewRef.current = displayMode === 'single' || displayMode === 'center';
@@ -371,6 +377,7 @@ export default function GuestDisplay() {
             onCapturePreviewLoad={handleCapturePreviewLoad}
             finalizeImageUrl={finalizeImageUrl}
             finalizeQrData={finalizeQrData}
+            displayLayout={displayLayout}
             centerBrowseIndex={centerBrowseIndex}
             onCenterPhotoClick={(index) => setCenterBrowseIndex(index)}
             onCenterBack={() => setCenterBrowseIndex(null)}

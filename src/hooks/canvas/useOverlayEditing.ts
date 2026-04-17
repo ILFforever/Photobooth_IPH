@@ -12,6 +12,7 @@ interface UseOverlayEditingProps {
   scale?: number;
   snapEnabled?: boolean;
   onSnapGuidesChange?: (guides: SnapGuides) => void;
+  canvasSelector?: string;
 }
 
 interface UseOverlayEditingReturn {
@@ -35,6 +36,7 @@ export function useOverlayEditing({
   scale,
   snapEnabled,
   onSnapGuidesChange,
+  canvasSelector = '.collage-canvas',
 }: UseOverlayEditingProps): UseOverlayEditingReturn {
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState<string | null>(null);
@@ -47,7 +49,7 @@ export function useOverlayEditing({
   const displayScale = useRef(1);
 
   useEffect(() => {
-    const canvasEl = document.querySelector('.collage-canvas') as HTMLElement;
+    const canvasEl = document.querySelector(canvasSelector) as HTMLElement;
     if (canvasEl && canvasWidth) {
       const rect = canvasEl.getBoundingClientRect();
       displayScale.current = rect.width / canvasWidth;

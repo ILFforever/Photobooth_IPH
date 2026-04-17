@@ -9,6 +9,7 @@ import { ConnectionLostModal } from "../../Modals";
 import { ConfirmDialog } from "../../Modals";
 import { FolderPickerModal, DeleteFolderModal } from "../../Modals";
 import { useCamera, useVM, useCaptureTiming, useWorkspaceSettings, useToast } from "../../../contexts";
+import { useDisplayLayout } from "../../../contexts";
 import { usePhotobooth } from "../../../contexts/";
 import { usePrintSettings } from "../../../contexts/";
 import { useAuth } from "../../../contexts/";
@@ -28,6 +29,7 @@ import {
 import {
   ConnectionInfoSection,
   CustomSetsSection,
+  DisplayLayoutSection,
   NamingSchemeSection,
   PhotoboothSettingsSection,
   PrintSettingsSection,
@@ -49,7 +51,7 @@ interface PhotoboothSidebarProps {
 }
 
 type PhotoboothTab = 'camera' | 'photobooth' | 'print' | 'qr' | 'gif' | 'edit';
-type CollapsibleSection = 'camera' | 'liveview' | 'connection' | 'polling' | 'folder' | 'photobooth' | 'frame' | 'session' | 'naming' | 'qr' | 'gif' | 'print';
+type CollapsibleSection = 'camera' | 'liveview' | 'connection' | 'polling' | 'folder' | 'photobooth' | 'frame' | 'session' | 'naming' | 'qr' | 'gif' | 'print' | 'displaylayout';
 type SettingType = 'shutter' | 'aperture' | 'iso' | 'ev' | 'wb' | 'metering' | 'folder' | 'mode' | null;
 
 export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
@@ -80,7 +82,8 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
 
   // Photobooth settings
   const { autoCount, setAutoCount, timerDelay, setTimerDelay, delayBetweenPhotos, setDelayBetweenPhotos, photoReviewTime, setPhotoReviewTime } = useCaptureTiming();
-  const { workingFolder, setWorkingFolder, photoNamingScheme, setPhotoNamingScheme, qrUploadEnabled, setQrUploadEnabled, qrUploadAllImages, setQrUploadAllImages, autoGifEnabled, setAutoGifEnabled, autoGifFormat, setAutoGifFormat, autoGifPhotoSource, setAutoGifPhotoSource } = useWorkspaceSettings();
+  const { workingFolder, setWorkingFolder, photoNamingScheme, setPhotoNamingScheme, qrUploadEnabled, setQrUploadEnabled, qrUploadAllImages, setQrUploadAllImages, autoGifEnabled, setAutoGifEnabled, autoGifFormat, setAutoGifFormat, autoGifPhotoSource, setAutoGifPhotoSource, selectedDisplayLayoutId, setSelectedDisplayLayoutId } = useWorkspaceSettings();
+  const { layouts: displayLayouts } = useDisplayLayout();
 
   const { printCollage, isPrinting } = usePrintSettings();
 
@@ -99,6 +102,7 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
     qr: false,
     gif: false,
     print: false,
+    displaylayout: false,
   });
   const [activeSetting, setActiveSetting] = useState<SettingType>(null);
   const [hasSelectedCamera, setHasSelectedCamera] = useState(false);
@@ -439,6 +443,14 @@ export default function PhotoboothSidebar(props: PhotoboothSidebarProps) {
                 <PrintSettingsSection
                   expanded={expandedSections.print}
                   onToggle={() => toggleSection('print')}
+                />
+
+                <DisplayLayoutSection
+                  expanded={expandedSections.displaylayout}
+                  onToggle={() => toggleSection('displaylayout')}
+                  layouts={displayLayouts}
+                  selectedDisplayLayoutId={selectedDisplayLayoutId}
+                  onSelectLayout={setSelectedDisplayLayoutId}
                 />
               </div>
 

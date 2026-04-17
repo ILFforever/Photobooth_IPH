@@ -97,7 +97,7 @@ export default function PhotoboothWorkspace() {
   }, [currentSession?.id]);
 
   // Second screen hook
-  const { isSecondScreenOpen, openSecondScreen, closeSecondScreen, updateGuestDisplay, updateDisplayMode, selectPhoto, selectCenterPhoto, updateCountdown } = useSecondScreen();
+  const { isSecondScreenOpen, openSecondScreen, closeSecondScreen, updateGuestDisplay, updateDisplayMode, selectPhoto, selectCenterPhoto, updateCountdown, updateDisplayLayout } = useSecondScreen();
 
   // Photobooth sequence hook - manages all timing state
   const sequence = usePhotoboothSequence({
@@ -445,6 +445,7 @@ export default function PhotoboothWorkspace() {
                 sessionFolderName={sessionFolderName}
                 onBack={handleBackToCapture}
                 updateGuestDisplay={updateGuestDisplay}
+                updateDisplayLayout={updateDisplayLayout}
                 isSecondScreenOpen={isSecondScreenOpen}
                 openSecondScreen={openSecondScreen}
                 qrData={sessionQrData}

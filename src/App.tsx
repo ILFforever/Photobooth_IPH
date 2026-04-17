@@ -1,10 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { AnimatePresence } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { useAuth } from "./contexts";
-import { useQR } from "./contexts";
+import { useAuth, useQR, useCollage, useWorkingFolder } from "./contexts";
 import { formatFileSize } from "./utils/format";
 import { useGalleryState } from "./hooks";
 import { useTauriInit, useTauriEvents } from "./hooks";
@@ -27,6 +26,8 @@ import {ChangelogModal} from "./components/Modals";
 import type { ChangelogFeaturedItem } from "./components/Modals";
 import { Sparkles } from "lucide-react";
 import { CollageWorkspace } from "./components/Canvas";
+import { DisplayLayoutEditor } from "./components/DisplayLayoutEditor/DisplayLayoutEditor";
+import { DisplayLayoutProvider } from "./contexts/display/DisplayLayoutContext";
 import Sidebar from "./components/Sidebar/Sidebar";
 import { QRSidebar } from "./components/Sidebar/QR";
 import { PhotoboothSidebar } from "./components/Sidebar/Photobooth";
@@ -39,7 +40,7 @@ import "./styles/reset.css";
 import "./styles/utilities.css";
 import "./App.css";
 
-type AppMode = 'photobooth' | 'collage' | 'qr';
+type AppMode = 'photobooth' | 'collage' | 'qr' | 'display';
 
 const logger = createLogger('App');
 
@@ -82,6 +83,9 @@ function App() {
     uploadProgress, setUploadProgress
   } = useQR();
 
+  const { clearMemory: clearCollageMemory } = useCollage();
+  const { releaseThumbnails: releaseWorkingThumbnails } = useWorkingFolder();
+
   // Update check hook - auto-checks for updates on startup
   const {
     versionStatus,
@@ -98,6 +102,17 @@ function App() {
 
   // App mode state
   const [appMode, setAppMode] = useState<AppMode>('photobooth');
+
+  // Memory saving: clear collage caches and working folder thumbnails when switching away from Collage mode
+  const prevAppModeRef = useRef(appMode);
+  useEffect(() => {
+    if (prevAppModeRef.current === 'collage' && appMode !== 'collage') {
+      logger.debug('Leaving Collage mode, releasing memory caches...');
+      clearCollageMemory();
+      releaseWorkingThumbnails();
+    }
+    prevAppModeRef.current = appMode;
+  }, [appMode, clearCollageMemory, releaseWorkingThumbnails]);
 
   // UI state
   const [showAccountMenu, setShowAccountMenu] = useState(false);
@@ -161,7 +176,7 @@ function App() {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // F11 to toggle fullscreen (global, works in all modes)
+  // F1 to toggle fullscreen (global, works in all modes)
   useEffect(() => {
     const handleKeyDown = async (e: KeyboardEvent) => {
       if (e.key === 'F11') {
@@ -368,7 +383,12 @@ function App() {
       {appMode === 'photobooth' && <div className="photobooth-page-divider" />}
 
       {/* Main Content */}
+      <DisplayLayoutProvider>
       <div className="app-content">
+        {appMode === 'display' ? (
+          <DisplayLayoutEditor />
+        ) : (
+        <>
         {appMode === 'qr' ? (
           <QRSidebar
             account={account}
@@ -421,7 +441,10 @@ function App() {
             )}
           </div>
         </div>
+        </>
+        )}
       </div>
+      </DisplayLayoutProvider>
 
       {/* Folder Picker Modal */}
       <AnimatePresence>

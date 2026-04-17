@@ -10,7 +10,7 @@
   align-items: center;
   flex: 1;
   overflow: auto;
-  background: var(--bg-primary);
+  background: transparent;
   scrollbar-width: none; /* Firefox */
   -ms-overflow-style: none; /* IE and Edge */
 }
@@ -171,27 +171,38 @@
 
 .placeholder-content {
   text-align: center;
-  color: var(--text-secondary);
+  max-width: 480px;
+  padding: var(--spacing-3xl);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md), 0 0 60px rgba(0, 120, 212, 0.15);
+  animation: fadeIn 0.3s ease-out;
 }
 
 .placeholder-icon {
-  font-size: 64px;
-  display: block;
-  margin-bottom: 1rem;
-  opacity: 0.4;
+  width: 80px;
+  height: 80px;
+  margin: 0 auto var(--spacing-lg);
+  opacity: 0.8;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .placeholder-content h3 {
-  font-size: 20px;
-  font-weight: 600;
+  font-size: var(--text-3xl);
+  font-weight: var(--font-semibold);
   color: var(--text-primary);
-  margin-bottom: 0.5rem;
-  letter-spacing: 0.5px;
+  margin: 0 0 var(--spacing-md) 0;
+  letter-spacing: var(--tracking-tight);
 }
 
 .placeholder-content p {
-  font-size: 14px;
-  color: var(--text-muted);
+  font-size: var(--text-lg);
+  color: var(--text-secondary);
+  line-height: var(--leading-normal);
 }
 
 /* Zoom handles - Teenage Engineering style */
@@ -279,4 +290,18 @@ body:has(.modal-overlay) .collage-zoom-controls {
   box-shadow:
     0 1px 2px rgba(0, 0, 0, 0.5),
     inset 0 2px 4px rgba(0, 0, 0, 0.4);
+}
+
+/* ========================================
+ * Animations
+ * ======================================== */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }

@@ -91,6 +91,7 @@ export function BackgroundLayer() {
         inset: 0,
         cursor: isDragging ? "grabbing" : "grab",
         zIndex: 0,
+        overflow: "hidden",
       }}
       onMouseDown={handleMouseDown}
       onClick={handleClick}

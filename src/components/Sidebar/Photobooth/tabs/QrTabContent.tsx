@@ -6,6 +6,7 @@ import { ExternalLink, Copy, Check, Upload, AlertCircle, Folder, XCircle, Loader
 import { invoke } from '@tauri-apps/api/core';
 import { open as shellOpen } from '@tauri-apps/plugin-shell';
 import { useWorkspaceSettings, usePhotoboothSession } from '../../../../contexts';
+import type { DisplayLayout } from '../../../../types/displayLayout';
 import { useUploadQueue } from '../../../../contexts';
 import { useAuth } from '../../../../contexts';
 import { usePhotobooth } from '../../../../contexts';
@@ -17,7 +18,7 @@ import { createLogger } from '../../../../utils/logger';
 const logger = createLogger('QrTabContent');
 
 export function QrTabContent() {
-  const { workingFolder, qrUploadEnabled } = useWorkspaceSettings();
+  const { workingFolder, qrUploadEnabled, selectedDisplayLayoutId } = useWorkspaceSettings();
   const { currentSession, sessions } = usePhotoboothSession();
   const { queueItems, stats, startAutoRefresh, stopAutoRefresh } = useUploadQueue();
   const { account } = useAuth();
@@ -31,6 +32,17 @@ export function QrTabContent() {
 
   const driveMetadata = currentSession?.googleDriveMetadata;
   const folderLink = driveMetadata?.folderLink || '';
+
+  // Load the selected display layout for the guest display at finalize time
+  const getSelectedDisplayLayout = useCallback(async (): Promise<DisplayLayout | null> => {
+    if (!selectedDisplayLayoutId) return null;
+    try {
+      return await invoke<DisplayLayout>('get_display_layout', { layoutId: selectedDisplayLayoutId });
+    } catch (err) {
+      logger.error('[QrTabContent] Failed to load display layout:', err);
+      return null;
+    }
+  }, [selectedDisplayLayoutId]);
 
   // Compute auth state
   const authStateInfo = useMemo(
@@ -183,14 +195,16 @@ export function QrTabContent() {
     }
 
     // Proceed with normal upload flow
+    const displayLayout = await getSelectedDisplayLayout();
     await uploadCollage(currentSession, workingFolder, sessions, driveMetadata, async (_, imageUrl) => {
       emitTo("guest-display", "guest-display:update", {
         displayMode: 'finalize' as const,
         finalizeImageUrl: imageUrl,
         finalizeQrData: qrDataToSend || null,
+        displayLayout,
       });
     });
-  }, [currentSession, workingFolder, sessions, driveMetadata, currentCollageFilename, collageIsDirty, authStateInfo.state, authStateText, qrUploadEnabled, uploadCollage, showToast, showRegenerateOptions, folderLink, qrBase64]);
+  }, [currentSession, workingFolder, sessions, driveMetadata, currentCollageFilename, collageIsDirty, authStateInfo.state, authStateText, qrUploadEnabled, uploadCollage, showToast, showRegenerateOptions, folderLink, qrBase64, getSelectedDisplayLayout]);
 
   const confirmRegenerate = useCallback(async () => {
     setShowRegenerateOptions(false);
@@ -206,15 +220,17 @@ export function QrTabContent() {
         }
       }
 
+      const displayLayout = await getSelectedDisplayLayout();
       await uploadCollage(currentSession, workingFolder, sessions, driveMetadata, async (_, imageUrl) => {
         emitTo("guest-display", "guest-display:update", {
           displayMode: 'finalize' as const,
           finalizeImageUrl: imageUrl,
           finalizeQrData: qrDataToSend || null,
+          displayLayout,
         });
       });
     }
-  }, [currentSession, workingFolder, sessions, driveMetadata, uploadCollage, folderLink, qrBase64]);
+  }, [currentSession, workingFolder, sessions, driveMetadata, uploadCollage, folderLink, qrBase64, getSelectedDisplayLayout]);
 
   const cancelRegenerate = useCallback(async () => {
     setShowRegenerateOptions(false);
@@ -230,15 +246,17 @@ export function QrTabContent() {
         }
       }
 
+      const displayLayout = await getSelectedDisplayLayout();
       await uploadCollage(currentSession, workingFolder, sessions, driveMetadata, async (_, imageUrl) => {
         emitTo("guest-display", "guest-display:update", {
           displayMode: 'finalize' as const,
           finalizeImageUrl: imageUrl,
           finalizeQrData: qrDataToSend || null,
+          displayLayout,
         });
       });
     }
-  }, [currentSession, workingFolder, sessions, driveMetadata, uploadCollage, folderLink, qrBase64]);
+  }, [currentSession, workingFolder, sessions, driveMetadata, uploadCollage, folderLink, qrBase64, getSelectedDisplayLayout]);
 
   // Auto-refresh upload queue for current session
   useEffect(() => {

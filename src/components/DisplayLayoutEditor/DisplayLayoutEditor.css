@@ -1,0 +1,47 @@
+/* Main editor layout */
+
+.display-layout-editor {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ========================================
+ * Canvas Area
+ * ======================================== */
+.display-editor-canvas-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-primary);
+}
+
+.display-editor-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+}
+
+.display-editor-content {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+/* ========================================
+ * Zoom Controls Position Override
+ * ======================================== */
+.display-zoom-controls.left {
+  left: 10px;
+  right: auto;
+}
+
+.display-zoom-controls.right {
+  right: 10px;
+  left: auto;
+}

@@ -192,13 +192,13 @@
  * ======================================== */
 
 .confirm-overlay {
-  position: absolute;
+  position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.75);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: var(--z-dropdown);
+  z-index: 10000;
   padding: var(--spacing-lg);
   animation: fadeIn 0.15s ease-out;
 }
