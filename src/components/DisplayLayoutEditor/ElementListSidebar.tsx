@@ -284,12 +284,12 @@ export function ElementListSidebar() {
     <div className="element-list-sidebar">
       <div className="display-panel-header">
         <span className="display-panel-title">Elements</span>
-        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+        <span className="text-muted-small">
           {sortedElements.length}
         </span>
       </div>
 
-      <div className="element-list" style={{ flex: 1, overflowY: 'auto' }}>
+      <div className="element-list">
         {sortedElements.map((element) => (
           <ElementListItem
             key={element.id}
@@ -321,8 +321,8 @@ export function ElementListSidebar() {
 
             return (
               <>
-                <div className="display-panel-header" style={{ padding: '10px 12px 8px' }}>
-                  <span className="display-panel-title" style={{ fontSize: 12 }}>
+                <div className="display-panel-header panel-header-custom">
+                  <span className="display-panel-title panel-title-small">
                     {getRoleLabel(element.role)} Properties
                   </span>
                 </div>
@@ -330,7 +330,7 @@ export function ElementListSidebar() {
                 <div className="element-props-body">
 
                   {/* X / Y */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                  <div className="grid-2-col">
                     <div className="props-field">
                       <label>X</label>
                       <SmartNumericInput value={Math.round(element.transform.x)} onChange={(val) => updateTransform('x', val)} placeholder="0" />
@@ -342,7 +342,7 @@ export function ElementListSidebar() {
                   </div>
 
                   {/* Scale / Rotation */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                  <div className="grid-2-col">
                     <div className="props-field">
                       <label>Scale</label>
                       <SmartNumericInput value={element.transform.scale} step={0.01} min={0.01} max={10} onChange={(val) => updateTransform('scale', val)} placeholder="1.0" />
@@ -362,7 +362,7 @@ export function ElementListSidebar() {
 
                   {/* Flip / Blend Mode — same row */}
                   {element.role !== 'qr' && (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'auto auto 1fr', gap: 6, alignItems: 'end' }}>
+                    <div className="grid-3-col">
                       <div className="props-field">
                         <label>Flip H</label>
                         <button
@@ -413,11 +413,11 @@ export function ElementListSidebar() {
                           }}
                         />
                       </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 6 }}>
+                      <div className="grid-2-col-wide-first">
                         <div className="props-field">
                           <label>Font Family</label>
                           {loadingFonts ? (
-                            <div className="props-weight-select" style={{ color: 'var(--text-muted)', fontSize: 11 }}>Loading fonts...</div>
+                            <div className="props-weight-select text-muted-small">Loading fonts...</div>
                           ) : (
                             <select
                               className="props-weight-select"
@@ -469,7 +469,7 @@ export function ElementListSidebar() {
                           <SmartNumericInput value={element.fontSize || 24} min={8} max={200} onChange={(val) => handleUpdateElement(element.id, { fontSize: val })} placeholder="24" />
                         </div>
                       </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                      <div className="grid-2-col">
                         <div className="props-field">
                           <label>Weight</label>
                           <select className="props-weight-select" value={element.fontWeight || '400'} onChange={(e) => handleUpdateElement(element.id, { fontWeight: e.target.value })}>
@@ -538,7 +538,7 @@ export function ElementListSidebar() {
                             ))}
                           </select>
                         </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                        <div className="grid-2-col">
                           <div className="props-field">
                             <label>Width</label>
                             <SmartNumericInput value={cw} min={10} onChange={(val) => handleUpdateElement(element.id, { collageWidth: val })} placeholder="480" />
@@ -556,7 +556,7 @@ export function ElementListSidebar() {
                   {(element.role === 'logo' || element.role === 'gif') && (
                     <>
                       <div className="props-role-divider" />
-                      <button className="display-sidebar-btn" style={{ width: '100%' }} onClick={async () => {
+                      <button className="display-sidebar-btn full-width" onClick={async () => {
                         const filters = element.role === 'gif'
                           ? [{ name: 'GIF', extensions: ['gif'] }]
                           : [{ name: 'Image', extensions: ['png', 'jpg', 'jpeg', 'webp'] }];
@@ -575,7 +575,7 @@ export function ElementListSidebar() {
                   {element.role === 'shape' && (
                     <>
                       <div className="props-role-divider" />
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                      <div className="grid-2-col">
                         <div className="props-field">
                           <label>Width</label>
                           <SmartNumericInput value={element.shapeWidth ?? 200} min={1} onChange={(val) => handleUpdateElement(element.id, { shapeWidth: val })} placeholder="200" />
@@ -585,7 +585,7 @@ export function ElementListSidebar() {
                           <SmartNumericInput value={element.shapeHeight ?? 200} min={1} onChange={(val) => handleUpdateElement(element.id, { shapeHeight: val })} placeholder="200" />
                         </div>
                       </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                      <div className="grid-2-col">
                         <div className="props-field">
                           <label>Fill</label>
                           <div className="props-color-row">

@@ -198,20 +198,21 @@ const handleSave = async () => {
           >
             <Icon path={mdiPlus} size={0.75} />
           </button>
-          <button
-            className={`display-layout-picker-action-btn${hasUnsavedChanges ? ' unsaved' : ''}`}
-            onClick={handleSave}
-            disabled={!activeLayout || saving}
-            title={saving ? 'Saving…' : 'Save'}
-          >
-            <Icon path={mdiContentSave} size={0.75} />
-          </button>
+         
           <button
             className="display-layout-picker-action-btn"
             onClick={handleImport}
             title="Import Layout"
           >
             <Icon path={mdiFileImport } size={0.75} />
+          </button>
+           <button
+            className={`display-layout-picker-action-btn${hasUnsavedChanges ? ' unsaved' : ''}`}
+            onClick={handleSave}
+            disabled={!activeLayout || saving}
+            title={saving ? 'Saving…' : 'Save'}
+          >
+            <Icon path={mdiContentSave} size={0.75} />
           </button>
         </div>
 

@@ -487,3 +487,42 @@
 .ep-emoji.active {
   background: rgba(255, 255, 255, 0.1);
 }
+
+/* ========================================
+ * Utility Classes
+ * ======================================== */
+.text-muted-small {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.grid-2-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.grid-3-col {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 6px;
+  align-items: end;
+}
+
+.grid-2-col-wide-first {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 6px;
+}
+
+.panel-header-custom {
+  padding: 10px 12px 8px;
+}
+
+.panel-title-small {
+  font-size: 12px;
+}
+
+.full-width {
+  width: 100%;
+}
