@@ -5,7 +5,7 @@ import { useDisplayLayout } from '../../contexts/display/DisplayLayoutContext';
 import { useToast } from '../../contexts/system/ToastContext';
 import { DisplayElementRole, ASPECT_RATIO_PRESETS } from '../../types/displayLayout';
 import { ColorPicker } from '../ColorPicker/ColorPicker';
-import { EmojiPicker } from 'frimousse';
+import { EmojiPickerButton } from './EmojiPickerButton';
 import Icon from '@mdi/react';
 import SaveDefaultModal from './SaveDefaultModal';
 import { DisplayLayoutHelpModal } from './DisplayLayoutHelpModal';
@@ -47,13 +47,7 @@ export function DisplayLayoutSidebar() {
   const [creatingCopy, setCreatingCopy] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const pickerRef = useRef<HTMLDivElement>(null);
-
-  // Emoji picker state
-  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
-  const [emojiPickerY, setEmojiPickerY] = useState(0);
-  const emojiTriggerRef = useRef<HTMLButtonElement>(null);
-  const emojiPickerRef = useRef<HTMLDivElement>(null);
-
+  
   useEffect(() => {
     if (!pickerOpen) return;
     const handler = (e: MouseEvent) => {
@@ -64,20 +58,6 @@ export function DisplayLayoutSidebar() {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [pickerOpen]);
-
-  useEffect(() => {
-    if (!emojiPickerOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (
-        emojiPickerRef.current && !emojiPickerRef.current.contains(e.target as Node) &&
-        emojiTriggerRef.current && !emojiTriggerRef.current.contains(e.target as Node)
-      ) {
-        setEmojiPickerOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [emojiPickerOpen]);
 
   const handleImport = async () => {
     const filePath = await open({
@@ -165,30 +145,9 @@ const handleSave = async () => {
         const path = typeof result === 'string' ? result : (result as any).path;
         addElement(role, { sourcePath: convertFileSrc(path) });
       }
-    } else if (role === 'emoji') {
-      // Open emoji picker instead of directly adding
-      openEmojiPicker();
     } else {
       addElement(role);
     }
-  };
-
-  const openEmojiPicker = () => {
-    if (emojiTriggerRef.current) {
-      const rect = emojiTriggerRef.current.getBoundingClientRect();
-      // Position picker centered on trigger button, or closer to top if near viewport edge
-      const pickerHeight = 350; // matches --frimousse-viewport-height in CSS
-
-      // Prefer centering, but ensure it stays in viewport
-      let top = rect.top - (pickerHeight / 2) + (rect.height / 2);
-      if (top < 10) top = 10; // Don't go above viewport
-      if (top + pickerHeight > window.innerHeight - 10) {
-        top = window.innerHeight - pickerHeight - 10;
-      }
-
-      setEmojiPickerY(top);
-    }
-    setEmojiPickerOpen(true);
   };
 
   const handleBackgroundImage = async () => {
@@ -450,52 +409,22 @@ const handleSave = async () => {
                   <Icon path={mdiFileGifBox} size={0.65} />
                   <span>GIF</span>
                 </button>
-                <button
-                  ref={emojiTriggerRef}
+                <EmojiPickerButton
+                  currentEmoji=""
+                  placeholder="😊"
+                  placeholderText="Emoji"
+                  emojiSize={30}
+                  onSelect={(emoji) => addElement('emoji', { textContent: emoji, fontSize: 80 })}
                   className="display-sidebar-btn"
-                  onClick={() => handleAddElement('emoji')}
+                  spawnPosition="right"
+                  offsetX={20}
                 >
                   <Icon path={mdiStickerEmoji} size={0.65} />
                   <span>Emoji</span>
-                </button>
+                </EmojiPickerButton>
               </div>
             );
           })()}
-        </div>
-      )}
-
-      {/* Emoji picker */}
-      {emojiPickerOpen && (
-        <div
-          ref={emojiPickerRef}
-          className="emoji-picker-popover emoji-picker-popover-left"
-          style={{ top: emojiPickerY }}
-        >
-          <EmojiPicker.Root
-            className="ep-root"
-            onEmojiSelect={({ emoji }) => {
-              addElement('emoji', { textContent: emoji, fontSize: 80 });
-              setEmojiPickerOpen(false);
-            }}
-          >
-            <EmojiPicker.Search className="ep-search" />
-            <EmojiPicker.Viewport className="ep-viewport">
-              <EmojiPicker.Loading className="ep-status">Loading…</EmojiPicker.Loading>
-              <EmojiPicker.Empty className="ep-status">No emoji found.</EmojiPicker.Empty>
-              <EmojiPicker.List
-                className="ep-list"
-                components={{
-                  CategoryHeader: ({ category, ...props }) => (
-                    <div className="ep-category-header" {...props}>{category.label}</div>
-                  ),
-                  Row: (props) => <div className="ep-row" {...props} />,
-                  Emoji: ({ emoji, ...props }) => (
-                    <button className={`ep-emoji${emoji.isActive ? ' active' : ''}`} {...props}>{emoji.emoji}</button>
-                  ),
-                }}
-              />
-            </EmojiPicker.Viewport>
-          </EmojiPicker.Root>
         </div>
       )}
 

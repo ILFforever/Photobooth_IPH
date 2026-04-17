@@ -468,35 +468,32 @@ async fn scan_folder_for_images(
     // Collect results as they complete
     let mut results = Vec::new();
     while let Some(result) = join_set.join_next().await {
-        match result {
-            Ok((index, thumb_result, file_path, filename, size, extension)) => {
-                let (thumbnail, dimensions) = match thumb_result {
-                    Ok(r) => (Some(r.thumbnail), r.dimensions),
-                    Err(_) => (None, None),
-                };
+        if let Ok((index, thumb_result, file_path, filename, size, extension)) = result {
+            let (thumbnail, dimensions) = match thumb_result {
+                Ok(r) => (Some(r.thumbnail), r.dimensions),
+                Err(_) => (None, None),
+            };
 
-                let working_image = WorkingImage {
-                    path: file_path,
-                    filename,
-                    thumbnail: thumbnail.unwrap_or_default(),
-                    size,
-                    extension,
-                    dimensions,
-                };
+            let working_image = WorkingImage {
+                path: file_path,
+                filename,
+                thumbnail: thumbnail.unwrap_or_default(),
+                size,
+                extension,
+                dimensions,
+            };
 
-                // Emit immediately as each completes
-                let _ = app.emit(
-                    "thumbnail-loaded",
-                    ThumbnailLoadProgress {
-                        current: index + 1,
-                        total: total_files,
-                        image: working_image.clone(),
-                    },
-                );
+            // Emit immediately as each completes
+            let _ = app.emit(
+                "thumbnail-loaded",
+                ThumbnailLoadProgress {
+                    current: index + 1,
+                    total: total_files,
+                    image: working_image.clone(),
+                },
+            );
 
-                results.push((index, working_image));
-            }
-            _ => {}
+            results.push((index, working_image));
         }
     }
 

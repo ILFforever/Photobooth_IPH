@@ -197,7 +197,7 @@ fn spawn_and_parse(
     ];
 
     let mut child = match Command::new(&ffmpeg_path)
-        .args(&ffmpeg_args)
+        .args(ffmpeg_args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .creation_flags(0x08000000)

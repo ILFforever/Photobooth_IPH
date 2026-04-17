@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { EmojiPicker } from 'frimousse';
 import { Icon } from '@mdi/react';
-import { mdiEye, mdiEyeOff, mdiDelete, mdiDragVertical, mdiViewQuilt, mdiQrcode, mdiImageOutline, mdiFormatText, mdiFilmstrip, mdiSwapHorizontal, mdiSwapVertical } from '@mdi/js';
+import { mdiSwapHorizontal, mdiSwapVertical } from '@mdi/js';
 import { useDisplayLayout } from '../../contexts/display/DisplayLayoutContext';
 import { DisplayElement } from '../../types/displayLayout';
 import { convertFileSrc } from '@tauri-apps/api/core';
@@ -12,6 +11,8 @@ import { ColorPicker } from '../ColorPicker/ColorPicker';
 import { useToast } from '../../contexts/system/ToastContext';
 import { isFontAvailable } from '../../utils/fontUtils';
 import SaveDefaultModal from './SaveDefaultModal';
+import { ElementListItem } from './ElementListItem';
+import { EmojiPickerButton } from './EmojiPickerButton';
 import './ElementListSidebar.css';
 import './display-common.css';
 
@@ -149,10 +150,6 @@ export function ElementListSidebar() {
 
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
-  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
-  const [emojiPickerY, setEmojiPickerY] = useState(0);
-  const emojiTriggerRef = useRef<HTMLButtonElement>(null);
-  const emojiPickerRef = useRef<HTMLDivElement>(null);
   const [systemFonts, setSystemFonts] = useState<{ label: string; value: string }[]>(SYSTEM_FONT_FAMILIES);
   const [loadingFonts, setLoadingFonts] = useState(true);
 
@@ -212,41 +209,9 @@ export function ElementListSidebar() {
       .finally(() => {
         setLoadingFonts(false);
       });
-  }, []);
+   }, []);
 
-  useEffect(() => {
-    if (!emojiPickerOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (
-        emojiPickerRef.current && !emojiPickerRef.current.contains(e.target as Node) &&
-        emojiTriggerRef.current && !emojiTriggerRef.current.contains(e.target as Node)
-      ) {
-        setEmojiPickerOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [emojiPickerOpen]);
-
-  const openEmojiPicker = () => {
-    if (emojiTriggerRef.current) {
-      const rect = emojiTriggerRef.current.getBoundingClientRect();
-      // Position picker centered on trigger button, or closer to top if near viewport edge
-      const pickerHeight = 350; // matches --frimousse-viewport-height in CSS
-
-      // Prefer centering, but ensure it stays in viewport
-      let top = rect.top - (pickerHeight / 2) + (rect.height / 2);
-      if (top < 10) top = 10; // Don't go above viewport
-      if (top + pickerHeight > window.innerHeight - 10) {
-        top = window.innerHeight - pickerHeight - 10;
-      }
-
-      setEmojiPickerY(top);
-    }
-    setEmojiPickerOpen(o => !o);
-  };
-
-  if (!activeLayout) {
+   if (!activeLayout) {
     return (
       <div className="element-list-sidebar">
         <div className="display-panel-header">
@@ -261,17 +226,6 @@ export function ElementListSidebar() {
 
   const sortedElements = [...activeLayout.elements].sort((a, b) => b.layerOrder - a.layerOrder);
 
-  const getRoleIconPath = (role: string) => {
-    const icons: Record<string, string> = {
-      collage: mdiViewQuilt,
-      qr: mdiQrcode,
-      text: mdiFormatText,
-      logo: mdiImageOutline,
-      gif: mdiFilmstrip,
-    };
-    return icons[role] || mdiImageOutline;
-  };
-
   const getRoleLabel = (role: string) => {
     const labels: Record<string, string> = {
       collage: 'Collage',
@@ -280,66 +234,9 @@ export function ElementListSidebar() {
       logo: 'Image',
       gif: 'GIF',
       emoji: 'Emoji',
+      shape: 'Shape',
     };
     return labels[role] || role;
-  };
-
-  const getShapePreview = (element: DisplayElement) => {
-    const fill = element.shapeFill ?? '#3b82f6';
-    const clipPaths: Record<string, string> = {
-      triangle:  'polygon(50% 0%, 0% 100%, 100% 100%)',
-      diamond:   'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)',
-      star:      'polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)',
-      hexagon:   'polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)',
-      pentagon:  'polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)',
-      cross:     'polygon(20% 0%, 80% 0%, 80% 20%, 100% 20%, 100% 80%, 80% 80%, 80% 100%, 20% 100%, 20% 80%, 0% 80%, 0% 20%, 20% 20%)',
-    };
-    const borderRadius =
-      element.shapeType === 'circle' ? '50%' :
-      element.shapeType === 'rounded-rectangle' ? '4px' :
-      element.shapeType === 'line' ? '1px' : '2px';
-    const clipPath = element.shapeType ? clipPaths[element.shapeType] : undefined;
-    const isLine = element.shapeType === 'line';
-    return (
-      <div style={{
-        width: isLine ? '80%' : '65%',
-        height: isLine ? 3 : '65%',
-        background: fill,
-        borderRadius,
-        clipPath,
-        flexShrink: 0,
-      }} />
-    );
-  };
-
-  const getPreviewContent = (element: DisplayElement) => {
-    if (element.role === 'shape') {
-      return getShapePreview(element);
-    }
-    if (element.role === 'emoji' && element.textContent) {
-      return (
-        <div style={{ fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' }}>
-          {element.textContent}
-        </div>
-      );
-    }
-    if ((element.role === 'logo' || element.role === 'gif') && element.sourcePath) {
-      return (
-        <img
-          src={element.sourcePath.startsWith('asset://')
-            ? convertFileSrc(element.sourcePath.replace('asset://', ''))
-            : element.sourcePath}
-          alt=""
-          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-        />
-      );
-    }
-
-    return (
-      <div className="element-list-thumb-icon">
-        <Icon path={getRoleIconPath(element.role)} size={0.7} />
-      </div>
-    );
   };
 
   const handleDragStart = (e: React.DragEvent, id: string) => {
@@ -393,62 +290,22 @@ export function ElementListSidebar() {
       </div>
 
       <div className="element-list" style={{ flex: 1, overflowY: 'auto' }}>
-        {sortedElements.map((element) => {
-          const isSelected = selectedElementId === element.id;
-
-          return (
-            <div
-              key={element.id}
-              className={`element-list-item ${isSelected ? 'selected' : ''}`}
-              style={{
-                opacity: draggedId === element.id ? 0.5 : 1,
-                borderTop: dragOverId === element.id && draggedId !== element.id ? '2px solid var(--accent-color)' : '',
-              }}
-              onClick={() => setSelectedElementId(element.id)}
-              draggable
-              onDragStart={(e) => handleDragStart(e, element.id)}
-              onDragOver={(e) => handleDragOver(e, element.id)}
-              onDragEnd={handleDragEnd}
-              onDrop={(e) => handleDrop(e, element.id)}
-            >
-              <div className="element-list-drag">
-                <Icon path={mdiDragVertical} size={0.75} />
-              </div>
-
-              <div className="element-list-item-inner">
-                <div className="element-list-thumb">
-                  {getPreviewContent(element)}
-                </div>
-
-                <div className="element-list-info">
-                  <span className="element-list-name">{getRoleLabel(element.role)}</span>
-                  <span className="element-list-meta">
-                    {element.role === 'text' && element.textContent
-                      ? `"${element.textContent.slice(0, 20)}${element.textContent.length > 20 ? '...' : ''}"`
-                      : `Layer ${element.layerOrder}`}
-                  </span>
-                </div>
-
-                <div className="element-list-actions">
-                  <button
-                    className="element-list-action-btn"
-                    onClick={(e) => { e.stopPropagation(); handleUpdateElement(element.id, { visible: !element.visible }); }}
-                    title={element.visible ? 'Hide' : 'Show'}
-                  >
-                    <Icon path={element.visible ? mdiEye : mdiEyeOff} size={0.55} />
-                  </button>
-                  <button
-                    className="element-list-action-btn danger"
-                    onClick={(e) => { e.stopPropagation(); handleRemoveElement(element.id); }}
-                    title="Delete"
-                  >
-                    <Icon path={mdiDelete} size={0.55} />
-                  </button>
-                </div>
-              </div>
-            </div>
-          );
-        })}
+        {sortedElements.map((element) => (
+          <ElementListItem
+            key={element.id}
+            element={element}
+            isSelected={selectedElementId === element.id}
+            draggedId={draggedId}
+            dragOverId={dragOverId}
+            onUpdateElement={handleUpdateElement}
+            onRemoveElement={handleRemoveElement}
+            onSelectElement={setSelectedElementId}
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDragEnd={handleDragEnd}
+            onDrop={handleDrop}
+          />
+        ))}
       </div>
 
       {/* Properties panel for selected element */}
@@ -640,47 +497,15 @@ export function ElementListSidebar() {
                       <div className="props-role-divider" />
                       <div className="props-field">
                         <label>Emoji</label>
-                        <button
-                          ref={emojiTriggerRef}
-                          className="emoji-picker-trigger"
-                          onClick={openEmojiPicker}
-                        >
-                          <span style={{ fontSize: 22, lineHeight: 1 }}>{element.textContent || '😊'}</span>
-                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Change emoji</span>
-                        </button>
-                        {emojiPickerOpen && (
-                          <div
-                            ref={emojiPickerRef}
-                            className="emoji-picker-popover"
-                            style={{ top: emojiPickerY }}
-                          >
-                            <EmojiPicker.Root
-                              className="ep-root"
-                              onEmojiSelect={({ emoji }) => {
-                                handleUpdateElement(element.id, { textContent: emoji });
-                                setEmojiPickerOpen(false);
-                              }}
-                            >
-                              <EmojiPicker.Search className="ep-search" />
-                              <EmojiPicker.Viewport className="ep-viewport">
-                                <EmojiPicker.Loading className="ep-status">Loading…</EmojiPicker.Loading>
-                                <EmojiPicker.Empty className="ep-status">No emoji found.</EmojiPicker.Empty>
-                                <EmojiPicker.List
-                                  className="ep-list"
-                                  components={{
-                                    CategoryHeader: ({ category, ...props }) => (
-                                      <div className="ep-category-header" {...props}>{category.label}</div>
-                                    ),
-                                    Row: (props) => <div className="ep-row" {...props} />,
-                                    Emoji: ({ emoji, ...props }) => (
-                                      <button className={`ep-emoji${emoji.isActive ? ' active' : ''}`} {...props}>{emoji.emoji}</button>
-                                    ),
-                                  }}
-                                />
-                              </EmojiPicker.Viewport>
-                            </EmojiPicker.Root>
-                          </div>
-                        )}
+                        <EmojiPickerButton
+                          currentEmoji={element.textContent || ''}
+                          placeholder="😊"
+                          placeholderText="Change emoji"
+                          onSelect={(emoji) => handleUpdateElement(element.id, { textContent: emoji })}
+                          spawnPosition="top-left"
+                          offsetX={-20}
+                          offsetY={120}
+                        />
                       </div>
                       <div className="props-field">
                         <label>Size</label>

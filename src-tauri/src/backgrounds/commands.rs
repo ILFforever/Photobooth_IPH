@@ -17,13 +17,13 @@ fn get_backgrounds_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 
 /// Initialize default backgrounds
 fn initialize_default_backgrounds(app: &tauri::AppHandle) -> Result<(), String> {
-    let backgrounds_dir = get_backgrounds_dir(&app)?;
+    let backgrounds_dir = get_backgrounds_dir(app)?;
 
     // Check if already initialized
     if backgrounds_dir.exists()
         && backgrounds_dir
             .read_dir()
-            .map_or(false, |mut entries| entries.next().is_some())
+            .is_ok_and(|mut entries| entries.next().is_some())
     {
         return Ok(());
     }

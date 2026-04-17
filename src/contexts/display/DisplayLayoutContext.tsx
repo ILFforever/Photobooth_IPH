@@ -91,16 +91,8 @@ export function DisplayLayoutProvider({ children }: { children: ReactNode }) {
         } catch (e) {
           logger.error('Failed to create default display layout:', e);
         }
-      } else {
-        // Auto-apply the default layout (or first available) so activeLayout is never null
-        const defaultPreview = existing.find(l => l.isDefault) ?? existing[0];
-        try {
-          const layout = await invoke<DisplayLayout>('get_display_layout', { layoutId: defaultPreview.id });
-          setActiveLayout(layout);
-        } catch (e) {
-          logger.error('Failed to auto-load default display layout:', e);
-        }
       }
+      // Note: Start with no layout selected - user must explicitly choose or create one
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

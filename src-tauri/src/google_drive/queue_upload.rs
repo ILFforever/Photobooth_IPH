@@ -132,17 +132,16 @@ pub async fn upload_photo_to_drive_internal(
                 println!("   ⚠️  Upload attempt {} FAILED: {}", attempt, error_str);
 
                 // Check if it's a retryable network error
-                if error_str.contains("10054")
+                if (error_str.contains("10054")
                     || error_str.contains("connection")
                     || error_str.contains("timed out")
                     || error_str.contains("broken pipe")
                     || error_str.contains("503")
-                    || error_str.contains("502")
+                    || error_str.contains("502"))
+                    && attempt < max_retries
                 {
-                    if attempt < max_retries {
-                        println!("   ℹ️  Network error detected, will retry...");
-                        continue;
-                    }
+                    println!("   ℹ️  Network error detected, will retry...");
+                    continue;
                 }
 
                 // Non-retryable error or max retries exhausted

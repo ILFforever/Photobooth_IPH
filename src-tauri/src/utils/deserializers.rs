@@ -1,9 +1,7 @@
 use serde::Deserializer;
 
 // Custom deserializer helper to accept both int and float for Option<u32>
-pub fn deserialize_optional_u32_or_float<'de, D>(
-    deserializer: D,
-) -> Result<Option<u32>, D::Error>
+pub fn deserialize_optional_u32_or_float<'de, D>(deserializer: D) -> Result<Option<u32>, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -11,10 +9,7 @@ where
     use serde::Deserialize;
 
     // Try to deserialize as a number (either i64 or f64)
-    let value = match Option::<serde_json::Number>::deserialize(deserializer) {
-        Ok(v) => v,
-        Err(e) => return Err(e),
-    };
+    let value = Option::<serde_json::Number>::deserialize(deserializer)?;
 
     match value {
         Some(num) => {

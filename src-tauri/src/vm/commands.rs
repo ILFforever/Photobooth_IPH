@@ -32,7 +32,7 @@ fn read_tail_lines(path: &PathBuf, num_lines: usize) -> Result<Vec<String>, Stri
 
     // Read at most 64KB from the end — plenty for ~100-1000 lines
     let tail_bytes: u64 = 65536;
-    let start_pos = if file_size > tail_bytes { file_size - tail_bytes } else { 0 };
+    let start_pos = file_size.saturating_sub(tail_bytes);
 
     file.seek(SeekFrom::Start(start_pos)).map_err(|e| format!("Seek failed: {}", e))?;
 
@@ -95,7 +95,7 @@ pub async fn get_vm_logs(lines: Option<usize>) -> Result<VmLogsResponse, String>
 
     for path in &possible_paths {
         if path.exists() {
-            match read_tail_lines(&path, num_lines) {
+            match read_tail_lines(path, num_lines) {
                 Ok(lines) => {
                     log_lines = Some(lines);
                     break;
