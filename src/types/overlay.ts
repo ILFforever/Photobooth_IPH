@@ -22,38 +22,35 @@ export type LayerPosition = 'below-frames' | 'frames' | 'above-frames';
 
 // Transform state for an overlay layer
 export interface OverlayTransform {
-  x: number;           // Position X in pixels
-  y: number;           // Position Y in pixels
-  scale: number;       // Scale (0.1 to 5.0)
-  rotation: number;    // Rotation in degrees
+  x: number;
+  y: number;
+  scale: number;
+  rotation: number;
   flipHorizontal: boolean;
   flipVertical: boolean;
-  opacity: number;     // 0 to 1
+  opacity: number;
 }
 
 // Individual overlay layer
 export interface OverlayLayer {
+  /** Instance UUID — unique per usage */
   id: string;
-  name: string;        // User-friendly name
-  sourcePath: string;  // File path to PNG
-  thumbnail?: string;  // Base64 thumbnail for UI
+  /** SHA-256 hash pointing to a file in the global asset library */
+  assetId: string;
+  name: string;
+  /** Cached thumbnail URL for UI rendering without resolving the full asset */
+  thumbnail?: string;
 
-  // Layer properties
-  position: LayerPosition;  // 'below-frames' or 'above-frames'
-  layerOrder: number;       // Order within position group (0 = bottom)
+  position: LayerPosition;
+  layerOrder: number;
 
-  // Transform
   transform: OverlayTransform;
-
-  // Appearance
   blendMode: BlendMode;
   visible: boolean;
 
-  // Metadata
   createdAt: string;
 }
 
-// Default transform for new overlays
 export const DEFAULT_OVERLAY_TRANSFORM: OverlayTransform = {
   x: 0,
   y: 0,
@@ -64,16 +61,15 @@ export const DEFAULT_OVERLAY_TRANSFORM: OverlayTransform = {
   opacity: 1.0,
 };
 
-// Helper to create a new overlay layer
 export function createOverlayLayer(
   name: string,
-  sourcePath: string,
+  assetId: string,
   position: LayerPosition = 'above-frames',
   layerOrder: number = 0
 ): Omit<OverlayLayer, 'id' | 'createdAt'> {
   return {
     name,
-    sourcePath,
+    assetId,
     position,
     layerOrder,
     transform: { ...DEFAULT_OVERLAY_TRANSFORM },

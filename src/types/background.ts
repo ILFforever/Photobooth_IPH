@@ -9,4 +9,6 @@ export interface Background {
   thumbnail?: string;
   is_default: boolean;
   created_at: string;
+  /** SHA-256 asset library id — present for image-type backgrounds imported after v1.9 */
+  asset_id?: string;
 }

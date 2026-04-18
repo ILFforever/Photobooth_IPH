@@ -77,10 +77,14 @@ export function DisplayCanvas() {
   const scaledW = Math.round(canvasW * canvasScale);
   const scaledH = Math.round(canvasH * canvasScale);
 
+  const zoomGrowth = Math.max(0, zoom - 1);
+  const spacing = zoomGrowth * scaledH * 0.5;
+
   return (
     <div className="display-canvas-area">
       {/* Canvas container */}
       <div ref={containerRef} className="display-canvas-container" onClick={handleCanvasClick}>
+        <div className="display-canvas-scroll-content">
         {!activeLayout ? (
           <div className="display-canvas-empty">
             <div className="display-canvas-empty-content">
@@ -109,7 +113,11 @@ export function DisplayCanvas() {
             </div>
           </div>
         ) : (
-          <div style={{ width: scaledW, height: scaledH, position: 'relative', flexShrink: 0 }}>
+          <>
+            {/* Invisible spacer to allow scrolling when zoomed */}
+            {spacing > 0 && <div style={{ height: `${spacing}px`, flexShrink: 0 }} />}
+
+            <div style={{ width: scaledW, height: scaledH, position: 'relative', flexShrink: 0 }}>
             <div
               className="display-canvas"
               style={{
@@ -122,7 +130,7 @@ export function DisplayCanvas() {
                 left: 0,
                 backgroundColor: activeLayout.backgroundColor,
                 backgroundImage: activeLayout.backgroundImage
-                  ? `url(${activeLayout.backgroundImage.startsWith('asset://') ? convertFileSrc(activeLayout.backgroundImage.replace('asset://', '')) : activeLayout.backgroundImage})`
+                  ? `url("${activeLayout.backgroundImage.startsWith('asset://') ? convertFileSrc(activeLayout.backgroundImage.replace('asset://', '')) : activeLayout.backgroundImage}")`
                   : undefined,
                 backgroundSize: 'cover',
                 backgroundPosition: 'center',
@@ -149,13 +157,19 @@ export function DisplayCanvas() {
               {snapGuides.centerH && (
                 <div className="snap-guide snap-guide-vertical" style={{ position: 'absolute', left: '50%', top: 0, height: '100%', transform: 'translateX(-50%)', pointerEvents: 'none', zIndex: 200 }} />
               )}
-              {snapGuides.centerV && (
-                <div className="snap-guide snap-guide-horizontal" style={{ position: 'absolute', top: '50%', left: 0, width: '100%', transform: 'translateY(-50%)', pointerEvents: 'none', zIndex: 200 }} />
-              )}
+               {snapGuides.centerV && (
+                 <div className="snap-guide snap-guide-horizontal" style={{ position: 'absolute', top: '50%', left: 0, width: '100%', transform: 'translateY(-50%)', pointerEvents: 'none', zIndex: 200 }} />
+               )}
             </div>
-          </div>
+            </div>
+            {spacing > 0 && <div style={{ height: `${spacing}px`, flexShrink: 0 }} />}
+           </>
         )}
+        </div>
+      </div>
 
+      {/* Overlay for fixed-position controls */}
+      <div className="display-canvas-overlay">
         {/* Zoom controls */}
         <div className="display-zoom-controls" onClick={e => e.stopPropagation()}>
           <button className="display-zoom-btn" onClick={handleZoomOut} disabled={zoom <= ZOOM_MIN} title="Zoom out (Ctrl+Scroll)">

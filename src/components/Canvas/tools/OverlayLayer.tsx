@@ -1,7 +1,7 @@
-import { convertFileSrc } from '@tauri-apps/api/core';
 import { OverlayLayer as OverlayLayerType } from '../../../types/overlay';
 import { SnapGuides } from '../../../utils/canvas/snapUtils';
 import { useOverlayEditing } from '../../../hooks/canvas/useOverlayEditing';
+import { useAssetLibrary } from '../../../contexts/system/AssetLibraryContext';
 import './OverlayLayer.css';
 
 interface OverlayLayerProps {
@@ -33,6 +33,9 @@ export function OverlayLayer({
   visible = true,
   canvasSelector = '.collage-canvas',
 }: OverlayLayerProps) {
+  const { resolveAssetUrl } = useAssetLibrary();
+  const assetUrl = resolveAssetUrl(layer.assetId);
+
   const { isDragging, isResizing, isRotating, snapGuides, handleMouseDown, overlayRef } = useOverlayEditing({
     layer,
     canvasWidth,
@@ -80,20 +83,18 @@ export function OverlayLayer({
         onSelect?.();
       }}
     >
-      <img
-        src={
-          layer.sourcePath.startsWith('asset://')
-            ? convertFileSrc(layer.sourcePath.replace('asset://', ''))
-            : layer.sourcePath
-        }
-        alt={layer.name}
-        draggable={false}
-        style={{
-          display: 'block',
-          maxWidth: 'none',
-          pointerEvents: 'none',
-        }}
-      />
+      {assetUrl ? (
+        <img
+          src={assetUrl}
+          alt={layer.name}
+          draggable={false}
+          style={{ display: 'block', maxWidth: 'none', pointerEvents: 'none' }}
+        />
+      ) : (
+        <div style={{ width: 100, height: 100, background: 'rgba(255,0,0,0.15)', border: '1px dashed rgba(255,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,80,80,0.8)', fontSize: 11, pointerEvents: 'none' }}>
+          Missing asset
+        </div>
+      )}
 
       {isSelected && (
         <>

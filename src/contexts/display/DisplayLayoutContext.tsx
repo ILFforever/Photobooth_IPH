@@ -8,7 +8,7 @@ import {
   createDefaultLayout,
   createDisplayElement,
 } from '../../types/displayLayout';
-import { OverlayTransform } from '../../types/overlay';
+import { OverlayTransform, DEFAULT_OVERLAY_TRANSFORM } from '../../types/overlay';
 import { createLogger } from '../../utils/logger';
 import { useToast } from '../system/ToastContext';
 
@@ -86,7 +86,7 @@ export function DisplayLayoutProvider({ children }: { children: ReactNode }) {
         try {
           const newLayout = createDefaultLayout();
           const saved = await invoke<DisplayLayout>('save_display_layout', { layout: newLayout });
-          setLayouts([{ id: saved.id, name: saved.name, thumbnail: saved.thumbnail, createdAt: saved.createdAt }]);
+          setLayouts([{ id: saved.id, name: saved.name, thumbnail: saved.thumbnail, createdAt: saved.createdAt, isDefault: saved.isDefault }]);
           setActiveLayout(saved);
         } catch (e) {
           logger.error('Failed to create default display layout:', e);
@@ -177,8 +177,20 @@ export function DisplayLayoutProvider({ children }: { children: ReactNode }) {
     setHasUnsavedChanges(true);
     setActiveLayout(prev => {
       if (!prev) return prev;
+      const canvasW = prev.canvasWidth ?? 1920;
+      const canvasH = prev.canvasHeight ?? 1080;
+      const cx = canvasW / 2;
+      const cy = canvasH / 2;
+      const isImage = role === 'logo' || role === 'gif';
+      const defaultTransform = {
+        ...DEFAULT_OVERLAY_TRANSFORM,
+        x: isImage ? 0 : cx,
+        y: isImage ? -100 : cy,
+        scale: isImage ? 0.5 : 1.0,
+      };
       const element = createDisplayElement(role, {
         layerOrder: prev.elements.length,
+        transform: defaultTransform,
         ...overrides,
       });
       return { ...prev, elements: [...prev.elements, element] };

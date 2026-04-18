@@ -1,9 +1,9 @@
 import { useRef } from 'react';
 import { useDrag } from 'react-dnd';
-import { convertFileSrc } from '@tauri-apps/api/core';
 import { OverlayLayer as OverlayLayerType } from '../../../types/overlay';
+import { useAssetLibrary } from '../../../contexts/system/AssetLibraryContext';
 import Icon from '@mdi/react';
-import { mdiEyeOutline, mdiEyeOffOutline, mdiContentCopy, mdiDelete, mdiDragVertical } from '@mdi/js';
+import { mdiEyeOutline, mdiEyeOffOutline, mdiContentCopy, mdiDelete } from '@mdi/js';
 
 interface LayerItemProps {
   layer: OverlayLayerType;
@@ -31,6 +31,8 @@ export function LayerItem({
   });
 
   const dragRef = useRef<HTMLDivElement>(null);
+  const { resolveAssetUrl } = useAssetLibrary();
+  const thumbnailSrc = layer.thumbnail || resolveAssetUrl(layer.assetId);
 
   return (
     <div
@@ -41,19 +43,8 @@ export function LayerItem({
       className={`layer-item ${isSelected ? 'selected' : ''} ${isDragging ? 'dragging' : ''}`}
       onClick={onSelect}
     >
-      <div className="layer-drag-handle">
-        <Icon path={mdiDragVertical} size={0.55} />
-      </div>
-
       <div className="layer-thumbnail">
-        <img
-          src={
-            (layer.thumbnail || layer.sourcePath).startsWith('asset://')
-              ? convertFileSrc((layer.thumbnail || layer.sourcePath).replace('asset://', ''))
-              : (layer.thumbnail || layer.sourcePath)
-          }
-          alt={layer.name}
-        />
+        {thumbnailSrc && <img src={thumbnailSrc} alt={layer.name} />}
       </div>
 
       <div className="layer-info">

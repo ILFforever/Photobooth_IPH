@@ -7,6 +7,7 @@ mod utils;
 mod google_drive;
 mod frames;
 mod backgrounds;
+mod asset_library;
 mod settings;
 mod history;
 mod printing;
@@ -33,6 +34,7 @@ use std::sync::{Arc, atomic::AtomicBool, Mutex};
 use google_drive::*;
 use frames::*;
 use backgrounds::*;
+use asset_library::*;
 use settings::*;
 use history::*;
 use printing::*;
@@ -140,6 +142,13 @@ pub fn run() {
             load_backgrounds,
             delete_background,
             import_background,
+            // Asset Library
+            register_asset,
+            list_assets,
+            get_asset_path,
+            get_all_asset_paths,
+            delete_asset,
+            update_asset_metadata,
             // Settings
             save_custom_canvas_size,
             get_custom_canvas_sizes,
@@ -154,7 +163,6 @@ pub fn run() {
             duplicate_custom_set,
             export_custom_set,
             import_custom_set,
-            update_custom_set_background,
             // Display Layouts
             save_display_layout,
             load_display_layouts,

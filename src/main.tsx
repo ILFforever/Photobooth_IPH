@@ -9,6 +9,7 @@ import { AuthProvider } from "./contexts";
 import { WorkingFolderProvider } from "./contexts";
 import { CollageProvider } from "./contexts";
 import { AssetsProvider } from "./contexts";
+import { AssetLibraryProvider } from "./contexts/system/AssetLibraryContext";
 import { QRProvider } from "./contexts";
 import { CameraProvider } from "./contexts";
 import { PhotoboothSettingsProvider } from "./contexts";
@@ -60,6 +61,7 @@ async function renderApp() {
                 <VMProvider>
                   <WorkingFolderProvider>
                     <AssetsProvider>
+                      <AssetLibraryProvider>
                       <CollageProvider>
                         <PhotoboothProvider>
                           <ToastProvider>
@@ -74,6 +76,7 @@ async function renderApp() {
                           </ToastProvider>
                         </PhotoboothProvider>
                       </CollageProvider>
+                      </AssetLibraryProvider>
                     </AssetsProvider>
                   </WorkingFolderProvider>
                 </VMProvider>
