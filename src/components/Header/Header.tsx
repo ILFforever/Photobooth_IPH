@@ -25,7 +25,7 @@ type AppMode = 'photobooth' | 'collage' | 'qr' | 'display';
 const modeConfig: Record<AppMode, { label: string; icon: string }> = {
   photobooth: { label: 'Photobooth', icon: mdiCamera },
   collage: { label: 'Collage Creator', icon: mdiImageMultiple },
-  display: { label: 'Display Layout', icon: mdiMonitor },
+  display: { label: 'Guest Display', icon: mdiMonitor },
   qr: { label: 'QR Generator', icon: mdiQrcode },
 };
 
