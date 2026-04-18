@@ -25,7 +25,7 @@ export function DisplayLayoutSection({
       <button className="collapsible-header" onClick={onToggle}>
         <div className="collapsible-header-left">
           {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-          <span className="collapsible-title">Display Layout</span>
+          <span className="collapsible-title">Guest Display</span>
         </div>
         <span className={`collapsible-badge ${isDefaultActive ? 'badge-yellow' : ''}`}>
           {selectedLayout ? selectedLayout.name : 'Default'}

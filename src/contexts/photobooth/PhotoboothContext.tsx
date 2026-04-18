@@ -5,6 +5,7 @@ import { OverlayLayer } from '../../types/overlay';
 import { PlacedImage, ImageTransform } from '../../types/collage';
 import { DEFAULT_TRANSFORM } from '../../types/collage';
 import { applyZoneClipPath } from '../../utils/canvasShapeClip';
+import { useAssetLibrary } from '../system/AssetLibraryContext';
 import { createLogger } from '../../utils/logger';
 
 const logger = createLogger('PhotoboothContext');
@@ -83,6 +84,7 @@ const DEFAULT_BACKGROUND_TRANSFORM: PhotoboothBackgroundTransform = {
 };
 
 export function PhotoboothProvider({ children }: { children: ReactNode }) {
+  const { resolveAssetUrl } = useAssetLibrary();
   const [photoboothCanvasSize, setPhotoboothCanvasSize] = useState<PhotoboothCanvasSize | null>(null);
   const [photoboothBackground, setPhotoboothBackground] = useState<string | null>(null);
   const [photoboothBackgroundTransform, setPhotoboothBackgroundTransform] = useState<PhotoboothBackgroundTransform>(DEFAULT_BACKGROUND_TRANSFORM);
@@ -230,9 +232,10 @@ export function PhotoboothProvider({ children }: { children: ReactNode }) {
         .filter(o => o.position === 'below-frames' && o.visible)
         .sort((a, b) => a.layerOrder - b.layerOrder);
       for (const layer of belowOverlays) {
-        bitmapPromises.push({
-          type: `below-overlay:${layer.sourcePath}`,
-          promise: loadImageAsBitmap(convertFileSrc(layer.sourcePath.replace('asset://', ''))).catch(() => null)
+        const url = resolveAssetUrl(layer.assetId);
+        if (url) bitmapPromises.push({
+          type: `below-overlay:${layer.id}`,
+          promise: loadImageAsBitmap(url).catch(() => null)
         });
       }
 
@@ -241,9 +244,10 @@ export function PhotoboothProvider({ children }: { children: ReactNode }) {
         .filter(o => o.position === 'above-frames' && o.visible)
         .sort((a, b) => a.layerOrder - b.layerOrder);
       for (const layer of aboveOverlays) {
-        bitmapPromises.push({
-          type: `above-overlay:${layer.sourcePath}`,
-          promise: loadImageAsBitmap(convertFileSrc(layer.sourcePath.replace('asset://', ''))).catch(() => null)
+        const url = resolveAssetUrl(layer.assetId);
+        if (url) bitmapPromises.push({
+          type: `above-overlay:${layer.id}`,
+          promise: loadImageAsBitmap(url).catch(() => null)
         });
       }
 
@@ -267,10 +271,12 @@ export function PhotoboothProvider({ children }: { children: ReactNode }) {
 
           // Add metadata back
           if (item.type.startsWith('below-overlay:')) {
-            const layer = belowOverlays.find(l => item.type.endsWith(l.sourcePath));
+            const layerId = item.type.replace('below-overlay:', '');
+            const layer = belowOverlays.find(l => l.id === layerId);
             if (layer) result.layer = layer;
           } else if (item.type.startsWith('above-overlay:')) {
-            const layer = aboveOverlays.find(l => item.type.endsWith(l.sourcePath));
+            const layerId = item.type.replace('above-overlay:', '');
+            const layer = aboveOverlays.find(l => l.id === layerId);
             if (layer) result.layer = layer;
           } else if (item.type.startsWith('zone:')) {
             const zoneId = item.type.split(':')[1];

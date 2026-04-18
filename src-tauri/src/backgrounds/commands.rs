@@ -38,6 +38,7 @@ fn initialize_default_backgrounds(app: &tauri::AppHandle) -> Result<(), String> 
             thumbnail: None,
             is_default: true,
             created_at: chrono::Utc::now().to_rfc3339(),
+            asset_id: None,
         },
         Background {
             id: "bg-black".to_string(),
@@ -48,6 +49,7 @@ fn initialize_default_backgrounds(app: &tauri::AppHandle) -> Result<(), String> 
             thumbnail: None,
             is_default: true,
             created_at: chrono::Utc::now().to_rfc3339(),
+            asset_id: None,
         },
         Background {
             id: "bg-gray-light".to_string(),
@@ -58,6 +60,7 @@ fn initialize_default_backgrounds(app: &tauri::AppHandle) -> Result<(), String> 
             thumbnail: None,
             is_default: true,
             created_at: chrono::Utc::now().to_rfc3339(),
+            asset_id: None,
         },
         Background {
             id: "bg-gray-dark".to_string(),
@@ -68,6 +71,7 @@ fn initialize_default_backgrounds(app: &tauri::AppHandle) -> Result<(), String> 
             thumbnail: None,
             is_default: true,
             created_at: chrono::Utc::now().to_rfc3339(),
+            asset_id: None,
         },
         Background {
             id: "bg-sunset".to_string(),
@@ -78,6 +82,7 @@ fn initialize_default_backgrounds(app: &tauri::AppHandle) -> Result<(), String> 
             thumbnail: None,
             is_default: true,
             created_at: chrono::Utc::now().to_rfc3339(),
+            asset_id: None,
         },
         Background {
             id: "bg-ocean".to_string(),
@@ -88,6 +93,7 @@ fn initialize_default_backgrounds(app: &tauri::AppHandle) -> Result<(), String> 
             thumbnail: None,
             is_default: true,
             created_at: chrono::Utc::now().to_rfc3339(),
+            asset_id: None,
         },
         Background {
             id: "bg-forest".to_string(),
@@ -98,6 +104,7 @@ fn initialize_default_backgrounds(app: &tauri::AppHandle) -> Result<(), String> 
             thumbnail: None,
             is_default: true,
             created_at: chrono::Utc::now().to_rfc3339(),
+            asset_id: None,
         },
     ];
 
@@ -229,13 +236,16 @@ pub async fn delete_background(app: tauri::AppHandle, background_id: String) -> 
     Ok(())
 }
 
-/// Import a background from a file
+/// Import a background from a file.
+/// The image is copied into the backgrounds library AND registered in the global
+/// asset library so it can be bundled/deduplicated in custom set exports.
 #[tauri::command]
 pub async fn import_background(
     app: tauri::AppHandle,
     file_path: String,
     name: String,
 ) -> Result<Background, String> {
+    use crate::asset_library::commands::{get_library_dir, register_asset_bytes};
     use image::ImageFormat;
 
     let path_buf = PathBuf::from(&file_path);
@@ -245,16 +255,27 @@ pub async fn import_background(
         .unwrap_or("")
         .to_lowercase();
 
-    // Generate unique ID
-    let id = format!("bg-{}", uuid::Uuid::new_v4());
+    // Register in asset library first (content-addressed, dedup automatic)
+    let library_dir = get_library_dir(&app)?;
+    let raw_data = fs::read(&path_buf)
+        .map_err(|e| format!("Failed to read background image: {}", e))?;
+    let asset = register_asset_bytes(
+        &library_dir,
+        &raw_data,
+        &name,
+        vec!["background".to_string()],
+        "background_image",
+        &extension,
+    )?;
 
-    // Copy image to backgrounds directory
+    // Also keep a copy in the backgrounds directory (for the existing UI)
+    let id = format!("bg-{}", uuid::Uuid::new_v4());
     let backgrounds_dir = get_backgrounds_dir(&app)?;
     let dest_filename = format!("{}.{}", id, extension);
     let dest_path = backgrounds_dir.join(&dest_filename);
 
-    fs::copy(&path_buf, &dest_path)
-        .map_err(|e| format!("Failed to copy background image: {}", e))?;
+    fs::write(&dest_path, &raw_data)
+        .map_err(|e| format!("Failed to write background image: {}", e))?;
 
     // Generate thumbnail
     let thumbnail_path = backgrounds_dir.join(format!("thumb_{}", dest_filename));
@@ -267,8 +288,6 @@ pub async fn import_background(
 
     let path_str = dest_path.to_string_lossy().replace('\\', "/");
     let thumb_str = thumbnail_path.to_string_lossy().replace('\\', "/");
-    let asset_url = format!("asset://{}", path_str);
-    let thumbnail_url = format!("asset://{}", thumb_str);
 
     let background = Background {
         id: id.clone(),
@@ -281,13 +300,13 @@ pub async fn import_background(
                 .unwrap_or("unknown")
         ),
         background_type: "image".to_string(),
-        value: asset_url,
-        thumbnail: Some(thumbnail_url),
+        value: format!("asset://{}", path_str),
+        thumbnail: Some(format!("asset://{}", thumb_str)),
         is_default: false,
         created_at: chrono::Utc::now().to_rfc3339(),
+        asset_id: Some(asset.id),
     };
 
-    // Save metadata
     let bg_meta_path = backgrounds_dir.join(format!("{}.json", id));
     let json = serde_json::to_string_pretty(&background)
         .map_err(|e| format!("Failed to serialize background: {}", e))?;

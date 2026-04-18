@@ -30,6 +30,11 @@
   gap: 1rem;
   touch-action: pan-y;
   overscroll-behavior-y: contain;
+  scrollbar-width: none;
+}
+
+.custom-sets-content::-webkit-scrollbar {
+  display: none;
 }
 
 .create-set-button {
@@ -412,7 +417,7 @@
 }
 
 .form-group textarea {
-  resize: vertical;
+  resize: none;
   min-height: 60px;
 }
 

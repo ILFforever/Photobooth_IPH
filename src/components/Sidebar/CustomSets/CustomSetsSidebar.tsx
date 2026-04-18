@@ -267,43 +267,25 @@ export function CustomSetsSidebar() {
       if (set.background.background_type === 'image') {
         const bgFilePath = set.background.value.replace('asset://', '');
 
-        // Check if this background already exists in the persisted backgrounds
         const existingBgs = await invoke<Background[]>('load_backgrounds');
-        const alreadyPersisted = existingBgs.some(bg => {
-          // Check by id first (set after first import)
+
+        // Primary dedup: match by asset_id (content hash — device-independent)
+        // Fallback: match by backgrounds library id or normalized path
+        const matchedBg = existingBgs.find(bg => {
+          if (set.background.asset_id && bg.asset_id === set.background.asset_id) return true;
           if (bg.id === set.background.id) return true;
-          // Fallback: compare by normalized path
-          const normalize = (p: string) => {
-            try {
-              return decodeURIComponent(p)
-                .replace('asset://', '')
-                .replace(/\\/g, '/')
-                .toLowerCase();
-            } catch { return p.replace('asset://', '').replace(/\\/g, '/').toLowerCase(); }
-          };
-          return normalize(bg.value) === normalize(set.background.value);
+          return false;
         });
 
-        if (alreadyPersisted) {
-          // Already in backgrounds system, just reload and set
+        if (matchedBg) {
+          // Already in backgrounds system — use it directly
           setBackgrounds(existingBgs);
-          const matchedBg = existingBgs.find(bg => {
-            const normalize = (p: string) => {
-              try {
-                return decodeURIComponent(p)
-                  .replace('asset://', '')
-                  .replace(/\\/g, '/')
-                  .toLowerCase();
-              } catch { return p.replace('asset://', '').replace(/\\/g, '/').toLowerCase(); }
-            };
-            return normalize(bg.value) === normalize(set.background.value);
-          });
-          const bgValue = (matchedBg || set.background).value.startsWith('asset://')
-            ? convertFileSrc((matchedBg || set.background).value.replace('asset://', ''))
-            : (matchedBg || set.background).value;
+          const bgValue = matchedBg.value.startsWith('asset://')
+            ? convertFileSrc(matchedBg.value.replace('asset://', ''))
+            : matchedBg.value;
           setBackground(bgValue);
         } else {
-          // Import into backgrounds system for persistence
+          // Not yet in backgrounds system — import it
           try {
             const importedBg = await invoke<Background>('import_background', {
               filePath: bgFilePath,
@@ -315,22 +297,14 @@ export function CustomSetsSidebar() {
               ? convertFileSrc(importedBg.value.replace('asset://', ''))
               : importedBg.value;
             setBackground(bgValue);
-            // Update only the background id in the set (keep original value/path as resilient fallback).
-            // The id check in alreadyPersisted will find the bg in the library on next load.
-            // If the user deletes the bg from the library, the original custom_sets/ copy still
-            // exists and will be re-imported successfully.
-            invoke('update_custom_set_background', { setId, background: { ...set.background, id: importedBg.id } })
-              .catch(e => logger.warn('Failed to update set background ref:', e));
           } catch (importErr) {
             logger.warn('Failed to persist background, using temporary:', importErr);
-            // Fallback: add to array without persistence
             const bgValue = set.background.value.startsWith('asset://')
               ? convertFileSrc(set.background.value.replace('asset://', ''))
               : set.background.value;
             setBackground(bgValue);
-            const bgAlreadyExists = backgrounds.some(bg => bg.id === set.background.id);
-            if (!bgAlreadyExists) {
-              setBackgrounds([...backgrounds, set.background]);
+            if (!existingBgs.some(bg => bg.id === set.background.id)) {
+              setBackgrounds([...existingBgs, set.background]);
             }
           }
         }
@@ -481,7 +455,12 @@ export function CustomSetsSidebar() {
       await handleLoadSet(importedSet.id);
     } catch (error) {
       logger.error('Failed to import custom set:', error);
-      showToast('Failed to import: ' + error, 'error');
+      const errorMsg = String(error);
+      if (errorMsg.includes('older version') || errorMsg.includes('no longer supported')) {
+        showToast('This .ptbs file was created with an older version and is not supported. Please re-export it from the original device.', 'error');
+      } else {
+        showToast('Failed to import: ' + error, 'error');
+      }
     } finally {
       setImporting(false);
     }

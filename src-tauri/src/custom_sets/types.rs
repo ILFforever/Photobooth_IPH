@@ -1,3 +1,4 @@
+use crate::asset_library::types::BundledAsset;
 use crate::backgrounds::Background;
 use crate::frames::Frame;
 use serde::{Deserialize, Serialize};
@@ -9,9 +10,7 @@ pub struct OverlayTransform {
     pub y: f64,
     pub scale: f64,
     pub rotation: f64,
-    #[serde(alias = "flipHorizontal")]
     pub flip_horizontal: bool,
-    #[serde(alias = "flipVertical")]
     pub flip_vertical: bool,
     pub opacity: f64,
 }
@@ -20,18 +19,15 @@ pub struct OverlayTransform {
 #[serde(rename_all = "camelCase")]
 pub struct OverlayLayer {
     pub id: String,
+    /// SHA-256 hash — resolves to a file in the global asset library
+    pub asset_id: String,
     pub name: String,
-    #[serde(alias = "sourcePath")]
-    pub source_path: String,
     pub thumbnail: Option<String>,
     pub position: String,
-    #[serde(alias = "layerOrder")]
     pub layer_order: i32,
     pub transform: OverlayTransform,
-    #[serde(alias = "blendMode")]
     pub blend_mode: String,
     pub visible: bool,
-    #[serde(alias = "createdAt")]
     pub created_at: String,
 }
 
@@ -60,22 +56,17 @@ pub struct CustomSet {
     pub name: String,
     pub description: String,
 
-    // Canvas configuration
     pub canvas_size: CanvasSize,
     pub auto_match_background: bool,
 
-    // Background configuration
     pub background: Background,
     pub background_transform: BackgroundTransform,
 
-    // Layout/Frame
     pub frame: Frame,
 
-    // Overlays
     #[serde(default)]
     pub overlays: Vec<OverlayLayer>,
 
-    // Metadata
     pub thumbnail: Option<String>,
     pub created_at: String,
     pub modified_at: String,
@@ -90,4 +81,20 @@ pub struct CustomSetPreview {
     pub description: String,
     pub thumbnail: Option<String>,
     pub created_at: String,
+}
+
+/// Portable export format (version 2).
+/// All overlay assets (and background image if applicable) are bundled inline
+/// so the file is self-contained and can be imported on any device.
+#[derive(Serialize, Deserialize)]
+pub struct PortableCustomSet {
+    pub version: u32,
+    pub custom_set: CustomSet,
+    /// All asset files referenced by this set (overlays, background image).
+    /// On import, each entry is registered into the local asset library —
+    /// duplicates are skipped automatically via hash comparison.
+    pub assets: Vec<BundledAsset>,
+    /// Base64-encoded JPEG thumbnail for the set card preview (set-specific, not in asset library).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thumbnail_data: Option<String>,
 }

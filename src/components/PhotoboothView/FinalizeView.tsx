@@ -8,6 +8,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { useAssetLibrary } from "../../contexts/system/AssetLibraryContext";
 import * as fs from "@tauri-apps/plugin-fs";
 import { emitTo } from "@tauri-apps/api/event";
 import { Frame, FrameZone } from "../../types/frame";
@@ -854,10 +855,11 @@ export default function FinalizeView({
 
 // Overlay layer renderer (read-only, no interaction)
 function FinalizeOverlay({ layer, zIndex }: { layer: any; zIndex: number }) {
+  const { resolveAssetUrl } = useAssetLibrary();
   const src = useMemo(() => {
-    if (!layer.sourcePath) return null;
-    return convertFileSrc(layer.sourcePath.replace("asset://", ""));
-  }, [layer.sourcePath]);
+    if (!layer.assetId) return null;
+    return resolveAssetUrl(layer.assetId);
+  }, [layer.assetId, resolveAssetUrl]);
 
   if (!src) return null;
 

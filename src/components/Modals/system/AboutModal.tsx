@@ -65,6 +65,35 @@ export default function AboutModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [show, aboutTab]);
 
+  useEffect(() => {
+    if (!show) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+
+      const tabs = ['features', 'modes', 'tech', 'versions', 'contact'] as AboutTab[];
+      const currentIndex = tabs.indexOf(aboutTab);
+
+      if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        const nextIndex = (currentIndex + 1) % tabs.length;
+        setAboutTab(tabs[nextIndex]);
+      }
+
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        const prevIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+        setAboutTab(tabs[prevIndex]);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [show, onClose, aboutTab]);
+
   const fetchAppInfo = async () => {
     try {
       const info = await invoke<AppInfo>('get_app_info');
@@ -140,11 +169,12 @@ export default function AboutModal({
   if (!show) return null;
 
   return (
-    <AnimatePresence>
+    <AnimatePresence mode="wait">
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
+        transition={{ duration: 0.15 }}
         className="modal-overlay"
         onClick={onClose}
       >
@@ -152,6 +182,7 @@ export default function AboutModal({
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
+          transition={{ duration: 0.2 }}
           className="modal-content"
           style={{ maxWidth: '550px' }}
           onClick={(e) => e.stopPropagation()}

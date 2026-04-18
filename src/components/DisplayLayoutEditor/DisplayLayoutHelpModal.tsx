@@ -41,7 +41,7 @@ const workflow = [
   {
     icon: <Save size={16} />,
     title: 'Save, then activate',
-    detail: 'Save your layout here, then go to Photobooth → Settings → Display Layout to select it for use.',
+    detail: 'Save your layout here, then go to Photobooth → Settings → Guest Display to select it for use.',
   },
 ];
 
@@ -287,7 +287,7 @@ export function DisplayLayoutHelpModal({ show, onClose }: DisplayLayoutHelpModal
                   <div>
                     <p className="dlh-callout-heading">To use a layout in Photobooth mode</p>
                     <p className="dlh-callout-text">
-                      Go to <strong>Photobooth</strong> → <strong>Settings</strong> → <strong>Display Layout</strong> and select the layout you want to use. Changes here in the editor do not automatically activate a layout.
+                      Go to <strong>Photobooth</strong> → <strong>Settings</strong> → <strong>Guest Display</strong> and select the layout you want to use. Changes here in the editor do not automatically activate a layout.
                     </p>
                   </div>
                 </div>

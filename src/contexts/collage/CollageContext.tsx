@@ -5,6 +5,7 @@ import { Frame, FrameZone } from '../../types/frame';
 import { applyZoneClipPath } from '../../utils/canvasShapeClip';
 import { Background } from '../../types/background';
 import { OverlayLayer, LayerPosition, DEFAULT_OVERLAY_TRANSFORM } from '../../types/overlay';
+import { useAssetLibrary } from '../system/AssetLibraryContext';
 import { createLogger } from '../../utils/logger';
 
 const logger = createLogger('CollageContext');
@@ -125,6 +126,7 @@ const DEFAULT_BACKGROUND_TRANSFORM: BackgroundTransform = {
 };
 
 export function CollageProvider({ children }: { children: ReactNode }) {
+  const { registerAsset, resolveAssetUrl } = useAssetLibrary();
   const [currentFrame, setCurrentFrame] = useState<Frame | null>(null);
   const [canvasSize, setCanvasSize] = useState<CanvasSize | null>(null);
   const [background, setBackground] = useState<string | null>(null);
@@ -355,8 +357,10 @@ export function CollageProvider({ children }: { children: ReactNode }) {
       // 2. Below-frames overlays
       const belowOverlays = overlays.filter(o => o.position === 'below-frames' && o.visible).sort((a, b) => a.layerOrder - b.layerOrder);
       for (const layer of belowOverlays) {
+        const url = resolveAssetUrl(layer.assetId);
+        if (!url) continue;
         try {
-          const bitmap = await loadImageAsBitmap(convertFileSrc(layer.sourcePath.replace('asset://', '')));
+          const bitmap = await loadImageAsBitmap(url);
           if (!bitmap) continue;
           const t = layer.transform;
           ctx.save();
@@ -384,8 +388,10 @@ export function CollageProvider({ children }: { children: ReactNode }) {
       // 4. Above-frames overlays
       const aboveOverlays = overlays.filter(o => o.position === 'above-frames' && o.visible).sort((a, b) => a.layerOrder - b.layerOrder);
       for (const layer of aboveOverlays) {
+        const url = resolveAssetUrl(layer.assetId);
+        if (!url) continue;
         try {
-          const bitmap = await loadImageAsBitmap(convertFileSrc(layer.sourcePath.replace('asset://', '')));
+          const bitmap = await loadImageAsBitmap(url);
           if (!bitmap) continue;
           const t = layer.transform;
           ctx.save();
@@ -461,10 +467,12 @@ export function CollageProvider({ children }: { children: ReactNode }) {
       const belowOverlays = overlays.filter(o => o.position === 'below-frames' && o.visible).sort((a, b) => a.layerOrder - b.layerOrder);
       const aboveOverlays = overlays.filter(o => o.position === 'above-frames' && o.visible).sort((a, b) => a.layerOrder - b.layerOrder);
       for (const layer of belowOverlays) {
-        bitmapPromises.push({ type: `below-overlay:${layer.id}`, promise: loadImageAsBitmap(convertFileSrc(layer.sourcePath.replace('asset://', ''))).catch(() => null) });
+        const url = resolveAssetUrl(layer.assetId);
+        if (url) bitmapPromises.push({ type: `below-overlay:${layer.id}`, promise: loadImageAsBitmap(url).catch(() => null) });
       }
       for (const layer of aboveOverlays) {
-        bitmapPromises.push({ type: `above-overlay:${layer.id}`, promise: loadImageAsBitmap(convertFileSrc(layer.sourcePath.replace('asset://', ''))).catch(() => null) });
+        const url = resolveAssetUrl(layer.assetId);
+        if (url) bitmapPromises.push({ type: `above-overlay:${layer.id}`, promise: loadImageAsBitmap(url).catch(() => null) });
       }
 
       // Zone images
@@ -649,11 +657,17 @@ export function CollageProvider({ children }: { children: ReactNode }) {
   const importOverlayFiles = useCallback(async (filePaths: string[], position: LayerPosition = 'above-frames') => {
     for (const filePath of filePaths) {
       const fileName = filePath.split(/[/\\]/).pop() || 'overlay';
-      const currentOverlaysInPosition = overlays.filter(o => o.position === position);
-      const maxOrder = currentOverlaysInPosition.length > 0 ? Math.max(...currentOverlaysInPosition.map(o => o.layerOrder)) : -1;
-      addOverlay({ name: fileName.replace(/\.(png|PNG)$/, ''), sourcePath: convertFileSrc(filePath), position, layerOrder: maxOrder + 1, transform: { ...DEFAULT_OVERLAY_TRANSFORM }, blendMode: 'normal', visible: true });
+      const name = fileName.replace(/\.(png|PNG)$/, '');
+      try {
+        const asset = await registerAsset(filePath, name, ['overlay'], 'overlay');
+        const currentOverlaysInPosition = overlays.filter(o => o.position === position);
+        const maxOrder = currentOverlaysInPosition.length > 0 ? Math.max(...currentOverlaysInPosition.map(o => o.layerOrder)) : -1;
+        addOverlay({ name: asset.name, assetId: asset.id, position, layerOrder: maxOrder + 1, transform: { ...DEFAULT_OVERLAY_TRANSFORM }, blendMode: 'normal', visible: true });
+      } catch (e) {
+        logger.error('Failed to register overlay asset:', filePath, e);
+      }
     }
-  }, [overlays, addOverlay]);
+  }, [overlays, addOverlay, registerAsset]);
 
   return (
     <CollageContext.Provider

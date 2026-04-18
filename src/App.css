@@ -150,8 +150,14 @@
 }
 
 .app-menu-item:hover {
-  background: var(--bg-tertiary);
-  border-color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: transparent;
+  color: var(--text-primary);
+}
+
+.app-menu-item.focused {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.18);
   color: var(--text-primary);
 }
 

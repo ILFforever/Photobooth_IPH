@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
-import { Camera, QrCode, ChevronRight, ChevronLeft, Keyboard, HardDrive, Wifi, Monitor, LayoutTemplate, Sparkles } from "lucide-react";
+import { Camera, QrCode, ChevronRight, ChevronLeft, Keyboard, HardDrive, Wifi, Monitor, LayoutTemplate, Sparkles, MousePointer2, Layers, Save } from "lucide-react";
 import Icon from "@mdi/react";
 import { mdiImageMultiple } from "@mdi/js";
 import iphLogo from "../../../assets/images/IPH.png";
@@ -22,7 +22,7 @@ const WHATS_NEW: FeaturedItem[] = [
   },
 ];
 
-const TOTAL_STEPS = 4;
+const TOTAL_STEPS = 5;
 
 export default function WelcomeModal({ onClose }: WelcomeModalProps) {
   const [step, setStep] = useState(0);
@@ -139,7 +139,7 @@ export default function WelcomeModal({ onClose }: WelcomeModalProps) {
                   className="welcome-step"
                 >
                   <div className="welcome-step-header">
-                    <div className="welcome-step-tag">Three Modes</div>
+                    <div className="welcome-step-tag">Four Modes</div>
                     <h2 className="welcome-step-title">Everything in one app</h2>
                     <p className="welcome-step-desc">
                       Switch between modes using the <kbd>F1</kbd> key or by clicking the IPH logo in the top-left corner.
@@ -201,6 +201,24 @@ export default function WelcomeModal({ onClose }: WelcomeModalProps) {
                           <span>Google Drive</span>
                           <span>QR Code</span>
                           <span>Instant Share</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="welcome-mode-card">
+                      <div className="welcome-mode-icon welcome-mode-icon--orange">
+                        <Monitor size={22} />
+                      </div>
+                      <div className="welcome-mode-content">
+                        <div className="welcome-mode-name">Guest Display</div>
+                        <div className="welcome-mode-desc">
+                          Design what guests see on the second monitor — position the collage, QR code, and graphics on a canvas.
+                        </div>
+                        <div className="welcome-mode-tags">
+                          <span>Canvas Editor</span>
+                          <span>Collage</span>
+                          <span>QR Code</span>
+                          <span>Layers</span>
                         </div>
                       </div>
                     </div>
@@ -296,6 +314,75 @@ export default function WelcomeModal({ onClose }: WelcomeModalProps) {
               {step === 3 && (
                 <motion.div
                   key="step-3"
+                  initial={{ opacity: 0, x: 24 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -24 }}
+                  transition={{ duration: 0.2 }}
+                  className="welcome-step"
+                >
+                  <div className="welcome-step-header">
+                    <div className="welcome-step-tag">Guest Display</div>
+                    <h2 className="welcome-step-title">Design the second screen</h2>
+                    <p className="welcome-step-desc">
+                      Use the <strong>Display Layout Editor</strong> to design exactly what guests see on the second monitor after each capture.
+                    </p>
+                  </div>
+
+                  <div className="welcome-checklist">
+                    <div className="welcome-checklist-item">
+                      <div className="welcome-checklist-icon">
+                        <Monitor size={16} />
+                      </div>
+                      <div>
+                        <div className="welcome-checklist-label">Open the Display Layout Editor</div>
+                        <div className="welcome-checklist-desc">
+                          Access it from the app menu (<kbd>F1</kbd>) or the header. Create a new layout and choose an aspect ratio to match your second monitor.
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="welcome-checklist-item">
+                      <div className="welcome-checklist-icon">
+                        <MousePointer2 size={16} />
+                      </div>
+                      <div>
+                        <div className="welcome-checklist-label">Add and position elements</div>
+                        <div className="welcome-checklist-desc">
+                          Place a <strong>Collage</strong> placeholder (shows the captured photo), a <strong>QR Code</strong>, text, images, GIFs, and shapes — then drag and resize them on the canvas.
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="welcome-checklist-item">
+                      <div className="welcome-checklist-icon">
+                        <Layers size={16} />
+                      </div>
+                      <div>
+                        <div className="welcome-checklist-label">Adjust layer order</div>
+                        <div className="welcome-checklist-desc">
+                          The element list on the right controls stacking. Drag rows to reorder; select an element to edit its properties.
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="welcome-checklist-item">
+                      <div className="welcome-checklist-icon">
+                        <Save size={16} />
+                      </div>
+                      <div>
+                        <div className="welcome-checklist-label">Save, then activate</div>
+                        <div className="welcome-checklist-desc">
+                          Save your layout, then go to <strong>Photobooth → Settings → Guest Display</strong> to select it. The layout goes live on the second monitor when the next session finalizes.
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {step === 4 && (
+                <motion.div
+                  key="step-4"
                   initial={{ opacity: 0, x: 24 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -24 }}

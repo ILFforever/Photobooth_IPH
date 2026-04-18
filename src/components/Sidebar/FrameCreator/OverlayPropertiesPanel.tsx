@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { OverlayLayer as OverlayLayerType, BlendMode, LayerPosition } from '../../../types/overlay';
 import { useCollage } from '../../../contexts';
-import { convertFileSrc } from '@tauri-apps/api/core';
+import { useAssetLibrary } from '../../../contexts/system/AssetLibraryContext';
 import Icon from '@mdi/react';
 import {
   mdiFlipHorizontal,
@@ -37,6 +37,8 @@ interface OverlayPropertiesPanelProps {
 
 export function OverlayPropertiesPanel({ overlay }: OverlayPropertiesPanelProps) {
   const { updateOverlay, toggleOverlayVisibility } = useCollage();
+  const { resolveAssetUrl } = useAssetLibrary();
+  const thumbSrc = overlay.thumbnail || resolveAssetUrl(overlay.assetId);
   const [blendOpen, setBlendOpen] = useState(false);
   const blendRef = useRef<HTMLDivElement>(null);
   const previewBlendModeRef = useRef<BlendMode | null>(null);
@@ -82,14 +84,7 @@ export function OverlayPropertiesPanel({ overlay }: OverlayPropertiesPanelProps)
       <div className="props-header">
         <div className="props-header-info">
           <div className="props-thumb">
-            <img
-              src={
-                (overlay.thumbnail || overlay.sourcePath).startsWith('asset://')
-                  ? convertFileSrc((overlay.thumbnail || overlay.sourcePath).replace('asset://', ''))
-                  : (overlay.thumbnail || overlay.sourcePath)
-              }
-              alt={overlay.name}
-            />
+            {thumbSrc && <img src={thumbSrc} alt={overlay.name} />}
           </div>
           <input
             ref={nameRef}

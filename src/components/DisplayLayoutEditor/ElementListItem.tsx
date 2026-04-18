@@ -1,5 +1,5 @@
 import { Icon } from '@mdi/react';
-import { mdiEye, mdiEyeOff, mdiDelete, mdiDragVertical } from '@mdi/js';
+import { mdiEye, mdiEyeOff, mdiDelete, mdiDragVertical, mdiViewQuilt, mdiQrcode, mdiFormatText, mdiImageOutline, mdiFilmstrip } from '@mdi/js';
 import { DisplayElement } from '../../types/displayLayout';
 import { convertFileSrc } from '@tauri-apps/api/core';
 
@@ -19,13 +19,13 @@ interface ElementListItemProps {
 
 const getRoleIconPath = (role: string) => {
   const icons: Record<string, string> = {
-    collage: 'mdiViewQuilt',
-    qr: 'mdiQrcode',
-    text: 'mdiFormatText',
-    logo: 'mdiImageOutline',
-    gif: 'mdiFilmstrip',
+    collage: mdiViewQuilt,
+    qr: mdiQrcode,
+    text: mdiFormatText,
+    logo: mdiImageOutline,
+    gif: mdiFilmstrip,
   };
-  return icons[role] || 'mdiImageOutline';
+  return icons[role] || mdiImageOutline;
 };
 
 const getRoleLabel = (role: string) => {

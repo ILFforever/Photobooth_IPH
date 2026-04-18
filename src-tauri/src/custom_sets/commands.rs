@@ -1,51 +1,23 @@
-use crate::backgrounds::types::Background;
-use crate::custom_sets::types::{CustomSet, CustomSetPreview};
+use crate::asset_library::commands::{
+    asset_file_path, bundle_asset, get_library_dir, import_bundled_assets,
+    load_registry, register_asset_bytes,
+};
+use crate::asset_library::types::BundledAsset;
+use crate::custom_sets::types::{CustomSet, CustomSetPreview, PortableCustomSet};
 use base64::{engine::general_purpose, Engine as _};
-use percent_encoding::percent_decode;
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 use tauri::Manager;
 
-/// Portable export format that embeds all images as base64
-#[derive(Serialize, Deserialize)]
-struct PortableCustomSet {
-    version: u32,
-    custom_set: CustomSet,
-    /// Map of resource key -> base64-encoded file data
-    /// Keys: "background", "background_thumbnail", "thumbnail", "overlay_0", "overlay_1", etc.
-    resources: HashMap<String, String>,
-}
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
-/// Read a file from an asset:// path and return base64-encoded data
-fn read_asset_as_base64(asset_path: &str) -> Option<String> {
-    let file_path = if asset_path.starts_with("asset://") {
-        asset_path.trim_start_matches("asset://")
-    } else {
-        asset_path
-    };
-    let path = PathBuf::from(file_path);
-    if path.exists() {
-        if let Ok(data) = fs::read(&path) {
-            return Some(general_purpose::STANDARD.encode(&data));
-        }
-    }
-    None
-}
-
-/// Get file extension from a path string
-fn get_extension(path: &str) -> String {
-    PathBuf::from(path)
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("bin")
-        .to_lowercase()
-}
-
-/// Get the custom sets directory path
 fn get_custom_sets_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    let app_data_dir = app.path().app_data_dir()
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
         .map_err(|e| format!("Failed to get app data dir: {}", e))?;
     let sets_dir = app_data_dir.join("custom_sets");
     fs::create_dir_all(&sets_dir)
@@ -53,115 +25,59 @@ fn get_custom_sets_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     Ok(sets_dir)
 }
 
-/// Copy background image resource to custom set directory
-fn copy_background_resource(
-    app: &tauri::AppHandle,
-    set_id: &str,
-    background: &Background,
-) -> Result<Background, String> {
-    if background.background_type != "image" {
-        // No need to copy colors or gradients
-        return Ok(background.clone());
+fn read_set(sets_dir: &PathBuf, set_id: &str) -> Result<CustomSet, String> {
+    let set_path = sets_dir.join(format!("{}.json", set_id));
+    if !set_path.exists() {
+        return Err(format!("Custom set not found: {}", set_id));
     }
-
-    let sets_dir = get_custom_sets_dir(app)?;
-    let set_resources_dir = sets_dir.join(&set_id);
-    fs::create_dir_all(&set_resources_dir)
-        .map_err(|e| format!("Failed to create set resources dir: {}", e))?;
-
-    // Check if value starts with "asset://" protocol
-    let source_path = if background.value.starts_with("asset://") {
-        PathBuf::from(&background.value.trim_start_matches("asset://"))
-    } else {
-        PathBuf::from(&background.value)
-    };
-
-    if !source_path.exists() {
-        return Err(format!("Background source file not found: {:?}", source_path));
-    }
-
-    let file_name = source_path
-        .file_name()
-        .ok_or("Invalid background file path")?
-        .to_string_lossy()
-        .to_string();
-
-    let dest_path = set_resources_dir.join(&file_name);
-    fs::copy(&source_path, &dest_path)
-        .map_err(|e| format!("Failed to copy background resource: {}", e))?;
-
-    // Copy thumbnail if it exists
-    let thumbnail_result = if let Some(thumb) = &background.thumbnail {
-        let thumb_path = if thumb.starts_with("asset://") {
-            PathBuf::from(thumb.trim_start_matches("asset://"))
-        } else {
-            PathBuf::from(thumb)
-        };
-
-        if thumb_path.exists() {
-            let thumb_name = thumb_path
-                .file_name()
-                .ok_or("Invalid thumbnail path")?
-                .to_string_lossy()
-                .to_string();
-            let thumb_dest = set_resources_dir.join(&thumb_name);
-            fs::copy(&thumb_path, &thumb_dest).ok();
-            // Convert backslashes to forward slashes for asset:// protocol
-            let thumb_path_str = thumb_dest.to_string_lossy().replace('\\', "/");
-            Some(format!("asset://{}", thumb_path_str))
-        } else {
-            None
-        }
-    } else {
-        None
-    };
-
-    // Convert backslashes to forward slashes for asset:// protocol
-    let dest_path_str = dest_path.to_string_lossy().replace('\\', "/");
-    Ok(Background {
-        value: format!("asset://{}", dest_path_str),
-        thumbnail: thumbnail_result,
-        ..background.clone()
-    })
+    let json = fs::read_to_string(&set_path)
+        .map_err(|e| format!("Failed to read custom set: {}", e))?;
+    serde_json::from_str(&json).map_err(|e| format!("Failed to parse custom set: {}", e))
 }
 
-/// Save a custom set to disk
+fn write_set(sets_dir: &PathBuf, set: &CustomSet) -> Result<(), String> {
+    let set_path = sets_dir.join(format!("{}.json", set.id));
+    let json = serde_json::to_string_pretty(set)
+        .map_err(|e| format!("Failed to serialize custom set: {}", e))?;
+    fs::write(set_path, json).map_err(|e| format!("Failed to write custom set: {}", e))
+}
+
+// ---------------------------------------------------------------------------
+// Commands
+// ---------------------------------------------------------------------------
+
+/// Save a custom set. Overlays are expected to already have valid `asset_id`
+/// values pointing to entries in the global asset library — no file copying
+/// happens here. Background images are managed independently via the
+/// backgrounds library and may optionally carry an `asset_id` as well.
 #[tauri::command]
-pub async fn save_custom_set(app: tauri::AppHandle, mut custom_set: CustomSet) -> Result<CustomSet, String> {
+pub async fn save_custom_set(
+    app: tauri::AppHandle,
+    mut custom_set: CustomSet,
+) -> Result<CustomSet, String> {
     let sets_dir = get_custom_sets_dir(&app)?;
 
-    // Generate ID if not provided
     if custom_set.id.is_empty() {
         custom_set.id = format!("set-{}", uuid::Uuid::new_v4());
     }
 
-    // Set timestamps
     let now = chrono::Utc::now().to_rfc3339();
     if custom_set.created_at.is_empty() {
         custom_set.created_at = now.clone();
     }
     custom_set.modified_at = now;
 
-    // Copy background resource to appdata if it's an image
-    custom_set.background = copy_background_resource(&app, &custom_set.id, &custom_set.background)?;
-
-    // Create set resources directory for thumbnail and overlays
-    let set_resources_dir = sets_dir.join(&custom_set.id);
-    fs::create_dir_all(&set_resources_dir)
-        .map_err(|e| format!("Failed to create set resources dir: {}", e))?;
-
-    // Save thumbnail if provided (convert data URL to file)
+    // Persist thumbnail (data URL → file on disk)
+    let set_dir = sets_dir.join(&custom_set.id);
     if let Some(thumbnail_data) = &custom_set.thumbnail {
         if thumbnail_data.starts_with("data:image") {
-            // Extract base64 data from data URL
             if let Some(comma_pos) = thumbnail_data.find(',') {
                 let base64_data = &thumbnail_data[comma_pos + 1..];
-
-                // Decode base64
                 if let Ok(image_data) = general_purpose::STANDARD.decode(base64_data) {
-                    let thumbnail_path = set_resources_dir.join("thumbnail.jpg");
+                    fs::create_dir_all(&set_dir)
+                        .map_err(|e| format!("Failed to create set dir: {}", e))?;
+                    let thumbnail_path = set_dir.join("thumbnail.jpg");
                     if fs::write(&thumbnail_path, image_data).is_ok() {
-                        // Update thumbnail to point to file path (convert backslashes to forward slashes)
                         let path_str = thumbnail_path.to_string_lossy().replace('\\', "/");
                         custom_set.thumbnail = Some(format!("asset://{}", path_str));
                     }
@@ -170,87 +86,15 @@ pub async fn save_custom_set(app: tauri::AppHandle, mut custom_set: CustomSet) -
         }
     }
 
-    // Copy overlay images to set directory and update paths
-    let overlays_dir = set_resources_dir.join("overlays");
-    fs::create_dir_all(&overlays_dir)
-        .map_err(|e| format!("Failed to create overlays dir: {}", e))?;
-
-    for (index, overlay) in custom_set.overlays.iter_mut().enumerate() {
-        // Skip if the overlay source is already in the set directory
-        if overlay.source_path.contains(&format!("custom_sets/{}/overlays", custom_set.id)) {
-            continue;
-        }
-
-        // Get the original file path (handle various URL formats)
-        let original_path = if overlay.source_path.starts_with("http://asset.localhost/") {
-            // Tauri convertFileSrc format: http://asset.localhost/path/to/file
-            // Decode URL-encoded path
-            let path_part = overlay.source_path.trim_start_matches("http://asset.localhost/");
-            percent_decode(path_part.as_bytes())
-                .decode_utf8()
-                .map(|c| c.to_string())
-                .unwrap_or_else(|_| path_part.to_string())
-        } else if overlay.source_path.starts_with("asset://") {
-            // Direct asset protocol: asset://path/to/file
-            overlay.source_path.trim_start_matches("asset://").to_string()
-        } else if overlay.source_path.starts_with("asset:////") {
-            // Windows path variant: asset:////C:/path
-            overlay.source_path.replace("asset:////", "//")
-        } else {
-            // Already a plain path
-            overlay.source_path.clone()
-        };
-
-        // Check if it's a data URL
-        if original_path.starts_with("data:image/png;base64,") {
-            if let Some(comma_pos) = original_path.find(',') {
-                let base64_data = &original_path[comma_pos + 1..];
-                if let Ok(image_data) = general_purpose::STANDARD.decode(base64_data) {
-                    let filename = format!("overlay_{}.png", index);
-                    let overlay_path = overlays_dir.join(&filename);
-                    if fs::write(&overlay_path, image_data).is_ok() {
-                        let path_str = overlay_path.to_string_lossy().replace('\\', "/");
-                        overlay.source_path = format!("asset://{}", path_str);
-                    }
-                }
-            }
-        } else {
-            // Try to copy from file path
-            let src_path = PathBuf::from(&original_path);
-            if src_path.exists() {
-                let filename = src_path.file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("overlay.png");
-                let overlay_path = overlays_dir.join(format!("{}_{}", index, filename));
-
-                if fs::copy(&src_path, &overlay_path).is_ok() {
-                    let path_str = overlay_path.to_string_lossy().replace('\\', "/");
-                    overlay.source_path = format!("asset://{}", path_str);
-                }
-            }
-        }
-    }
-
-    // Save custom set metadata
-    let set_path = sets_dir.join(format!("{}.json", custom_set.id));
-    let json = serde_json::to_string_pretty(&custom_set)
-        .map_err(|e| format!("Failed to serialize custom set: {}", e))?;
-
-    fs::write(set_path, json)
-        .map_err(|e| format!("Failed to write custom set file: {}", e))?;
-
+    write_set(&sets_dir, &custom_set)?;
     Ok(custom_set)
 }
 
-/// Load all custom sets from disk (preview only)
+/// Load lightweight previews for all saved custom sets.
 #[tauri::command]
 pub async fn load_custom_sets(app: tauri::AppHandle) -> Result<Vec<CustomSetPreview>, String> {
     let sets_dir = get_custom_sets_dir(&app)?;
     let mut sets = Vec::new();
-
-    if !sets_dir.exists() {
-        return Ok(sets);
-    }
 
     let entries = fs::read_dir(&sets_dir)
         .map_err(|e| format!("Failed to read custom sets directory: {}", e))?;
@@ -263,11 +107,15 @@ pub async fn load_custom_sets(app: tauri::AppHandle) -> Result<Vec<CustomSetPrev
             continue;
         }
 
-        let json = fs::read_to_string(&path)
-            .map_err(|e| format!("Failed to read custom set file: {}", e))?;
+        let json = match fs::read_to_string(&path) {
+            Ok(j) => j,
+            Err(_) => continue,
+        };
 
-        let custom_set: CustomSet = serde_json::from_str(&json)
-            .map_err(|e| format!("Failed to parse custom set file: {}", e))?;
+        let custom_set: CustomSet = match serde_json::from_str(&json) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
 
         sets.push(CustomSetPreview {
             id: custom_set.id,
@@ -278,32 +126,18 @@ pub async fn load_custom_sets(app: tauri::AppHandle) -> Result<Vec<CustomSetPrev
         });
     }
 
-    // Sort by creation date (newest first)
     sets.sort_by(|a, b| b.created_at.cmp(&a.created_at));
-
     Ok(sets)
 }
 
-/// Get a specific custom set by ID
+/// Load a full custom set by id.
 #[tauri::command]
 pub async fn get_custom_set(app: tauri::AppHandle, set_id: String) -> Result<CustomSet, String> {
     let sets_dir = get_custom_sets_dir(&app)?;
-    let set_path = sets_dir.join(format!("{}.json", set_id));
-
-    if !set_path.exists() {
-        return Err(format!("Custom set not found: {}", set_id));
-    }
-
-    let json = fs::read_to_string(&set_path)
-        .map_err(|e| format!("Failed to read custom set file: {}", e))?;
-
-    let custom_set: CustomSet = serde_json::from_str(&json)
-        .map_err(|e| format!("Failed to parse custom set file: {}", e))?;
-
-    Ok(custom_set)
+    read_set(&sets_dir, &set_id)
 }
 
-/// Delete a custom set from disk
+/// Delete a custom set and its resource directory.
 #[tauri::command]
 pub async fn delete_custom_set(app: tauri::AppHandle, set_id: String) -> Result<(), String> {
     let sets_dir = get_custom_sets_dir(&app)?;
@@ -313,11 +147,9 @@ pub async fn delete_custom_set(app: tauri::AppHandle, set_id: String) -> Result<
         return Err(format!("Custom set not found: {}", set_id));
     }
 
-    // Delete the JSON file
     fs::remove_file(&set_path)
         .map_err(|e| format!("Failed to delete custom set file: {}", e))?;
 
-    // Delete the resources directory if it exists
     let resources_dir = sets_dir.join(&set_id);
     if resources_dir.exists() {
         fs::remove_dir_all(&resources_dir)
@@ -327,257 +159,197 @@ pub async fn delete_custom_set(app: tauri::AppHandle, set_id: String) -> Result<
     Ok(())
 }
 
-/// Duplicate a custom set (create a copy with a new ID)
+/// Duplicate a custom set with a new id.
 #[tauri::command]
-pub async fn duplicate_custom_set(app: tauri::AppHandle, set_id: String) -> Result<CustomSet, String> {
-    let original = get_custom_set(app.clone(), set_id).await?;
+pub async fn duplicate_custom_set(
+    app: tauri::AppHandle,
+    set_id: String,
+) -> Result<CustomSet, String> {
+    let sets_dir = get_custom_sets_dir(&app)?;
+    let original = read_set(&sets_dir, &set_id)?;
 
+    let now = chrono::Utc::now().to_rfc3339();
     let duplicated = CustomSet {
         id: format!("set-{}", uuid::Uuid::new_v4()),
         name: format!("{} (Copy)", original.name),
-        description: original.description,
-        canvas_size: original.canvas_size,
-        auto_match_background: original.auto_match_background,
-        background: original.background,
-        background_transform: original.background_transform,
-        frame: original.frame,
-        overlays: original.overlays,
-        thumbnail: original.thumbnail,
-        created_at: chrono::Utc::now().to_rfc3339(),
-        modified_at: chrono::Utc::now().to_rfc3339(),
+        created_at: now.clone(),
+        modified_at: now,
         is_default: false,
+        thumbnail: None, // thumbnail re-generated on next save
+        ..original
     };
 
-    save_custom_set(app, duplicated).await
+    write_set(&sets_dir, &duplicated)?;
+    Ok(duplicated)
 }
 
-/// Export a custom set to a .ptbs file with all images embedded as base64
+/// Ensure an image-type background has an asset_id — register it on-the-fly if missing.
+/// Returns the (possibly updated) background and the asset_id to bundle.
+fn ensure_background_asset(
+    library_dir: &PathBuf,
+    mut background: crate::backgrounds::Background,
+) -> (crate::backgrounds::Background, Option<String>) {
+    if background.background_type != "image" {
+        return (background, None);
+    }
+
+    // Already registered
+    if let Some(id) = background.asset_id.clone() {
+        return (background, Some(id));
+    }
+
+    // Try to read from value path and register on-the-fly
+    let raw_path = background.value.trim_start_matches("asset://");
+    let path = PathBuf::from(raw_path);
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("png")
+        .to_lowercase();
+
+    if let Ok(data) = fs::read(&path) {
+        if let Ok(asset) = register_asset_bytes(
+            library_dir,
+            &data,
+            &background.name,
+            vec!["background".to_string()],
+            "background_image",
+            &ext,
+        ) {
+            background.asset_id = Some(asset.id.clone());
+            return (background, Some(asset.id));
+        }
+    }
+
+    (background, None)
+}
+
+/// Export a custom set to a .ptbs file.
+/// All overlay assets and the background image (registered or discovered on-the-fly)
+/// are embedded as BundledAssets so the file is fully self-contained.
 #[tauri::command]
 pub async fn export_custom_set(
     app: tauri::AppHandle,
     set_id: String,
     file_path: String,
 ) -> Result<String, String> {
-    println!("[EXPORT] Starting export for set {} to {}", set_id, file_path);
-    let custom_set = get_custom_set(app.clone(), set_id).await?;
-    println!("[EXPORT] Set: {}, bg_type: {}, overlays: {}", custom_set.name, custom_set.background.background_type, custom_set.overlays.len());
+    let sets_dir = get_custom_sets_dir(&app)?;
+    let mut custom_set = read_set(&sets_dir, &set_id)?;
+    let library_dir = get_library_dir(&app)?;
 
-    let mut resources: HashMap<String, String> = HashMap::new();
+    // Collect overlay asset ids
+    let mut asset_ids: HashSet<String> = custom_set
+        .overlays
+        .iter()
+        .map(|o| o.asset_id.clone())
+        .collect();
 
-    // Embed background image
-    if custom_set.background.background_type == "image" {
-        let ext = get_extension(&custom_set.background.value);
-        println!("[EXPORT] Background image: {} (ext: {})", custom_set.background.value, ext);
-        if let Some(data) = read_asset_as_base64(&custom_set.background.value) {
-            println!("[EXPORT]   -> encoded {} bytes", data.len());
-            resources.insert(format!("background.{}", ext), data);
-        } else {
-            println!("[EXPORT]   -> FAILED to read file!");
+    // Ensure background image is in the asset library and get its id
+    let (updated_bg, bg_asset_id) =
+        ensure_background_asset(&library_dir, custom_set.background.clone());
+    custom_set.background = updated_bg;
+    if let Some(id) = bg_asset_id {
+        asset_ids.insert(id);
+    }
+
+    // Build bundled asset list
+    let mut assets: Vec<BundledAsset> = Vec::new();
+    for id in &asset_ids {
+        match bundle_asset(&library_dir, id) {
+            Ok(bundled) => assets.push(bundled),
+            Err(e) => eprintln!("[EXPORT] Warning: could not bundle asset {}: {}", id, e),
         }
     }
 
-    // Embed background thumbnail
-    if let Some(ref thumb) = custom_set.background.thumbnail {
-        let ext = get_extension(thumb);
-        println!("[EXPORT] Background thumbnail: {} (ext: {})", thumb, ext);
-        if let Some(data) = read_asset_as_base64(thumb) {
-            println!("[EXPORT]   -> encoded {} bytes", data.len());
-            resources.insert(format!("background_thumbnail.{}", ext), data);
-        }
-    }
-
-    // Embed set thumbnail
-    if let Some(ref thumb) = custom_set.thumbnail {
-        let ext = get_extension(thumb);
-        println!("[EXPORT] Set thumbnail: {} (ext: {})", thumb, ext);
-        if let Some(data) = read_asset_as_base64(thumb) {
-            println!("[EXPORT]   -> encoded {} bytes", data.len());
-            resources.insert(format!("thumbnail.{}", ext), data);
-        }
-    }
-
-    // Embed overlay images
-    for (i, overlay) in custom_set.overlays.iter().enumerate() {
-        let ext = get_extension(&overlay.source_path);
-        println!("[EXPORT] Overlay {}: {} (ext: {})", i, overlay.source_path, ext);
-        if let Some(data) = read_asset_as_base64(&overlay.source_path) {
-            println!("[EXPORT]   -> encoded {} bytes", data.len());
-            resources.insert(format!("overlay_{}.{}", i, ext), data);
-        } else {
-            println!("[EXPORT]   -> FAILED to read file!");
-        }
-    }
-
-    println!("[EXPORT] Total resources embedded: {}", resources.len());
+    // Bundle the set thumbnail (set-specific, not in asset library)
+    let thumbnail_data = custom_set.thumbnail.as_ref().and_then(|thumb| {
+        let path = PathBuf::from(thumb.trim_start_matches("asset://"));
+        fs::read(&path).ok().map(|data| general_purpose::STANDARD.encode(&data))
+    });
 
     let portable = PortableCustomSet {
-        version: 1,
+        version: 2,
         custom_set,
-        resources,
+        assets,
+        thumbnail_data,
     };
 
     let json = serde_json::to_string_pretty(&portable)
-        .map_err(|e| format!("Failed to serialize custom set: {}", e))?;
+        .map_err(|e| format!("Failed to serialize portable set: {}", e))?;
 
-    println!("[EXPORT] JSON size: {} bytes", json.len());
     fs::write(&file_path, json)
         .map_err(|e| format!("Failed to write export file: {}", e))?;
 
-    println!("[EXPORT] Successfully wrote to {}", file_path);
     Ok(file_path)
 }
 
-/// Write a base64 resource to a file and return the asset:// path
-fn write_resource_to_file(
-    resources: &HashMap<String, String>,
-    key_prefix: &str,
-    dest_dir: &PathBuf,
-    dest_filename: &str,
-) -> Option<String> {
-    // Find the resource key that starts with the prefix (e.g., "background." matches "background.jpg")
-    let (key, data) = resources.iter().find(|(k, _)| k.starts_with(key_prefix))?;
-
-    // Get extension from the key (e.g., "background.jpg" -> "jpg")
-    let ext = key.rsplit('.').next().unwrap_or("bin");
-    let filename = format!("{}.{}", dest_filename, ext);
-    let dest_path = dest_dir.join(&filename);
-
-    let decoded = general_purpose::STANDARD.decode(data).ok()?;
-    fs::write(&dest_path, decoded).ok()?;
-
-    let path_str = dest_path.to_string_lossy().replace('\\', "/");
-    Some(format!("asset://{}", path_str))
-}
-
-/// Import a custom set from a .ptbs file
+/// Import a custom set from a .ptbs file.
+/// Each bundled asset is registered into the local asset library — if the same
+/// file (by SHA-256 hash) already exists it is reused, preventing duplicates.
 #[tauri::command]
 pub async fn import_custom_set(
     app: tauri::AppHandle,
     file_path: String,
 ) -> Result<CustomSet, String> {
-    println!("[IMPORT] Starting import from {}", file_path);
     let json = fs::read_to_string(&file_path)
         .map_err(|e| format!("Failed to read import file: {}", e))?;
 
-    println!("[IMPORT] Read {} bytes from file", json.len());
+    let portable: PortableCustomSet = serde_json::from_str(&json).map_err(|_| {
+        "Invalid .ptbs file. This file may have been exported with an incompatible version."
+            .to_string()
+    })?;
 
-    let portable: PortableCustomSet = serde_json::from_str(&json)
-        .map_err(|_| "Invalid .ptbs file. This file may have been exported with an older version that is no longer supported.".to_string())?;
+    if portable.version < 2 {
+        return Err(
+            "This .ptbs file was created with an older version and is no longer supported. \
+             Please re-export it from the original device."
+                .to_string(),
+        );
+    }
 
-    println!("[IMPORT] Parsed portable format v{}, set: {}, resources: {}", portable.version, portable.custom_set.name, portable.resources.len());
+    let library_dir = get_library_dir(&app)?;
 
-    let mut custom_set = portable.custom_set;
-    let resources = portable.resources;
+    // Register all bundled assets into the local library (skips existing ones)
+    import_bundled_assets(&library_dir, &portable.assets)?;
 
-    // Generate a new ID
-    let new_id = format!("set-{}", uuid::Uuid::new_v4());
-    custom_set.id = new_id.clone();
-
+    // Assign a new id to avoid collisions with existing sets
     let now = chrono::Utc::now().to_rfc3339();
+    let mut custom_set = portable.custom_set;
+    custom_set.id = format!("set-{}", uuid::Uuid::new_v4());
     custom_set.created_at = now.clone();
     custom_set.modified_at = now;
+    custom_set.thumbnail = None;
 
-    // Extract embedded resources to disk
-    let sets_dir = get_custom_sets_dir(&app)?;
-    let set_dir = sets_dir.join(&new_id);
-    fs::create_dir_all(&set_dir)
-        .map_err(|e| format!("Failed to create set dir: {}", e))?;
-    println!("[IMPORT] Created set dir: {:?}", set_dir);
-
-    // Extract background image
+    // Resolve background.value to the local asset library path.
+    // The exported value points to the source device's path which won't exist here.
     if custom_set.background.background_type == "image" {
-        println!("[IMPORT] Extracting background image...");
-        if let Some(path) =
-            write_resource_to_file(&resources, "background.", &set_dir, "background")
-        {
-            println!("[IMPORT]   -> extracted to {}", path);
-            custom_set.background.value = path;
-        } else {
-            println!("[IMPORT]   -> FAILED to find background resource!");
+        if let Some(ref asset_id) = custom_set.background.asset_id.clone() {
+            let registry = load_registry(&library_dir);
+            if let Some(asset) = registry.get(asset_id) {
+                let local_path = asset_file_path(&library_dir, asset_id, &asset.file_ext);
+                let path_str = local_path.to_string_lossy().replace('\\', "/");
+                custom_set.background.value = format!("asset://{}", path_str);
+            }
         }
     }
 
-    // Extract background thumbnail
-    println!("[IMPORT] Extracting background thumbnail...");
-    if let Some(path) = write_resource_to_file(
-        &resources,
-        "background_thumbnail.",
-        &set_dir,
-        "bg_thumb",
-    ) {
-        println!("[IMPORT]   -> extracted to {}", path);
-        custom_set.background.thumbnail = Some(path);
-    } else {
-        println!("[IMPORT]   -> no background thumbnail found");
-    }
-
-    // Extract set thumbnail
-    println!("[IMPORT] Extracting set thumbnail...");
-    if let Some(path) =
-        write_resource_to_file(&resources, "thumbnail.", &set_dir, "thumbnail")
-    {
-        println!("[IMPORT]   -> extracted to {}", path);
-        custom_set.thumbnail = Some(path);
-    } else {
-        println!("[IMPORT]   -> no set thumbnail found");
-    }
-
-    // Extract overlay images
-    let overlays_dir = set_dir.join("overlays");
-    fs::create_dir_all(&overlays_dir)
-        .map_err(|e| format!("Failed to create overlays dir: {}", e))?;
-    println!("[IMPORT] Created overlays dir: {:?}", overlays_dir);
-
-    for (i, overlay) in custom_set.overlays.iter_mut().enumerate() {
-        let prefix = format!("overlay_{}.", i);
-        println!("[IMPORT] Extracting overlay {}...", i);
-        if let Some(path) = write_resource_to_file(
-            &resources,
-            &prefix,
-            &overlays_dir,
-            &format!("overlay_{}", i),
-        ) {
-            println!("[IMPORT]   -> extracted to {}", path);
-            overlay.source_path = path;
-        } else {
-            println!("[IMPORT]   -> FAILED to find overlay resource!");
-        }
-    }
-
-    // Save the JSON directly (resources already extracted, skip save_custom_set's copy logic)
-    let set_path = sets_dir.join(format!("{}.json", new_id));
-    let json = serde_json::to_string_pretty(&custom_set)
-        .map_err(|e| format!("Failed to serialize custom set: {}", e))?;
-    fs::write(set_path, json)
-        .map_err(|e| format!("Failed to write custom set file: {}", e))?;
-
-    println!("[IMPORT] Successfully imported set '{}' (id: {})", custom_set.name, new_id);
-    Ok(custom_set)
-}
-
-/// Update only the background reference in a custom set (no file copying)
-/// Used after importing a background to update the set's stored path
-#[tauri::command]
-pub async fn update_custom_set_background(
-    app: tauri::AppHandle,
-    set_id: String,
-    background: crate::backgrounds::types::Background,
-) -> Result<(), String> {
     let sets_dir = get_custom_sets_dir(&app)?;
-    let set_path = sets_dir.join(format!("{}.json", set_id));
 
-    let json = fs::read_to_string(&set_path)
-        .map_err(|e| format!("Failed to read custom set: {}", e))?;
-    let mut custom_set: CustomSet = serde_json::from_str(&json)
-        .map_err(|e| format!("Failed to parse custom set: {}", e))?;
+    // Restore thumbnail if bundled
+    if let Some(thumb_b64) = portable.thumbnail_data {
+        if let Ok(thumb_data) = general_purpose::STANDARD.decode(&thumb_b64) {
+            let set_dir = sets_dir.join(&custom_set.id);
+            fs::create_dir_all(&set_dir)
+                .map_err(|e| format!("Failed to create set dir: {}", e))?;
+            let thumb_path = set_dir.join("thumbnail.jpg");
+            if fs::write(&thumb_path, &thumb_data).is_ok() {
+                let path_str = thumb_path.to_string_lossy().replace('\\', "/");
+                custom_set.thumbnail = Some(format!("asset://{}", path_str));
+            }
+        }
+    }
 
-    custom_set.background = background;
-    custom_set.modified_at = chrono::Utc::now().to_rfc3339();
+    write_set(&sets_dir, &custom_set)?;
 
-    let updated_json = serde_json::to_string_pretty(&custom_set)
-        .map_err(|e| format!("Failed to serialize custom set: {}", e))?;
-    fs::write(&set_path, updated_json)
-        .map_err(|e| format!("Failed to write custom set: {}", e))?;
-
-    Ok(())
+    Ok(custom_set)
 }

@@ -177,7 +177,8 @@
       "WebSearch",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:fossies.org)",
-      "Bash(xargs -I {} sh -c 'echo \"=== {} ===\" && head -50 {}')"
+      "Bash(xargs -I {} sh -c 'echo \"=== {} ===\" && head -50 {}')",
+      "Bash(r)"
     ],
     "additionalDirectories": [
       "d:\\Photobooth_IPH",
