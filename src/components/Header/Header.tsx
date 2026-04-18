@@ -1,4 +1,5 @@
 import { motion, AnimatePresence } from "framer-motion";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "../../contexts";
 import Icon from "@mdi/react";
 import "../../styles/AccountDropdown.css";
@@ -28,6 +29,8 @@ const modeConfig: Record<AppMode, { label: string; icon: string }> = {
   display: { label: 'Guest Display', icon: mdiMonitor },
   qr: { label: 'QR Generator', icon: mdiQrcode },
 };
+
+const modeOrder: AppMode[] = ['photobooth', 'collage', 'qr', 'display'];
 
 interface HeaderProps {
   showAccountMenu: boolean;
@@ -59,6 +62,71 @@ export default function Header({
   setMode,
 }: HeaderProps) {
   const { account, loggingIn } = useAuth();
+  const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
+  const menuContainerRef = useRef<HTMLDivElement>(null);
+  const focusedIndexRef = useRef<number | null>(null);
+
+  // All navigable items: modes + settings + about + exit
+  const allMenuItems = [
+    ...modeOrder.map((key) => ({
+      type: 'mode' as const,
+      key,
+      action: () => { setMode(key); setShowAppMenu(false); },
+    })),
+    { type: 'settings' as const, key: 'settings', action: () => { onShowSettings(); setShowAppMenu(false); } },
+    { type: 'about' as const, key: 'about', action: () => { onShowAbout(); setShowAppMenu(false); } },
+    { type: 'exit' as const, key: 'exit', action: () => { onExit(); setShowAppMenu(false); } },
+  ];
+  const totalItems = allMenuItems.length;
+
+  focusedIndexRef.current = focusedIndex;
+
+  useEffect(() => {
+    if (!showAppMenu) {
+      setFocusedIndex(null);
+      return;
+    }
+
+    const currentIndex = modeOrder.indexOf(mode);
+    setFocusedIndex(currentIndex >= 0 ? currentIndex : 0);
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowAppMenu(false);
+        return;
+      }
+
+      if (['1', '2', '3', '4'].includes(e.key)) {
+        e.preventDefault();
+        const modeIndex = parseInt(e.key) - 1;
+        if (modeIndex >= 0 && modeIndex < modeOrder.length) {
+          allMenuItems[modeIndex]?.action();
+        }
+        return;
+      }
+
+      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+        e.preventDefault();
+        const current = focusedIndexRef.current;
+        setFocusedIndex((prev) => {
+          const startIndex = prev ?? current ?? 0;
+          const direction = e.key === 'ArrowRight' ? 1 : -1;
+          return (startIndex + direction + totalItems) % totalItems;
+        });
+      }
+
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const current = focusedIndexRef.current;
+        if (current !== null) {
+          allMenuItems[current]?.action();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showAppMenu, mode, setMode, setShowAppMenu]);
 
   return (
     <header className="app-header">
@@ -84,47 +152,47 @@ export default function Header({
                 transition={{ type: "spring", stiffness: 300, damping: 30 }}
                 className="app-menu"
                 onClick={(e) => e.stopPropagation()}
+                ref={menuContainerRef}
               >
-                {(Object.entries(modeConfig) as [AppMode, typeof modeConfig[AppMode]][]).map(([key, cfg]) => (
-                  <button
-                    key={key}
-                    className={`app-menu-item ${mode === key ? 'active' : ''}`}
-                    onClick={() => {
-                      setMode(key);
-                      setShowAppMenu(false);
-                    }}
-                  >
-                    <Icon path={cfg.icon} size={0.6} />
-                    <span>{cfg.label}</span>
-                  </button>
-                ))}
+                {modeOrder.map((key, index) => {
+                  const cfg = modeConfig[key];
+                  const isFocused = focusedIndex === index;
+                  return (
+                    <button
+                      key={key}
+                      className={`app-menu-item ${mode === key ? 'active' : ''} ${isFocused ? 'focused' : ''}`}
+                      onClick={() => {
+                        setMode(key);
+                        setShowAppMenu(false);
+                      }}
+                      onMouseEnter={() => setFocusedIndex(index)}
+                    >
+                      <Icon path={cfg.icon} size={0.6} />
+                      <span>{cfg.label}</span>
+                    </button>
+                  );
+                })}
                 <div className="app-menu-divider" />
                 <button
-                  className="app-menu-item"
-                  onClick={() => {
-                    onShowSettings();
-                    setShowAppMenu(false);
-                  }}
+                  className={`app-menu-item ${focusedIndex === modeOrder.length ? 'focused' : ''}`}
+                  onClick={() => { onShowSettings(); setShowAppMenu(false); }}
+                  onMouseEnter={() => setFocusedIndex(modeOrder.length)}
                 >
                   <Icon path={mdiCog} size={0.6} />
                   <span>Settings</span>
                 </button>
                 <button
-                  className="app-menu-item"
-                  onClick={() => {
-                    onShowAbout();
-                    setShowAppMenu(false);
-                  }}
+                  className={`app-menu-item ${focusedIndex === modeOrder.length + 1 ? 'focused' : ''}`}
+                  onClick={() => { onShowAbout(); setShowAppMenu(false); }}
+                  onMouseEnter={() => setFocusedIndex(modeOrder.length + 1)}
                 >
                   <Icon path={mdiInformationOutline} size={0.6} />
                   <span>About</span>
                 </button>
                 <button
-                  className="app-menu-item"
-                  onClick={() => {
-                    onExit();
-                    setShowAppMenu(false);
-                  }}
+                  className={`app-menu-item ${focusedIndex === modeOrder.length + 2 ? 'focused' : ''}`}
+                  onClick={() => { onExit(); setShowAppMenu(false); }}
+                  onMouseEnter={() => setFocusedIndex(modeOrder.length + 2)}
                   style={{ color: '#ff99a4' }}
                 >
                   <Icon path={mdiPower} size={0.6} />

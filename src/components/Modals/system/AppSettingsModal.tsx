@@ -80,6 +80,19 @@ export default function AppSettingsModal({ show, onClose, onShowGuide, onShowCha
     })();
   }, [show]);
 
+  useEffect(() => {
+    if (!show) return;
+
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [show, onClose]);
+
   const handleToggle = async (key: keyof AppSettings, value: boolean) => {
     setSettings(prev => ({ ...prev, [key]: value }));
     await saveSetting(key, String(value));
