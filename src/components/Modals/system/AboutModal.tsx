@@ -20,7 +20,7 @@ interface AboutModalProps {
   onShowUpdate?: (type: 'msi' | 'vm') => void;
 }
 
-type AboutTab = 'features' | 'modes' | 'display' | 'tech' | 'versions' | 'contact';
+type AboutTab = 'features' | 'modes' | 'tech' | 'versions' | 'contact';
 
 interface VersionInfo {
   versionStatus: VersionStatus | null;
@@ -167,7 +167,7 @@ export default function AboutModal({
           <div style={{ marginBottom: '1rem', lineHeight: '1.6', color: 'var(--text-secondary)' }}>
             <div style={{ background: 'var(--bg-primary)', padding: '0.5rem', borderRadius: '8px', marginTop: '0.5rem', overflowY: 'auto', maxHeight: '45vh', scrollbarWidth: 'none' }}>
               <div style={{ display: 'flex', gap: '1rem', borderBottom: '1px solid var(--border-color)', marginBottom: '0.5rem', position: 'relative', paddingBottom: '0.25rem' }}>
-                {(['features', 'modes', 'display', 'tech', 'versions', 'contact'] as AboutTab[]).map((tab) => (
+                {(['features', 'modes', 'tech', 'versions', 'contact'] as AboutTab[]).map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setAboutTab(tab)}
@@ -185,7 +185,7 @@ export default function AboutModal({
                       textTransform: 'capitalize',
                     }}
                   >
-                    {tab === 'display' ? 'Guest Display' : tab}
+                    {tab}
                     {aboutTab === tab && (
                       <motion.div
                         layoutId="aboutUnderline"
@@ -281,69 +281,6 @@ export default function AboutModal({
                           <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-primary)' }}>Guest Display</div>
                           <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>Secondary screen output showing countdown, flash effects, photo display, gallery view, and QR codes for guests to scan.</div>
                         </div>
-                      </div>
-                    </div>
-                  </motion.div>
-                ) : aboutTab === 'display' ? (
-                  <motion.div
-                    key="display"
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 10 }}
-                    transition={{ duration: 0.2 }}
-                    style={{ fontSize: '12px' }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 10px', background: 'rgba(0,120,212,0.08)', border: '1px solid rgba(0,120,212,0.2)', borderRadius: '6px', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
-                      <span style={{ color: 'var(--accent-blue)', flexShrink: 0 }}>💡</span>
-                      Open the Display Layout Editor from the app menu (<kbd style={{ padding: '1px 5px', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: '3px', fontFamily: 'monospace', fontSize: '10px', color: 'var(--text-primary)' }}>F1</kbd>) or the header.
-                    </div>
-
-                    <div style={{ marginBottom: '0.5rem', fontWeight: 600, color: 'var(--text-primary)' }}>Workflow</div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '0.75rem' }}>
-                      {[
-                        { step: '1', label: 'Pick or create a layout', detail: 'Use the layout picker in the left sidebar to switch between saved layouts or create a new one.' },
-                        { step: '2', label: 'Add and position elements', detail: 'Place a Collage placeholder, QR Code, text, images, GIFs, and shapes — then drag and resize them on the canvas.' },
-                        { step: '3', label: 'Adjust layer order', detail: 'Drag rows in the right panel element list to reorder layers. Select an element to edit its properties.' },
-                        { step: '4', label: 'Save, then activate', detail: 'Save your layout, then go to Photobooth → Settings → Guest Display to select it for use.' },
-                      ].map(({ step, label, detail }) => (
-                        <div key={step} style={{ display: 'flex', gap: '8px', padding: '6px 8px', background: 'var(--bg-secondary)', borderRadius: '5px' }}>
-                          <span style={{ flexShrink: 0, width: '16px', height: '16px', borderRadius: '50%', background: 'var(--accent-blue)', color: '#fff', fontSize: '10px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: '1px' }}>{step}</span>
-                          <div>
-                            <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '2px' }}>{label}</div>
-                            <div style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>{detail}</div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div style={{ marginBottom: '0.5rem', fontWeight: 600, color: 'var(--text-primary)' }}>Elements</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.35rem', marginBottom: '0.75rem' }}>
-                      {[
-                        { name: 'Collage', desc: 'Renders the finalized photo', badge: true },
-                        { name: 'QR Code', desc: 'Guests scan to get their photos', badge: true },
-                        { name: 'Text', desc: 'Custom copy with font controls' },
-                        { name: 'Image', desc: 'PNG / JPG / WebP assets' },
-                        { name: 'GIF', desc: 'Animated GIF elements' },
-                        { name: 'Shape', desc: 'Rect, circle, line, triangle…' },
-                      ].map(({ name, desc, badge }) => (
-                        <div key={name} style={{ padding: '5px 8px', background: 'var(--bg-secondary)', borderRadius: '5px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
-                            <span style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '11px' }}>{name}</span>
-                            {badge && <span style={{ fontSize: '9px', padding: '1px 4px', background: 'rgba(0,120,212,0.15)', color: 'var(--accent-blue)', borderRadius: '3px', fontWeight: 600 }}>1 per layout</span>}
-                          </div>
-                          <div style={{ color: 'var(--text-secondary)', fontSize: '10px' }}>{desc}</div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.35rem' }}>
-                      <div style={{ padding: '6px 8px', background: 'var(--bg-secondary)', borderRadius: '5px' }}>
-                        <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '2px' }}>Export</div>
-                        <div style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>Saves to <code style={{ fontFamily: 'monospace', background: 'var(--bg-tertiary)', padding: '0 3px', borderRadius: '2px' }}>.iplayout</code> with images embedded</div>
-                      </div>
-                      <div style={{ padding: '6px 8px', background: 'var(--bg-secondary)', borderRadius: '5px' }}>
-                        <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '2px' }}>Import</div>
-                        <div style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>Loads an <code style={{ fontFamily: 'monospace', background: 'var(--bg-tertiary)', padding: '0 3px', borderRadius: '2px' }}>.iplayout</code> file as a new layout</div>
                       </div>
                     </div>
                   </motion.div>
