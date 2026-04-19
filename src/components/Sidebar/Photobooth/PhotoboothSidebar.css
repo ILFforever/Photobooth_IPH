@@ -964,6 +964,13 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+  /* Hide scrollbar */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.display-layout-section-list::-webkit-scrollbar {
+  display: none;
 }
 
 .display-layout-section-item {

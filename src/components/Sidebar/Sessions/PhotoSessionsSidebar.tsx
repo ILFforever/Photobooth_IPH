@@ -47,7 +47,6 @@ interface PhotoSessionsSidebarProps {
   sessions: PhotoboothSessionInfo[];
   selectedSetId: string | null;
   expandedSets: Set<string>;
-  hasEverConnected: boolean;
   isCameraConnected: boolean;
   isConnecting: boolean;
   onSetSelect: (setId: string) => void;
@@ -60,7 +59,6 @@ export default function PhotoSessionsSidebar({
   sessions,
   selectedSetId,
   expandedSets,
-  hasEverConnected,
   isCameraConnected,
   isConnecting,
   onSetSelect,
