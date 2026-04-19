@@ -83,7 +83,7 @@ export default function ChangelogModal({
                     initial={{ opacity: 0, y: 12 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.1 + idx * 0.07, duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-                    className="changelog-featured"
+                    className="changelog-featured changelog-featured--shimmer"
                   >
                     <div className="changelog-featured-icon-wrap">
                       <Icon size={22} />

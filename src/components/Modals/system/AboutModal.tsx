@@ -56,14 +56,14 @@ export default function AboutModal({
     if (show && !appInfo) {
       fetchAppInfo();
     }
-    if (show && aboutTab === 'versions' && !versions) {
+    if (show && aboutTab === 'versions' && !versions && appInfo) {
       checkForUpdates();
     }
     if (show && aboutTab === 'versions' && ffmpegVersion === null) {
       checkFfmpegVersion();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [show, aboutTab]);
+  }, [show, aboutTab, appInfo]);
 
   useEffect(() => {
     if (!show) return;
@@ -120,9 +120,12 @@ export default function AboutModal({
         versionStatus,
         virtualboxVersion: requirements.requirements.virtualbox_version
       });
-      // Fetch release notes for the currently installed version
+      // Fetch release notes - use latest version if update available, otherwise current
       try {
-        const notes = await invoke<string[]>('get_version_changelog', { version: versionStatus.app.current_version });
+        const versionToFetch = versionStatus.app.update_available
+          ? versionStatus.app.latest_version
+          : (versionStatus.app.current_version || appInfo?.version || '');
+        const notes = await invoke<string[]>('get_version_changelog', { version: versionToFetch });
         setCurrentVersionNotes(notes);
       } catch { /* ignore */ }
     } catch (e) {

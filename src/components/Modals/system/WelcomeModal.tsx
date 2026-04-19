@@ -1,26 +1,18 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
-import { Camera, QrCode, ChevronRight, ChevronLeft, Keyboard, HardDrive, Wifi, Monitor, LayoutTemplate, Sparkles, MousePointer2, Layers, Save } from "lucide-react";
+import { Camera, QrCode, ChevronRight, ChevronLeft, Keyboard, HardDrive, Wifi, Monitor, LayoutTemplate, MousePointer2, Layers, Save } from "lucide-react";
 import Icon from "@mdi/react";
 import { mdiImageMultiple } from "@mdi/js";
 import iphLogo from "../../../assets/images/IPH.png";
 import "../../../styles/Modal.css";
 import "./WelcomeModal.css";
 import type { FeaturedItem } from './ChangelogModal';
+import { FEATURED_BY_VERSION } from "../../../constants/changelog";
 
 interface WelcomeModalProps {
   onClose: () => void;
 }
-
-const WHATS_NEW: FeaturedItem[] = [
-  {
-    icon: Sparkles,
-    label: 'New Feature',
-    title: "What's New Panel",
-    description: 'See release highlights and new features each time the app updates.',
-  },
-];
 
 const TOTAL_STEPS = 5;
 
@@ -28,14 +20,46 @@ export default function WelcomeModal({ onClose }: WelcomeModalProps) {
   const [step, setStep] = useState(0);
   const [currentVersion, setCurrentVersion] = useState('');
   const [releaseNotes, setReleaseNotes] = useState<string[]>([]);
+  const [featuredItems, setFeaturedItems] = useState<FeaturedItem[]>([]);
 
   useEffect(() => {
-    invoke<{ version: string }>('get_app_info').then(info => {
-      setCurrentVersion(info.version);
-      invoke<string[]>('get_version_changelog', { version: info.version })
-        .then(notes => setReleaseNotes(notes))
-        .catch(() => {});
-    }).catch(() => {});
+    const fetchVersionInfo = async () => {
+      try {
+        const [appInfo, versionStatus] = await Promise.all([
+          invoke<{ version: string }>('get_app_info'),
+          invoke<any>('check_all_updates')
+        ]);
+
+        const installedVersion = appInfo.version;
+        setCurrentVersion(installedVersion);
+
+        // Show changelog for latest version if update available, otherwise current version
+        const versionToShow = versionStatus?.app?.update_available
+          ? versionStatus.app.latest_version
+          : installedVersion;
+
+        // Load featured items for the version being shown
+        const featured = FEATURED_BY_VERSION[versionToShow] || [];
+        setFeaturedItems(featured);
+
+        const notes = await invoke<string[]>('get_version_changelog', { version: versionToShow });
+        setReleaseNotes(notes);
+      } catch (e) {
+        // Fallback to just app info if version check fails
+        try {
+          const info = await invoke<{ version: string }>('get_app_info');
+          setCurrentVersion(info.version);
+          const featured = FEATURED_BY_VERSION[info.version] || [];
+          setFeaturedItems(featured);
+          const notes = await invoke<string[]>('get_version_changelog', { version: info.version });
+          setReleaseNotes(notes);
+        } catch {
+          // Ignore errors
+        }
+      }
+    };
+
+    fetchVersionInfo();
   }, []);
 
   const handleClose = async () => {
@@ -187,6 +211,24 @@ export default function WelcomeModal({ onClose }: WelcomeModalProps) {
                     </div>
 
                     <div className="welcome-mode-card">
+                      <div className="welcome-mode-icon welcome-mode-icon--orange">
+                        <Monitor size={22} />
+                      </div>
+                      <div className="welcome-mode-content">
+                        <div className="welcome-mode-name">Guest Display</div>
+                        <div className="welcome-mode-desc">
+                          Design what guests see on the second monitor — position the collage, QR code, and graphics on a canvas.
+                        </div>
+                        <div className="welcome-mode-tags">
+                          <span>Canvas Editor</span>
+                          <span>Collage</span>
+                          <span>QR Code</span>
+                          <span>Layers</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="welcome-mode-card">
                       <div className="welcome-mode-icon welcome-mode-icon--green">
                         <QrCode size={22} />
                       </div>
@@ -201,24 +243,6 @@ export default function WelcomeModal({ onClose }: WelcomeModalProps) {
                           <span>Google Drive</span>
                           <span>QR Code</span>
                           <span>Instant Share</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="welcome-mode-card">
-                      <div className="welcome-mode-icon welcome-mode-icon--orange">
-                        <Monitor size={22} />
-                      </div>
-                      <div className="welcome-mode-content">
-                        <div className="welcome-mode-name">Guest Display</div>
-                        <div className="welcome-mode-desc">
-                          Design what guests see on the second monitor — position the collage, QR code, and graphics on a canvas.
-                        </div>
-                        <div className="welcome-mode-tags">
-                          <span>Canvas Editor</span>
-                          <span>Collage</span>
-                          <span>QR Code</span>
-                          <span>Layers</span>
                         </div>
                       </div>
                     </div>
@@ -395,29 +419,31 @@ export default function WelcomeModal({ onClose }: WelcomeModalProps) {
                     <p className="welcome-step-desc">Here's what changed in this version.</p>
                   </div>
 
-                  <div className="welcome-whats-new-list">
-                    {WHATS_NEW.map((item, idx) => {
-                      const ItemIcon = item.icon;
-                      return (
-                        <motion.div
-                          key={idx}
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: 0.05 + idx * 0.07, duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-                          className="welcome-whats-new-card"
-                        >
-                          <div className="welcome-whats-new-icon">
-                            <ItemIcon size={20} />
-                          </div>
-                          <div className="welcome-whats-new-body">
-                            <span className="welcome-whats-new-label">{item.label}</span>
-                            <div className="welcome-whats-new-title">{item.title}</div>
-                            <div className="welcome-whats-new-desc">{item.description}</div>
-                          </div>
-                        </motion.div>
-                      );
-                    })}
-                  </div>
+                  {featuredItems.length > 0 && (
+                    <div className="welcome-whats-new-list">
+                      {featuredItems.map((item, idx) => {
+                        const ItemIcon = item.icon;
+                        return (
+                          <motion.div
+                            key={idx}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.05 + idx * 0.07, duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+                            className="welcome-whats-new-card"
+                          >
+                            <div className="welcome-whats-new-icon">
+                              <ItemIcon size={20} />
+                            </div>
+                            <div className="welcome-whats-new-body">
+                              <span className="welcome-whats-new-label">{item.label}</span>
+                              <div className="welcome-whats-new-title">{item.title}</div>
+                              <div className="welcome-whats-new-desc">{item.description}</div>
+                            </div>
+                          </motion.div>
+                        );
+                      })}
+                    </div>
+                  )}
 
                   {releaseNotes && releaseNotes.length > 0 && (
                     <ul className="welcome-release-notes">

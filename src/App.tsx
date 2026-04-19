@@ -24,7 +24,7 @@ import {UpdateModal} from "./components/Modals";
 import {WelcomeModal} from "./components/Modals";
 import {ChangelogModal} from "./components/Modals";
 import type { ChangelogFeaturedItem } from "./components/Modals";
-import { Sparkles, Monitor } from "lucide-react";
+import { FEATURED_BY_VERSION } from "./constants/changelog";
 import { CollageWorkspace } from "./components/Canvas";
 import { DisplayLayoutEditor } from "./components/DisplayLayoutEditor/DisplayLayoutEditor";
 import { DisplayLayoutProvider } from "./contexts/display/DisplayLayoutContext";
@@ -43,27 +43,6 @@ import "./App.css";
 type AppMode = 'photobooth' | 'collage' | 'qr' | 'display';
 
 const logger = createLogger('App');
-
-// Featured highlight per version — add an entry when shipping a notable new feature.
-// The icon must be a Lucide component (imported at top of file).
-const FEATURED_BY_VERSION: Record<string, ChangelogFeaturedItem[]> = {
-  '1.7.4': [
-    {
-      icon: Sparkles,
-      label: 'New Feature',
-      title: "What's New Panel",
-      description: 'See release highlights and new features each time the app updates.',
-    },
-  ],
-  '1.8.0': [
-    {
-      icon: Monitor,
-      label: 'New Feature',
-      title: 'Guest Display Editor',
-      description: 'Design the second screen layout with a canvas editor — position the collage, QR code, text, and graphics.',
-    },
-  ],
-};
 
 interface SystemRequirements {
   virtualbox_installed: boolean;

@@ -83,7 +83,6 @@ interface CaptureViewProps {
   sessions: PhotoboothSessionInfo[];
   selectedSetId: string | null;
   expandedSets: Set<string>;
-  hasEverConnected: boolean;
   isConnecting: boolean;
   onSetSelect: (id: string | null) => void;
   onToggleSet: (id: string) => void;
@@ -135,7 +134,6 @@ export default function CaptureView({
   sessions,
   selectedSetId,
   expandedSets,
-  hasEverConnected,
   isConnecting,
   onSetSelect,
   onToggleSet,
@@ -242,7 +240,6 @@ export default function CaptureView({
         sessions={sessions}
         selectedSetId={selectedSetId}
         expandedSets={expandedSets}
-        hasEverConnected={hasEverConnected}
         isCameraConnected={isCameraConnected}
         isConnecting={isConnecting}
         onSetSelect={onSetSelect}

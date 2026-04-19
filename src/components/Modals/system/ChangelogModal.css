@@ -99,7 +99,7 @@
   100% { transform: translateX(200%) skewX(-12deg); opacity: 0; }
 }
 
-.changelog-featured::before {
+.changelog-featured--shimmer::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -110,7 +110,7 @@
     transparent 100%
   );
   width: 50%;
-  animation: changelog-shimmer 1.1s ease-in-out 0.35s 1 forwards;
+  animation: changelog-shimmer 1.3s ease-in-out 0.8s 1 forwards;
   pointer-events: none;
 }
 

@@ -577,7 +577,6 @@ export default function PhotoboothWorkspace() {
             sessions={sessions}
             selectedSetId={selectedSetId}
             expandedSets={expandedSets}
-            hasEverConnected={hasEverConnected}
             isConnecting={isConnecting}
             onSetSelect={setSelectedSetId}
             onToggleSet={toggleSet}

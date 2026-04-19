@@ -131,7 +131,7 @@ export function EmojiPickerButton({
         <div
           ref={pickerRef}
           className="emoji-picker-popover"
-          style={{ top: popoverY, left: popoverX, ...popoverStyle }}
+          style={{ top: popoverY, left: popoverX, zIndex: 99999, ...popoverStyle }}
         >
           <EmojiPicker.Root
             className="ep-root"

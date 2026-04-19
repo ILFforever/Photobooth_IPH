@@ -507,7 +507,7 @@ export function ElementListSidebar() {
                           onSelect={(emoji) => handleUpdateElement(element.id, { textContent: emoji })}
                           spawnPosition="top-left"
                           offsetX={-20}
-                          offsetY={120}
+                          offsetY={65}
                         />
                       </div>
                       <div className="props-field">
