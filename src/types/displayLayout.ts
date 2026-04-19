@@ -2,6 +2,22 @@ import { OverlayTransform, DEFAULT_OVERLAY_TRANSFORM, BlendMode } from './overla
 
 export type DisplayElementRole = 'collage' | 'qr' | 'logo' | 'text' | 'gif' | 'shape' | 'emoji';
 
+export type FrameShape =
+  | 'none'
+  | 'rectangle'
+  | 'circle'
+  | 'rounded_rect'
+  | 'ellipse'
+  | 'pill'
+  | 'triangle'
+  | 'star'
+  | 'hexagon'
+  | 'octagon'
+  | 'pentagon'
+  | 'diamond'
+  | 'heart'
+  | 'cross';
+
 export type ShapeType =
   | 'rectangle'
   | 'circle'
@@ -35,6 +51,11 @@ export interface DisplayElement {
   shapeWidth?: number;
   shapeHeight?: number;
   shapeBorderRadius?: number;
+  // Frame properties for logo/gif elements
+  frameShape?: FrameShape;
+  frameColor?: string;
+  frameWidth?: number;
+  frameBorderRadius?: number;
   transform: OverlayTransform;
   blendMode: BlendMode;
   opacity: number;

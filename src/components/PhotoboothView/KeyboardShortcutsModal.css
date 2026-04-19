@@ -1,0 +1,275 @@
+.shortcuts-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 16px;
+  animation: modalFadeIn 0.15s ease-out;
+}
+
+.shortcuts-modal-content {
+  background: #252526;
+  border: 1px solid #3c3c3c;
+  border-radius: 8px;
+  width: 100%;
+  max-width: 640px;
+  max-height: 85vh;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: modalSlideUp 0.2s ease-out;
+}
+
+@keyframes modalFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modalSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Fade in sections with stagger */
+.shortcuts-modal-body .shortcut-section {
+  animation: fadeInUp 0.2s ease-out backwards;
+}
+
+.shortcuts-modal-body .shortcut-section:nth-child(1) {
+  animation-delay: 0.05s;
+}
+
+.shortcuts-modal-body .shortcut-section:nth-child(2) {
+  animation-delay: 0.1s;
+}
+
+.shortcuts-modal-body .shortcut-section:nth-child(3) {
+  animation-delay: 0.15s;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.shortcuts-modal-header {
+  padding: 16px 24px;
+  background: #1e1e1e;
+  border-bottom: 1px solid #3c3c3c;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.header-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #cccccc;
+}
+
+.header-title h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.header-title svg {
+  color: #0078d4;
+  transition: transform 0.2s ease;
+}
+
+.header-title:hover svg {
+  transform: scale(1.05);
+}
+
+.close-btn {
+  background: transparent;
+  border: none;
+  color: #858585;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.close-btn:hover {
+  background: #2d2d30;
+  color: #cccccc;
+}
+
+.close-btn:focus-visible {
+  outline: 2px solid #0078d4;
+  outline-offset: 2px;
+}
+
+.shortcuts-modal-body {
+  padding: 24px;
+  max-height: calc(85vh - 120px);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.shortcuts-modal-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.shortcuts-modal-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.shortcuts-modal-body::-webkit-scrollbar-thumb {
+  background: #424242;
+  border-radius: 4px;
+  border: 2px solid #252526;
+}
+
+.shortcuts-modal-body::-webkit-scrollbar-thumb:hover {
+  background: #4f4f4f;
+}
+
+.shortcut-section {
+  margin-bottom: 32px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid #333333;
+}
+
+.shortcut-section:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.shortcut-section h3 {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #0078d4;
+  margin: 0 0 12px 0;
+  letter-spacing: 0.08em;
+  opacity: 0;
+  animation: fadeIn 0.3s ease-out forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.shortcuts-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px 24px;
+}
+
+/* Handle odd-numbered items gracefully */
+.shortcuts-grid .shortcut-item:last-child:nth-child(odd) {
+  grid-column: 1;
+}
+
+@media (max-width: 520px) {
+  .shortcuts-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.shortcut-item {
+  display: flex;
+  align-items: baseline;
+  padding: 4px 0;
+  gap: 16px;
+}
+
+.key-combo {
+  font-family: 'SF Mono', 'Monaco', 'Consolas', 'Courier New', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  background: #1e1e1e;
+  color: #f0f0f0;
+  padding: 4px 12px;
+  border-radius: 4px;
+  border: 1px solid #424242;
+  box-shadow: 0 1px 0 #424242, inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-width: 96px;
+  text-align: center;
+  transition: all 0.15s ease;
+}
+
+.key-combo:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 0 #424242, inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  border-color: #4a4a4a;
+}
+
+.key-combo:active {
+  transform: translateY(1px);
+  box-shadow: 0 0 0 #424242, inset 0 1px 2px rgba(0, 0, 0, 0.2);
+  background: #1a1a1a;
+}
+
+.key-desc {
+  font-size: 13px;
+  color: #cccccc;
+  line-height: 1.5;
+  text-align: left;
+  flex: 1;
+}
+
+.shortcuts-modal-footer {
+  padding: 16px 24px;
+  background: #1e1e1e;
+  border-top: 1px solid #3c3c3c;
+  display: flex;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+.done-btn {
+  background: #0078d4;
+  color: white;
+  border: none;
+  padding: 10px 24px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  min-width: 90px;
+}
+
+.done-btn:hover {
+  background: #1084d8;
+  box-shadow: 0 2px 8px rgba(0, 120, 212, 0.3);
+}
+
+.done-btn:active {
+  transform: translateY(1px);
+}
+
+.done-btn:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+}

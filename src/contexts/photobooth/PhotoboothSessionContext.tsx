@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useToast } from "../system";
 import * as sessionDrive from '../../utils/sessionDrive';
 import { useAuth } from "../auth";
+import { useUploadQueue } from "../upload/UploadQueueContext";
 import { useCaptureTiming } from "./PhotoboothCaptureSettingsContext";
 import { useWorkspaceSettings } from "./PhotoboothWorkspaceSettingsContext";
 import { createLogger } from "../../utils/logger";
@@ -49,6 +50,7 @@ const PhotoboothSessionContext = createContext<PhotoboothSessionContextType | un
 export function PhotoboothSessionProvider({ children }: { children: ReactNode }) {
   const { showToast } = useToast();
   const { account, rootFolder } = useAuth();
+  const { clearSessionQueue } = useUploadQueue();
   const {
     autoCount, timerDelay, delayBetweenPhotos, photoReviewTime,
     setAutoCount, setTimerDelay, setDelayBetweenPhotos, setPhotoReviewTime,
@@ -355,6 +357,9 @@ export function PhotoboothSessionProvider({ children }: { children: ReactNode })
 
     await refreshSessions();
 
+    // Clear any existing upload queue logs for this session ID just in case (though it should be new)
+    await clearSessionQueue(sessionInfo.id);
+
     // Create Drive folder for the new session
     await createDriveFolderForSession(sessionInfo.id, sessionInfo.name);
 
@@ -608,6 +613,9 @@ export function PhotoboothSessionProvider({ children }: { children: ReactNode })
 
       // Clear uploaded images tracking
       await clearDriveUploadsForSession(sessionId);
+
+      // Clear the upload queue logs for this session
+      await clearSessionQueue(sessionId);
 
       showToast(
         'Drive Folder Removed',

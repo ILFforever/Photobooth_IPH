@@ -5,7 +5,44 @@ import Icon from '@mdi/react';
 import { memo, useCallback, useRef, useState, useEffect } from "react";
 import { convertFileSrc } from '@tauri-apps/api/core';
 import QRCode from 'qrcode';
-import { DisplayLayout, DisplayElement } from '../../types/displayLayout';
+import { DisplayLayout, DisplayElement, FrameShape } from '../../types/displayLayout';
+
+function getFrameBorderRadius(shape: FrameShape, borderRadius?: number): string {
+  switch (shape) {
+    case 'circle':
+    case 'ellipse':
+      return '50%';
+    case 'rounded_rect':
+      return `${borderRadius || 12}px`;
+    case 'pill':
+      return '999px';
+    default:
+      return '2px';
+  }
+}
+
+function getFrameClipPath(shape: FrameShape): string | undefined {
+  switch (shape) {
+    case 'triangle':
+      return 'polygon(50% 0%, 0% 100%, 100% 100%)';
+    case 'pentagon':
+      return 'polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)';
+    case 'hexagon':
+      return 'polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)';
+    case 'octagon':
+      return 'polygon(30% 0%, 70% 0%, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0% 70%, 0% 30%)';
+    case 'star':
+      return 'polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)';
+    case 'diamond':
+      return 'polygon(50% 0%, 78% 50%, 50% 100%, 22% 50%)';
+    case 'heart':
+      return 'polygon(50% 95%, 65% 75%, 78% 60%, 90% 48%, 97% 35%, 98% 22%, 96% 14%, 93% 8%, 87% 3%, 80% 1%, 76% 1%, 73% 2%, 71% 3%, 69% 4%, 68% 5%, 66% 6%, 64% 7%, 62% 9%, 61% 10%, 59% 12%, 57% 13%, 56% 15%, 53% 17%, 50% 18%, 47% 17%, 44% 15%, 43% 13%, 41% 12%, 39% 10%, 38% 9%, 36% 7%, 34% 6%, 32% 5%, 31% 4%, 29% 3%, 27% 2%, 24% 1%, 20% 1%, 13% 3%, 7% 8%, 4% 14%, 2% 22%, 3% 35%, 10% 48%, 22% 60%, 35% 75%)';
+    case 'cross':
+      return 'polygon(20% 0%, 80% 0%, 80% 20%, 100% 20%, 100% 80%, 80% 80%, 80% 100%, 20% 100%, 20% 80%, 0% 80%, 0% 20%, 20% 20%)';
+    default:
+      return undefined;
+  }
+}
 
 // Module-level cache — mock QR is generated once and reused across all instances
 let mockQrPromise: Promise<string> | null = null;
@@ -190,6 +227,7 @@ export default memo(function DisplayContent({
                     e.stopPropagation();
                     onCenterNavClick?.('next');
                   }}
+                  onDoubleClick={(e) => e.stopPropagation()}
                   disabled={centerBrowseIndex >= currentSetPhotos.length - 1}
                 >
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -205,6 +243,7 @@ export default memo(function DisplayContent({
                     e.stopPropagation();
                     onCenterNavClick?.('prev');
                   }}
+                  onDoubleClick={(e) => e.stopPropagation()}
                   disabled={centerBrowseIndex === 0}
                 >
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -296,6 +335,7 @@ export default memo(function DisplayContent({
                     e.stopPropagation();
                     onNavClick?.('prev');
                   }}
+                  onDoubleClick={(e) => e.stopPropagation()}
                   disabled={selectedPhotoIndex === 0}
                 >
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -318,6 +358,7 @@ export default memo(function DisplayContent({
                     e.stopPropagation();
                     onNavClick?.('next');
                   }}
+                  onDoubleClick={(e) => e.stopPropagation()}
                   disabled={selectedPhotoIndex >= totalPhotos - 1}
                 >
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -555,7 +596,13 @@ function FinalizeElement({
   const [mockQrUrl, setMockQrUrl] = useState<string | null>(null);
 
   useEffect(() => {
+    console.log('[FinalizeElement] finalizeQrData:', {
+      hasData: !!finalizeQrData,
+      length: finalizeQrData?.length || 0,
+      elementRole: element.role,
+    });
     if (element.role !== 'qr' || finalizeQrData) return;
+    console.log('[FinalizeElement] Using mock QR');
     getMockQrDataUrl().then(setMockQrUrl);
   }, [element.role, finalizeQrData]);
 
@@ -636,23 +683,66 @@ function FinalizeElement({
       );
     case 'logo':
     case 'gif': {
-      console.log('[FinalizeElement] ENTERED logo/gif case for', element.role, 'sourcePath:', element.sourcePath);
-      if (!element.sourcePath) {
-        console.log('[FinalizeElement] logo/gif RETURNING NULL - no sourcePath');
-        return null;
-      }
+      if (!element.sourcePath) return null;
       const imgSrc = element.sourcePath.startsWith('asset://') ? convertFileSrc(element.sourcePath.replace('asset://', '')) : element.sourcePath;
-      console.log('[FinalizeElement] logo/gif', element.role, 'src:', imgSrc);
+
+      const frameShape = element.frameShape || 'none';
+      const hasFrame = frameShape !== 'none';
+
+      if (!hasFrame) {
+        return (
+          <div style={style}>
+            <img
+              src={imgSrc}
+              alt={element.role}
+              draggable={false}
+              onError={(e) => console.error('[FinalizeElement] FAILED to load', element.role, imgSrc, e)}
+              style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none' }}
+            />
+          </div>
+        );
+      }
+
+      const frameWidth = element.frameWidth || 8;
+      const frameColor = element.frameColor || '#ffffff';
+      const frameRadius = getFrameBorderRadius(frameShape, element.frameBorderRadius);
+      const frameClipPath = getFrameClipPath(frameShape);
+
       return (
         <div style={style}>
-          <img
-            src={imgSrc}
-            alt={element.role}
-            draggable={false}
-            onLoad={(e) => console.log('[FinalizeElement] loaded', element.role, (e.target as HTMLImageElement).naturalWidth, 'x', (e.target as HTMLImageElement).naturalHeight)}
-            onError={(e) => console.error('[FinalizeElement] FAILED to load', element.role, imgSrc, e)}
-            style={{ display: 'block', maxWidth: 'none', pointerEvents: 'none' }}
-          />
+          <div style={{
+            width: '100%',
+            height: '100%',
+            position: 'relative',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+            <div style={{
+              position: 'absolute',
+              inset: 0,
+              border: `${frameWidth}px solid ${frameColor}`,
+              borderRadius: frameRadius,
+              clipPath: frameClipPath,
+              pointerEvents: 'none',
+            }} />
+            <div style={{
+              width: '100%',
+              height: '100%',
+              position: 'relative',
+              overflow: 'hidden',
+              borderRadius: frameRadius,
+              clipPath: frameClipPath,
+            }}>
+              <img
+                src={imgSrc}
+                alt={element.role}
+                draggable={false}
+                onError={(e) => console.error('[FinalizeElement] FAILED to load', element.role, imgSrc, e)}
+                style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none' }}
+              />
+            </div>
+          </div>
         </div>
       );
     }

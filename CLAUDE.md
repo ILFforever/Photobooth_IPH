@@ -172,3 +172,43 @@ All new designs should build on this existing system.
 - Keyboard navigation for all functionality
 - Screen reader support
 - Reduced motion support
+
+---
+
+## Anti-Loop Behavior
+
+When stuck, uncertain, or spinning on a problem — **stop and do one of these instead**:
+
+### 1. Read the code first
+Before theorizing, use Read/Grep/Glob to look at the actual files.
+Never assume what code does — verify it.
+
+### 2. Ask a clarifying question
+If the intent, scope, or constraint is ambiguous, ask ONE focused question.
+Do not attempt to resolve ambiguity by trying multiple approaches in sequence.
+
+### 3. State what you know and what you don't
+Say clearly: "I understand X, but I'm unsure about Y — can you clarify?"
+Then stop. Don't fill uncertainty with guesses.
+
+### 4. Shrink the problem
+If a task feels too large or uncertain, break off the smallest verifiable
+sub-task and confirm that before continuing.
+
+---
+
+### Loop Detection — Stop if you notice yourself:
+- Trying the same fix more than **twice** in a row
+- Rewriting a block you just rewrote
+- Running a command whose output you already saw
+- Reasoning about code without having read it
+- Writing more than ~20 lines without a concrete goal
+
+When any of these happen: **stop, describe what you tried and why it failed,
+then ask before continuing.**
+
+---
+
+### Default Stance
+Bias toward **asking and reading** over **guessing and rewriting**.
+A short clarifying question is always better than a long wrong attempt.

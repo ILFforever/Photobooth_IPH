@@ -283,8 +283,8 @@
 }
 
 .setting-options-grid .setting-option-btn:hover {
-  background: var(--accent-blue);
-  border-color: var(--accent-blue);
+  background: #444444;
+  border-color: #444444;
   color: white;
 }
 

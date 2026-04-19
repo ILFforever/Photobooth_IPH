@@ -465,7 +465,7 @@ export default function CollageCanvas({ width: propWidth, height: propHeight }: 
             setIsBackgroundSelected(false);
             setSelectedOverlayId(null);
             setOpenFloatingPanel(null);
-            if (wasZoneSelected) goBackSidebarTab();
+            if (wasZoneSelected && activeSidebarTab !== 'frames') goBackSidebarTab();
           }}
         >
           {/* Invisible spacer to allow scrolling when zoomed */}

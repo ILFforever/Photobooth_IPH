@@ -87,6 +87,7 @@ export default function FinalizeView({
     setPlacedImages,
     updatePlacedImage,
     // Finalize mode state from photobooth context
+    finalizeViewMode,
     finalizeEditingZoneId: editingZoneId,
     setFinalizeEditingZoneId: setEditingZoneId,
     currentCollageFilename,
@@ -354,8 +355,14 @@ export default function FinalizeView({
       .sort()
       .join(",");
 
-    // Skip if photos haven't actually changed (prevent infinite loop)
-    if (currentPhotoIds === prevPhotoIdsRef.current) {
+    // Skip if photos haven't actually changed AND we already have placed images
+    // If viewMode is 'finalize' but placedImages is empty, we must trigger placement
+    if (currentPhotoIds === prevPhotoIdsRef.current && placedImages.size > 0) {
+      return;
+    }
+
+    // Only auto-place when in finalize mode
+    if (finalizeViewMode !== 'finalize') {
       return;
     }
 
@@ -411,6 +418,9 @@ export default function FinalizeView({
     workingFolder,
     sessionFolderName,
     setPlacedImages,
+    placedImages.size,
+    setCollageIsDirty,
+    finalizeViewMode
   ]);
 
   // Toggle display on guest screen
@@ -489,6 +499,11 @@ export default function FinalizeView({
         finalizeImageUrl: imageUrl,
         finalizeQrData: qrData || null,
       };
+      logger.debug('[FinalizeView::handleToggleDisplay] Sending to guest display:', {
+        hasQrData: !!qrData,
+        qrDataLength: qrData?.length || 0,
+        displayMode: displayData.displayMode,
+      });
       const layout = await getDisplayLayoutForGuest();
 
       if (justOpened) {
@@ -542,17 +557,19 @@ export default function FinalizeView({
 
   // Auto-send to guest display on mount if second screen is already open
   useEffect(() => {
-    if (isSecondScreenOpen && !autoTriggerRef.current && !isCompositing && !isGeneratingCollage && placedImages.size > 0) {
+    if (finalizeViewMode === 'finalize' && isSecondScreenOpen && !autoTriggerRef.current && !isCompositing && !isGeneratingCollage && placedImages.size > 0) {
       logger.debug('[FinalizeView] Auto-sending to guest display on mount');
       autoTriggerRef.current = true;
       handleToggleDisplay();
     }
-  }, [isSecondScreenOpen, isCompositing, isGeneratingCollage, placedImages.size, handleToggleDisplay]);
+  }, [finalizeViewMode, isSecondScreenOpen, isCompositing, isGeneratingCollage, placedImages.size, handleToggleDisplay]);
 
   // Update guest display when QR data arrives after initial display was sent
   useEffect(() => {
     if (isDisplayingOnGuest && qrData) {
-      logger.debug('[FinalizeView] QR data arrived, updating guest display');
+      logger.debug('[FinalizeView] QR data arrived, updating guest display', {
+        qrDataLength: qrData.length,
+      });
       updateGuestDisplay({ finalizeQrData: qrData });
     }
   }, [qrData, isDisplayingOnGuest, updateGuestDisplay]);
@@ -566,6 +583,15 @@ export default function FinalizeView({
       setDisplayedImageIsDirty(false);
     }
   }, [isDisplayingOnGuest, collageIsDirty]);
+
+  // Reset UI states when leaving finalize mode
+  useEffect(() => {
+    if (finalizeViewMode === 'capture') {
+      setIsDisplayingOnGuest(false);
+      setDisplayedImageIsDirty(false);
+      autoTriggerRef.current = false;
+    }
+  }, [finalizeViewMode]);
 
   // Sorted overlay layers for rendering
   const belowFrameOverlays = useMemo(

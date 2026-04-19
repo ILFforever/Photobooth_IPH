@@ -32,7 +32,6 @@
   position: absolute;
   inset: 0;
   background: rgba(0, 120, 212, 0.15);
-  border: 2px dashed var(--accent-blue);
   border-radius: var(--radius-md);
   pointer-events: none;
   z-index: var(--z-base);

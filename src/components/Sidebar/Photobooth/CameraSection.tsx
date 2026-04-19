@@ -33,6 +33,7 @@ import { useState, useEffect, useRef } from "react";
 import { useCamera } from "../../../contexts";
 import { detectBrand, normalizeMode, isSettingAdjustable, type CameraBrand } from "../../../services/cameraBrands";
 import { getCameraSettingsService } from "../../../services/cameraSettingsService";
+import CameraWebSocketManager from "../../../services/cameraWebSocket";
 import "./CameraSection.css";
 import { createLogger } from '../../../utils/logger';
 
@@ -240,6 +241,25 @@ export function CameraSection({
     }
   }, [connectionState, isConnected]);
 
+  // Refresh camera list when camera_disconnected event is received
+  useEffect(() => {
+    const wsManager = CameraWebSocketManager.getInstance();
+
+    const handleCameraDisconnected = () => {
+      logger.debug('[CameraSection] camera_disconnected event received, refreshing camera list');
+      // Clear the available cameras list immediately
+      setAvailableCameras([]);
+      // Then fetch the updated list using the ref
+      fetchCamerasRef.current(false);
+    };
+
+    wsManager.on('camera_disconnected', handleCameraDisconnected);
+
+    return () => {
+      wsManager.off('camera_disconnected', handleCameraDisconnected);
+    };
+  }, []);
+
   const fetchCameras = async (showLoading = false) => {
     if (showLoading) {
       setIsLoadingCameras(true);
@@ -261,6 +281,10 @@ export function CameraSection({
       }
     }
   };
+
+  // Store fetchCameras in a ref so it's stable for useEffect
+  const fetchCamerasRef = useRef(fetchCameras);
+  fetchCamerasRef.current = fetchCameras;
 
   const handleConnectCamera = async (camera: CameraInfo) => {
     setConnecting(true);

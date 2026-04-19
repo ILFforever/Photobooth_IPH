@@ -193,47 +193,48 @@ export default function CaptureView({
           </div>
         </div>
 
-        {/* Current Set Photo Strip */}
-        <CurrentSetPhotoStrip
-          currentSetPhotos={currentSetPhotos}
-          selectedPhotos={selectedPhotos}
-          setName={currentSession?.name ?? ptbSessionName ?? null}
-          workingFolder={workingFolder}
-          frameName={selectedSetName}
-          requiredPhotos={requiredPhotos}
-          onPhotoSelect={onPhotoSelect}
-          onSelectAll={onSelectAll}
-          onClearAll={onClearAll}
-          onNextSession={onNextSession}
-          onFinalize={onFinalize}
-        />
+        {/* Bottom Panel: Current Set Strip + Controls */}
+        <div className="capture-bottom-panel">
+          <CurrentSetPhotoStrip
+            currentSetPhotos={currentSetPhotos}
+            selectedPhotos={selectedPhotos}
+            setName={currentSession?.name ?? ptbSessionName ?? null}
+            workingFolder={workingFolder}
+            frameName={selectedSetName}
+            requiredPhotos={requiredPhotos}
+            onPhotoSelect={onPhotoSelect}
+            onSelectAll={onSelectAll}
+            onClearAll={onClearAll}
+            onNextSession={onNextSession}
+            onFinalize={onFinalize}
+          />
 
-        {/* Photobooth Controls */}
-        <PhotoboothControls
-          sequenceState={sequence.sequenceState}
-          currentCountdown={sequence.currentCountdown}
-          reviewCountdown={sequence.reviewCountdown}
-          photosTaken={sequence.photosTaken}
-          scrambleTick={sequence.scrambleTick}
-          isActive={sequence.isActive}
-          isAutoRunning={sequence.isAutoRunning}
-          isPaused={sequence.isPaused}
-          manualPhase={sequence.manualPhase}
-          manualReviewCountdown={sequence.manualReviewCountdown}
-          autoCount={autoCount}
-          isCameraConnected={isCameraConnected}
-          hasWorkingFolder={hasWorkingFolder}
-          onIntervalUp={() => sequence.adjustCountdown(3)}
-          onIntervalDown={() => sequence.adjustCountdown(-3)}
-          onToggleActive={onToggleActive}
-          onPause={sequence.togglePause}
-          onStopIfActive={sequence.stopIfActive}
-          onCaptureNow={sequence.captureNow}
-          onCaptureStart={onCaptureStart}
-          onShowNoCameraWarning={onShowNoCameraWarning}
-          onShowNoWorkingFolderWarning={onShowNoWorkingFolderWarning}
-          getScrambledDigit={getScrambledDigit}
-        />
+          <PhotoboothControls
+            sequenceState={sequence.sequenceState}
+            currentCountdown={sequence.currentCountdown}
+            reviewCountdown={sequence.reviewCountdown}
+            photosTaken={sequence.photosTaken}
+            scrambleTick={sequence.scrambleTick}
+            isActive={sequence.isActive}
+            isAutoRunning={sequence.isAutoRunning}
+            isPaused={sequence.isPaused}
+            manualPhase={sequence.manualPhase}
+            manualReviewCountdown={sequence.manualReviewCountdown}
+            autoCount={autoCount}
+            isCameraConnected={isCameraConnected}
+            hasWorkingFolder={hasWorkingFolder}
+            onIntervalUp={() => sequence.adjustCountdown(3)}
+            onIntervalDown={() => sequence.adjustCountdown(-3)}
+            onToggleActive={onToggleActive}
+            onPause={sequence.togglePause}
+            onStopIfActive={sequence.stopIfActive}
+            onCaptureNow={sequence.captureNow}
+            onCaptureStart={onCaptureStart}
+            onShowNoCameraWarning={onShowNoCameraWarning}
+            onShowNoWorkingFolderWarning={onShowNoWorkingFolderWarning}
+            getScrambledDigit={getScrambledDigit}
+          />
+        </div>
       </div>
 
       {/* Right Sidebar - Photo Sets Catalog */}

@@ -1,5 +1,6 @@
-import { ChevronRight, Image as ImageIcon, Check, FileCheck, SquareCheck, SquareX } from "lucide-react";
-import { memo, useEffect, useRef } from "react";
+import { ChevronRight, Image as ImageIcon, Check, FileCheck, SquareCheck, SquareX, Keyboard } from "lucide-react";
+import { memo, useEffect, useRef, useState } from "react";
+import KeyboardShortcutsModal from "./KeyboardShortcutsModal";
 import "./CurrentSetPhotoStrip.css";
 
 interface CurrentSetPhoto {
@@ -36,6 +37,7 @@ export default memo(function CurrentSetPhotoStrip({
   onNextSession,
   onFinalize,
 }: CurrentSetPhotoStripProps) {
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const photosContainerRef = useRef<HTMLDivElement>(null);
 
   // Handle scroll wheel for horizontal scrolling
@@ -142,7 +144,28 @@ export default memo(function CurrentSetPhotoStrip({
             </>
           )}
         </div>
+        <div className="footer-shortcuts-hint">
+          <span className="shortcuts-key">Space</span>
+          <span className="shortcuts-label">Capture</span>
+          <span className="shortcuts-key">A/H</span>
+          <span className="shortcuts-label">Auto / Hold</span>
+          <span className="shortcuts-key">↑/↓</span>
+          <span className="shortcuts-label">Interval +/-</span>
+        </div>
+        <button 
+          className="shortcuts-modal-trigger"
+          onClick={() => setShowShortcuts(true)}
+          title="View all keyboard shortcuts"
+        >
+          <Keyboard size={14} />
+        </button>
       </div>
+      
+      <KeyboardShortcutsModal 
+        isOpen={showShortcuts} 
+        onClose={() => setShowShortcuts(false)} 
+      />
+
       <div className="current-set-side-buttons">
         <button
           className="next-session-side-btn"

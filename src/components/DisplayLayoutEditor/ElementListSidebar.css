@@ -489,6 +489,53 @@
 }
 
 /* ========================================
+ * Property Group Header + Content
+ * Matches the flat style of the rest of the properties panel —
+ * no inset box, no special background.
+ * ======================================== */
+.props-group-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 1px 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.props-group-header svg {
+  flex-shrink: 0;
+  color: rgba(255, 255, 255, 0.35);
+  transition: transform var(--transition-base);
+}
+
+.props-group-header .props-group-chevron {
+  transform: rotate(-90deg);
+}
+
+.props-group-header .props-group-chevron.open {
+  transform: rotate(0deg);
+}
+
+.props-group-header span {
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: rgba(255, 255, 255, 0.35);
+  transition: color var(--transition-base);
+}
+
+.props-group-header:hover span {
+  color: var(--text-secondary);
+}
+
+.props-group-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ========================================
  * Utility Classes
  * ======================================== */
 .text-muted-small {

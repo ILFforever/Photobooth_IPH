@@ -214,6 +214,15 @@ export default function PhotoboothWorkspace() {
     removePhotoDownloadedListener,
   });
 
+  // Debug logging for QR data changes
+  useEffect(() => {
+    logger.debug('[PhotoboothWorkspace] sessionQrData changed:', {
+      hasQrData: !!sessionQrData,
+      qrDataLength: sessionQrData?.length || 0,
+      currentSessionId: currentSession?.id,
+    });
+  }, [sessionQrData, currentSession?.id]);
+
   // Controls wrapper for UI compatibility
   const setAutoRunActive = useCallback((active: boolean) => {
     if (active) sequence.start();
@@ -241,7 +250,7 @@ export default function PhotoboothWorkspace() {
   const getScrambledDigit = (offset: number, stopTick: number) =>
     sequence.scrambleTick < stopTick ? (sequence.scrambleTick + offset) % 10 : 0;
 
-  const togglePhotoSelection = (photoId: string) => {
+  const togglePhotoSelection = useCallback((photoId: string) => {
     // Completely lock photo selection when no set is selected
     if (requiredPhotos === 0) {
       showToast('No set selected', 'warning', 2000, 'Select a custom set in Control Center first');
@@ -261,7 +270,7 @@ export default function PhotoboothWorkspace() {
         return prev;
       }
     });
-  };
+  }, [requiredPhotos, showToast]);
 
   const handleSelectAll = () => {
     setSelectedPhotos(currentSetPhotos.map(p => p.id));
@@ -297,38 +306,6 @@ export default function PhotoboothWorkspace() {
   const currentPreset = displayPresets.find(p => p.id === displayMode);
   const modeIndex = displayPresets.findIndex(p => p.id === displayMode);
 
-  // Handle keyboard navigation for photo selection in canvas mode
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // ESC to deselect photo
-      if (e.key === 'Escape' && selectedPhotoIndex !== null && displayMode === 'canvas') {
-        setSelectedPhotoIndex(null);
-        return;
-      }
-
-      // Arrow key navigation in canvas mode
-      if (selectedPhotoIndex !== null && displayMode === 'canvas') {
-        const photoCount = currentSetPhotos.length || 6;
-        if (e.key === 'ArrowLeft') {
-          e.preventDefault();
-          setSelectedPhotoIndex(prev => (prev !== null ? Math.max(0, prev - 1) : null));
-        } else if (e.key === 'ArrowRight') {
-          e.preventDefault();
-          setSelectedPhotoIndex(prev => (prev !== null ? Math.min(photoCount - 1, prev + 1) : null));
-        } else if (e.key === 'ArrowUp') {
-          e.preventDefault();
-          setSelectedPhotoIndex(prev => (prev !== null ? Math.max(0, prev - 3) : null));
-        } else if (e.key === 'ArrowDown') {
-          e.preventDefault();
-          setSelectedPhotoIndex(prev => (prev !== null ? Math.min(photoCount - 1, prev + 3) : null));
-        }
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedPhotoIndex, displayMode, currentSetPhotos.length]);
-
   // Handle navigation clicks for DisplayContent
   const handleNavClick = useCallback((direction: 'prev' | 'next') => {
     setSelectedPhotoIndex(prev => {
@@ -356,7 +333,11 @@ export default function PhotoboothWorkspace() {
   const handleModeChange = useCallback((mode: DisplayMode) => {
     setDisplayMode(mode);
     setSelectedPhotoIndex(null);
-  }, []);
+    // Reset center browse index when leaving center mode
+    if (displayMode === 'center' && mode !== 'center') {
+      setCenterBrowseIndex(null);
+    }
+  }, [displayMode]);
 
   // Toggle second screen handler
   const handleToggleSecondScreen = useCallback(() => {
@@ -372,88 +353,262 @@ export default function PhotoboothWorkspace() {
     }
   }, [isSecondScreenOpen, closeSecondScreen, openSecondScreen, currentSetPhotos, selectedPhotoIndex, displayMode, centerBrowseIndex]);
 
+  // Handle keyboard navigation for photo selection in canvas mode
+  useEffect(() => {
+    // Helper function to simulate a real mouse click with proper visual feedback
+    const simulateMouseClick = (element: HTMLElement) => {
+      // Get the center of the element
+      const rect = element.getBoundingClientRect();
+      const x = rect.left + rect.width / 2;
+      const y = rect.top + rect.height / 2;
+
+      // Add active class manually since :active pseudo-class doesn't work with programmatic events
+      element.classList.add('active');
+
+      // Create and dispatch mousedown event
+      const mouseDownEvent = new MouseEvent('mousedown', {
+        bubbles: true,
+        cancelable: true,
+        view: window,
+        clientX: x,
+        clientY: y,
+        button: 0,
+        buttons: 1,
+      });
+      element.dispatchEvent(mouseDownEvent);
+
+      // Create and dispatch click event
+      const clickEvent = new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+        view: window,
+        clientX: x,
+        clientY: y,
+        button: 0,
+        buttons: 1,
+      });
+      element.dispatchEvent(clickEvent);
+
+      // Create and dispatch mouseup event
+      const mouseUpEvent = new MouseEvent('mouseup', {
+        bubbles: true,
+        cancelable: true,
+        view: window,
+        clientX: x,
+        clientY: y,
+        button: 0,
+        buttons: 0,
+      });
+      element.dispatchEvent(mouseUpEvent);
+
+      // Remove active class after a short delay to show the press animation
+      setTimeout(() => {
+        element.classList.remove('active');
+      }, 150);
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Photobooth controls shortcuts - trigger button clicks for visual feedback and guards
+      const captureBtn = document.getElementById('capture-btn');
+      const autoBtn = document.getElementById('auto-btn');
+      const holdBtn = document.getElementById('hold-btn');
+      const intervalUpBtn = document.getElementById('interval-up-btn');
+      const intervalDownBtn = document.getElementById('interval-down-btn');
+
+      // Guest display mode shortcuts (only in capture mode)
+      if (viewMode === 'capture') {
+        if (e.key.toLowerCase() === 'q') {
+          e.preventDefault();
+          handleModeChange('single');
+          return;
+        }
+        if (e.key.toLowerCase() === 'w') {
+          e.preventDefault();
+          handleModeChange('center');
+          return;
+        }
+        if (e.key.toLowerCase() === 'e') {
+          e.preventDefault();
+          handleModeChange('canvas');
+          return;
+        }
+
+        // Toggle photo selection with 1-9 (1-9) and 0 (10)
+        if (/^[0-9]$/.test(e.key)) {
+          const num = parseInt(e.key);
+          const index = num === 0 ? 9 : num - 1;
+          if (currentSetPhotos[index]) {
+            e.preventDefault();
+            togglePhotoSelection(currentSetPhotos[index].id);
+          }
+          return;
+        }
+      }
+
+      // Space/Enter for shutter (capture now)
+      // Guard: disabled when sequence.isActive or sequence.isAutoRunning
+      if ((e.key === ' ' || e.key === 'Enter') && !e.repeat && captureBtn) {
+        e.preventDefault();
+        if (!sequence.isActive && !sequence.isAutoRunning) {
+          simulateMouseClick(captureBtn);
+        }
+        return;
+      }
+
+      // A for auto toggle
+      // Guard: disabled when !isAutoRunning && (!canStartAuto || isActive)
+      // canStartAuto = isCameraConnected && hasWorkingFolder
+      if ((e.key === 'a' || e.key === 'A') && autoBtn) {
+        e.preventDefault();
+        const canStartAuto = isCameraConnected && !!workingFolder;
+        const canToggle = sequence.isAutoRunning || (canStartAuto && !sequence.isActive);
+        if (canToggle) {
+          simulateMouseClick(autoBtn);
+        }
+        return;
+      }
+
+      // H for hold/pause toggle
+      // Guard: disabled when !isAutoRunning
+      if ((e.key === 'h' || e.key === 'H') && holdBtn) {
+        e.preventDefault();
+        if (sequence.isAutoRunning) {
+          simulateMouseClick(holdBtn);
+        }
+        return;
+      }
+
+      // Arrow up/down for interval adjustment (only when not in canvas photo navigation)
+      if (selectedPhotoIndex === null || displayMode !== 'canvas') {
+        if (e.key === 'ArrowUp' && intervalUpBtn) {
+          e.preventDefault();
+          simulateMouseClick(intervalUpBtn);
+          return;
+        } else if (e.key === 'ArrowDown' && intervalDownBtn) {
+          e.preventDefault();
+          simulateMouseClick(intervalDownBtn);
+          return;
+        }
+      }
+
+      // ESC to deselect photo
+      if (e.key === 'Escape' && selectedPhotoIndex !== null && displayMode === 'canvas') {
+        setSelectedPhotoIndex(null);
+        return;
+      }
+
+      // Arrow key navigation in canvas mode
+      if (selectedPhotoIndex !== null && displayMode === 'canvas') {
+        const photoCount = currentSetPhotos.length || 6;
+        if (e.key === 'ArrowLeft') {
+          e.preventDefault();
+          setSelectedPhotoIndex(prev => (prev !== null ? Math.max(0, prev - 1) : null));
+        } else if (e.key === 'ArrowRight') {
+          e.preventDefault();
+          setSelectedPhotoIndex(prev => (prev !== null ? Math.min(photoCount - 1, prev + 1) : null));
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          setSelectedPhotoIndex(prev => (prev !== null ? Math.max(0, prev - 3) : null));
+        } else if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          setSelectedPhotoIndex(prev => (prev !== null ? Math.min(photoCount - 1, prev + 3) : null));
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedPhotoIndex, displayMode, currentSetPhotos, sequence, isCameraConnected, workingFolder, viewMode, handleModeChange, togglePhotoSelection]);
+
   return (
     <div className="photobooth-workspace">
       <div className="photobooth-slide-container">
-        <AnimatePresence mode="sync">
-          {viewMode === 'capture' ? (
-            <CaptureView
-              displayMode={displayMode}
-              sliderStyles={sliderStyles}
-              tabRefs={tabRefs}
-              displayPresets={displayPresets}
+        {/* Render both views and toggle visibility to keep state in memory */}
+        <div 
+          className="view-wrapper" 
+          style={{ 
+            display: viewMode === 'capture' ? 'block' : 'none',
+            position: 'absolute',
+            inset: 0 
+          }}
+        >
+          <CaptureView
+            displayMode={displayMode}
+            sliderStyles={sliderStyles}
+            tabRefs={tabRefs}
+            displayPresets={displayPresets}
+            isSecondScreenOpen={isSecondScreenOpen}
+            onModeChange={handleModeChange}
+            onToggleSecondScreen={handleToggleSecondScreen}
+            currentSetPhotos={currentSetPhotos}
+            selectedPhotoIndex={selectedPhotoIndex}
+            centerBrowseIndex={centerBrowseIndex}
+            selectedPhotos={selectedPhotos}
+            liveViewStream={liveViewStream}
+            hdmiStreamUrl={hdmi.frameUrl || ptp.frameUrl}
+            showCapturePreview={showCapturePreview}
+            capturedPhotoUrl={capturedPhotoUrl}
+            onCapturePreviewLoad={handleCapturePreviewLoad}
+            onPhotoDoubleClick={setSelectedPhotoIndex}
+            onExitFullscreen={handleExitFullscreen}
+            onNavClick={handleNavClick}
+            onCenterPhotoClick={handleCenterPhotoClick}
+            onCenterBack={handleCenterBack}
+            onCenterNavClick={handleCenterNavClick}
+            onPhotoSelect={togglePhotoSelection}
+            onSelectAll={handleSelectAll}
+            onClearAll={handleClearAll}
+            currentSession={currentSession}
+            ptbSessionName={null}
+            workingFolder={workingFolder}
+            selectedSetName={selectedSetName}
+            requiredPhotos={requiredPhotos}
+            onNextSession={handleNextSession}
+            onFinalize={handleFinalizeSession}
+            sequence={sequence}
+            autoCount={autoCount}
+            isCameraConnected={isCameraConnected}
+            hasWorkingFolder={!!workingFolder}
+            onToggleActive={handleToggleActive}
+            onCaptureStart={handleCaptureStart}
+            onShowNoCameraWarning={handleShowNoCameraWarning}
+            onShowNoWorkingFolderWarning={handleShowNoWorkingFolderWarning}
+            getScrambledDigit={getScrambledDigit}
+            sessions={sessions}
+            selectedSetId={selectedSetId}
+            expandedSets={expandedSets}
+            hasEverConnected={hasEverConnected}
+            isConnecting={isConnecting}
+            onSetSelect={setSelectedSetId}
+            onToggleSet={toggleSet}
+            onLoadSession={loadSession}
+          />
+        </div>
+
+        <div 
+          className="view-wrapper finalize-mode" 
+          style={{ 
+            display: viewMode === 'finalize' ? 'block' : 'none',
+            position: 'absolute',
+            inset: 0 
+          }}
+        >
+          {photoboothFrame && (
+            <FinalizeView
+              frame={photoboothFrame}
+              selectedPhotos={getSelectedPhotosOrdered()}
+              workingFolder={workingFolder!}
+              sessionFolderName={sessionFolderName}
+              onBack={handleBackToCapture}
+              updateGuestDisplay={updateGuestDisplay}
+              updateDisplayLayout={updateDisplayLayout}
               isSecondScreenOpen={isSecondScreenOpen}
-              onModeChange={handleModeChange}
-              onToggleSecondScreen={handleToggleSecondScreen}
-              currentSetPhotos={currentSetPhotos}
-              selectedPhotoIndex={selectedPhotoIndex}
-              centerBrowseIndex={centerBrowseIndex}
-              selectedPhotos={selectedPhotos}
-              liveViewStream={liveViewStream}
-              hdmiStreamUrl={hdmi.frameUrl || ptp.frameUrl}
-              showCapturePreview={showCapturePreview}
-              capturedPhotoUrl={capturedPhotoUrl}
-              onCapturePreviewLoad={handleCapturePreviewLoad}
-              onPhotoDoubleClick={setSelectedPhotoIndex}
-              onExitFullscreen={handleExitFullscreen}
-              onNavClick={handleNavClick}
-              onCenterPhotoClick={handleCenterPhotoClick}
-              onCenterBack={handleCenterBack}
-              onCenterNavClick={handleCenterNavClick}
-              onPhotoSelect={togglePhotoSelection}
-              onSelectAll={handleSelectAll}
-              onClearAll={handleClearAll}
-              currentSession={currentSession}
-              ptbSessionName={null}
-              workingFolder={workingFolder}
-              selectedSetName={selectedSetName}
-              requiredPhotos={requiredPhotos}
-              onNextSession={handleNextSession}
-              onFinalize={handleFinalizeSession}
-              sequence={sequence}
-              autoCount={autoCount}
-              isCameraConnected={isCameraConnected}
-              hasWorkingFolder={!!workingFolder}
-              onToggleActive={handleToggleActive}
-              onCaptureStart={handleCaptureStart}
-              onShowNoCameraWarning={handleShowNoCameraWarning}
-              onShowNoWorkingFolderWarning={handleShowNoWorkingFolderWarning}
-              getScrambledDigit={getScrambledDigit}
-              sessions={sessions}
-              selectedSetId={selectedSetId}
-              expandedSets={expandedSets}
-              hasEverConnected={hasEverConnected}
-              isConnecting={isConnecting}
-              onSetSelect={setSelectedSetId}
-              onToggleSet={toggleSet}
-              onLoadSession={loadSession}
+              openSecondScreen={openSecondScreen}
+              qrData={sessionQrData}
+              onDisplayShown={handleUploadCollage}
             />
-          ) : (
-            <motion.div
-              key="finalize"
-              className="photobooth-container finalize-mode"
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
-              transition={{ type: 'tween', duration: 0.8, ease: 'easeInOut' }}
-              style={{ position: 'absolute', inset: 0 }}
-            >
-              <FinalizeView
-                frame={photoboothFrame!}
-                selectedPhotos={getSelectedPhotosOrdered()}
-                workingFolder={workingFolder!}
-                sessionFolderName={sessionFolderName}
-                onBack={handleBackToCapture}
-                updateGuestDisplay={updateGuestDisplay}
-                updateDisplayLayout={updateDisplayLayout}
-                isSecondScreenOpen={isSecondScreenOpen}
-                openSecondScreen={openSecondScreen}
-                qrData={sessionQrData}
-                onDisplayShown={handleUploadCollage}
-              />
-            </motion.div>
           )}
-        </AnimatePresence>
+        </div>
       </div>
 
       {/* Session Selection Modal */}

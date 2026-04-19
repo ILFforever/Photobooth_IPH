@@ -204,7 +204,7 @@ export function DisplayLayoutSection({
             <span className="collapsible-title">Guest Display</span>
           </div>
           <span className={`collapsible-badge ${isDefaultActive ? 'badge-yellow' : ''}`}>
-            {selectedLayout ? selectedLayout.name : 'Default'}
+            {selectedLayout ? selectedLayout.name : 'Classic'}
           </span>
         </button>
 
@@ -220,14 +220,14 @@ export function DisplayLayoutSection({
                   <Monitor size={16} />
                 </div>
                 <div className="display-layout-section-info">
-                  <span className="display-layout-section-name">Default</span>
+                  <span className="display-layout-section-name">Classic</span>
                   <span className="display-layout-section-desc">QR + collage side by side</span>
                 </div>
                 <button
                   className="display-layout-preview-btn"
                   onClick={e => {
                     e.stopPropagation();
-                    setPreview({ type: 'default', name: 'Default' });
+                    setPreview({ type: 'default', name: 'Classic' });
                   }}
                   title="Preview layout"
                 >

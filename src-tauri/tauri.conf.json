@@ -17,6 +17,8 @@
         "title": "Photobooth_IPH",
         "width": 1920,
         "height": 1080,
+        "minWidth": 1280,
+        "minHeight": 920,
         "fullscreen": false,
         "dragDropEnabled": false,
         "visible": false,

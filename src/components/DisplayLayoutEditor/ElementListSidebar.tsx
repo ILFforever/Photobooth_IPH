@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { Icon } from '@mdi/react';
 import { mdiSwapHorizontal, mdiSwapVertical } from '@mdi/js';
+import { ChevronDown } from 'lucide-react';
 import { useDisplayLayout } from '../../contexts/display/DisplayLayoutContext';
 import { DisplayElement } from '../../types/displayLayout';
 import { convertFileSrc } from '@tauri-apps/api/core';
+import { resizeLayoutImageIfNeeded } from '../../utils/imageUtils';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { BlendMode } from '../../types/overlay';
@@ -156,6 +158,7 @@ export function ElementListSidebar() {
   // Modal state for save default layout
   const [saveDefaultModalOpen, setSaveDefaultModalOpen] = useState(false);
   const [creatingCopy, setCreatingCopy] = useState(false);
+  const [frameOpen, setFrameOpen] = useState(false);
 
   // Direct pass-through - allow editing on default layout
   const handleUpdateElement = updateElement;
@@ -555,6 +558,78 @@ export function ElementListSidebar() {
                   {/* Logo / GIF */}
                   {(element.role === 'logo' || element.role === 'gif') && (
                     <>
+                      {/* Frame controls */}
+                      <div className="props-role-divider" />
+                      <div className="props-group-header" onClick={() => setFrameOpen(o => !o)}>
+                        <ChevronDown size={12} className={`props-group-chevron${frameOpen ? ' open' : ''}`} />
+                        <span>Frame</span>
+                      </div>
+                      {frameOpen && <div className="props-group-content">
+                        <div className="props-field">
+                          <label>Frame Shape</label>
+                          <select
+                            className="props-weight-select"
+                            value={element.frameShape || 'none'}
+                            onChange={(e) => handleUpdateElement(element.id, { frameShape: e.target.value as any })}
+                          >
+                            <option value="none">None</option>
+                            <option value="rectangle">Rectangle</option>
+                            <option value="circle">Circle</option>
+                            <option value="rounded_rect">Rounded</option>
+                            <option value="ellipse">Ellipse</option>
+                            <option value="pill">Pill</option>
+                            <option value="triangle">Triangle</option>
+                            <option value="star">Star</option>
+                            <option value="hexagon">Hexagon</option>
+                            <option value="octagon">Octagon</option>
+                            <option value="pentagon">Pentagon</option>
+                            <option value="diamond">Diamond</option>
+                            <option value="heart">Heart</option>
+                            <option value="cross">Cross</option>
+                          </select>
+                        </div>
+
+                        {element.frameShape && element.frameShape !== 'none' && (
+                          <>
+                            <div className="grid-2-col">
+                              <div className="props-field">
+                                <label>Frame Color</label>
+                                <div className="display-sidebar-color-row">
+                                  <input
+                                    type="color"
+                                    className="display-sidebar-color-input"
+                                    value={element.frameColor || '#ffffff'}
+                                    onChange={(e) => handleUpdateElement(element.id, { frameColor: e.target.value })}
+                                  />
+                                  <span className="display-sidebar-color-value">{element.frameColor || '#ffffff'}</span>
+                                </div>
+                              </div>
+                              <div className="props-field">
+                                <label>Frame Width</label>
+                                <SmartNumericInput
+                                  value={element.frameWidth || 8}
+                                  min={0}
+                                  max={100}
+                                  onChange={(val) => handleUpdateElement(element.id, { frameWidth: val })}
+                                  placeholder="8"
+                                />
+                              </div>
+                            </div>
+                            {element.frameShape === 'rounded_rect' && (
+                              <div className="props-field">
+                                <label>Corner Radius</label>
+                                <SmartNumericInput
+                                  value={element.frameBorderRadius || 100}
+                                  min={0}
+                                  max={200}
+                                  onChange={(val) => handleUpdateElement(element.id, { frameBorderRadius: val })}
+                                  placeholder="100"
+                                />
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>}
                       <div className="props-role-divider" />
                       <button className="display-sidebar-btn full-width" onClick={async () => {
                         const filters = element.role === 'gif'
@@ -563,7 +638,11 @@ export function ElementListSidebar() {
                         const result = await open({ multiple: false, filters: filters as any });
                         if (result) {
                           const path = typeof result === 'string' ? result : (result as any).path;
-                          handleUpdateElement(element.id, { sourcePath: convertFileSrc(path) });
+                          const autoResize = localStorage.getItem('dl.autoResize') === 'true';
+                          const maxDim = parseInt(localStorage.getItem('dl.maxDim') ?? '2048', 10);
+                          const resized = autoResize ? await resizeLayoutImageIfNeeded(path, maxDim) : null;
+                          if (resized) showToast('Image Resized', 'success', 4000, `${resized.originalMB.toFixed(1)} MB → ${resized.resizedMB.toFixed(1)} MB`);
+                          handleUpdateElement(element.id, { sourcePath: resized?.dataUrl ?? convertFileSrc(path) });
                         }
                       }}>
                         <span>{element.sourcePath ? 'Replace File' : 'Choose File'}</span>

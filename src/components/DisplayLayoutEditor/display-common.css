@@ -81,30 +81,7 @@
 /* ========================================
  * Collapsible Sections
  * ======================================== */
-.props-group-header {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  width: 100%;
-  padding: 8px 0;
-  background: transparent;
-  border: none;
-  border-bottom: 1px solid var(--border-color);
-  cursor: pointer;
-  transition: background var(--transition-base);
-}
-
-.props-group-header:hover {
-  background: rgba(255, 255, 255, 0.03);
-}
-
-.props-group-header svg {
-  color: var(--text-secondary);
-  transition: transform var(--transition-base);
-}
-
 .props-group-content {
-  padding: var(--spacing-md) 0;
   animation: slideDown var(--transition-normal) ease-out;
 }
 
@@ -430,4 +407,135 @@
 .display-layout-editor * {
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+/* ========================================
+ * Moveable Styles
+ * ======================================== */
+.display-element-moveable {
+  pointer-events: none !important;
+}
+
+.display-element-moveable .moveable-control,
+.display-element-moveable .moveable-control-box,
+.display-element-moveable .moveable-line {
+  pointer-events: auto !important;
+}
+
+/* Selection border lines */
+.display-element-moveable .moveable-line {
+  background: rgba(255, 255, 255, 0.9) !important;
+}
+
+.display-element-moveable .moveable-line.moveable-rotation-line {
+  height: 36px !important;
+  transform-origin: 0.5px 35.5px !important;
+  background: rgba(255, 255, 255, 0.4) !important;
+  width: 1px !important;
+}
+
+.display-element-moveable .moveable-line.moveable-horizontal {
+  height: 1px !important;
+}
+
+.display-element-moveable .moveable-line.moveable-vertical {
+  width: 1px !important;
+}
+
+/* Edge lines (the border of the selection box) */
+.display-element-moveable .moveable-edge {
+  background: rgba(255, 255, 255, 0.15) !important;
+}
+
+/* Corner handles — small white squares with a subtle shadow ring */
+.display-element-moveable .moveable-control.moveable-nw,
+.display-element-moveable .moveable-control.moveable-ne,
+.display-element-moveable .moveable-control.moveable-sw,
+.display-element-moveable .moveable-control.moveable-se {
+  width: 10px !important;
+  height: 10px !important;
+  border-radius: 2px !important;
+  margin-top: -5px !important;
+  margin-left: -5px !important;
+  background: #ffffff !important;
+  border: 1.5px solid rgba(0, 0, 0, 0.35) !important;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.2), 0 1px 4px rgba(0, 0, 0, 0.5) !important;
+  transition: box-shadow 0.1s ease !important;
+}
+
+/* Edge mid-point handles — narrow capsules */
+.display-element-moveable .moveable-control.moveable-n,
+.display-element-moveable .moveable-control.moveable-s {
+  width: 18px !important;
+  height: 6px !important;
+  border-radius: 3px !important;
+  margin-top: -3px !important;
+  margin-left: -9px !important;
+  background: #ffffff !important;
+  border: 1.5px solid rgba(0, 0, 0, 0.35) !important;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.2), 0 1px 4px rgba(0, 0, 0, 0.5) !important;
+  transition: box-shadow 0.1s ease !important;
+}
+
+.display-element-moveable .moveable-control.moveable-e,
+.display-element-moveable .moveable-control.moveable-w {
+  width: 6px !important;
+  height: 18px !important;
+  border-radius: 3px !important;
+  margin-top: -9px !important;
+  margin-left: -3px !important;
+  background: #ffffff !important;
+  border: 1.5px solid rgba(0, 0, 0, 0.35) !important;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.2), 0 1px 4px rgba(0, 0, 0, 0.5) !important;
+  transition: box-shadow 0.1s ease !important;
+}
+
+/* Rotation handle — circle at top */
+.display-element-moveable .moveable-control.moveable-rotatable {
+  width: 14px !important;
+  height: 14px !important;
+  border-radius: 50% !important;
+  margin-top: -7px !important;
+  margin-left: -7px !important;
+  background: #ffffff !important;
+  border: 1.5px solid rgba(0, 0, 0, 0.35) !important;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.2), 0 1px 4px rgba(0, 0, 0, 0.5) !important;
+  cursor: grab !important;
+  transition: box-shadow 0.1s ease !important;
+}
+
+/* Hover — expand the glow ring, no transform so cursor stays over the handle */
+.display-element-moveable .moveable-control:hover {
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.5), 0 2px 6px rgba(0, 0, 0, 0.6) !important;
+}
+
+.display-element-moveable .moveable-control.moveable-rotatable:hover {
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.5), 0 2px 6px rgba(0, 0, 0, 0.6) !important;
+  cursor: grab !important;
+}
+
+/* Guidelines */
+.display-element-moveable .moveable-guideline {
+  background: rgba(59, 130, 246, 0.6) !important;
+  height: 1px !important;
+}
+
+/* Snap digit display */
+.display-element-moveable .moveable-snap-digit {
+  background: rgba(30, 30, 30, 0.95) !important;
+  color: #fff !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  border-radius: 4px !important;
+  padding: 3px 8px !important;
+  font-size: 11px !important;
+  font-family: var(--font-mono) !important;
+  font-weight: 500 !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Outline */
+.display-element-moveable .moveable-outline {
+  stroke: rgba(255, 255, 255, 0.4) !important;
+  stroke-width: 1px !important;
+  fill: transparent !important;
 }

@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
 import Icon from '@mdi/react';
 import {
@@ -41,9 +40,7 @@ export function ZoneItem({
   onSelect,
   onToggleLock,
 }: ZoneItemProps) {
-  const [dragHandled, setDragHandled] = useState(false);
-
-  const [{ isDragging }, drag] = useDrag({
+  const [{ isDragging }, drag, preview] = useDrag({
     type: DRAG_TYPE,
     item: { index },
     collect: (monitor) => ({
@@ -51,16 +48,17 @@ export function ZoneItem({
     }),
   });
 
-  const [{ isOver, canDrop }, drop] = useDrop({
+  const [{ isOver }, drop] = useDrop({
     accept: DRAG_TYPE,
-    hover(item: { index: number }) {
-      if (item.index === index) return;
-      onMove(item.index, index);
-      item.index = index;
+    drop(item: { index: number }) {
+      const dragIndex = item.index;
+      const hoverIndex = index;
+      if (dragIndex !== hoverIndex) {
+        onMove(dragIndex, hoverIndex);
+      }
     },
     collect: (monitor) => ({
       isOver: monitor.isOver({ shallow: true }),
-      canDrop: monitor.canDrop(),
     }),
   });
 
@@ -68,30 +66,28 @@ export function ZoneItem({
 
   return (
     <div
-      ref={(node) => { drag(drop(node)); }}
-      className={`zone-item-wrapper ${isSelected ? 'expanded' : ''} ${isOver && canDrop && !isDragging ? 'drag-over' : ''} ${isLocked ? 'locked' : ''}`}
-      style={{ opacity: isDragging ? 0.3 : 1 }}
+      ref={(node) => {
+        if (typeof drop === 'function') drop(node);
+        preview(node);
+      }}
+      className={`zone-item-wrapper ${isSelected ? 'expanded' : ''} ${isOver && !isDragging ? 'drag-over' : ''} ${isLocked ? 'locked' : ''}`}
+      style={{ opacity: isDragging ? 0 : 1 }}
     >
       {/* Zone Header — always visible */}
       <div
         className={`zone-item ${isSelected ? 'selected' : ''}`}
         onClick={() => {
-          if (!dragHandled) {
-            onSelect(zone.id);
-            onToggle();
-          }
-          setDragHandled(false);
+          onSelect(zone.id);
+          onToggle();
         }}
       >
         <div className="zone-item-left">
           <div
-            className="zone-drag-handle"
-            onMouseDown={() => setDragHandled(true)}
-            onMouseUp={() => setDragHandled(true)}
-            onClick={(e) => {
-              e.stopPropagation();
-              setDragHandled(false);
+            ref={(node) => {
+              if (typeof drag === 'function') drag(node);
             }}
+            className="zone-drag-handle"
+            onClick={(e) => e.stopPropagation()}
           >
             <span /><span /><span />
           </div>
@@ -158,15 +154,16 @@ export function ZoneItem({
                       detail: { index, updates: { [field]: Number(e.target.value) } }
                     }));
                   }}
+                  onMouseDown={(e) => e.stopPropagation()}
                 />
               </div>
             ))}
           </div>
           {zone.shape === 'rounded_rect' && (
-            <div className="zone-prop-roundness">
+            <div className="zone-prop-field">
               <label>Radius</label>
               <input
-                type="range"
+                type="number"
                 min="0"
                 max="50"
                 step="1"
@@ -176,8 +173,8 @@ export function ZoneItem({
                     detail: { index, updates: { borderRadius: Number(e.target.value) } }
                   }));
                 }}
+                onMouseDown={(e) => e.stopPropagation()}
               />
-              <span className="zone-prop-roundness-value">{zone.borderRadius || 12}</span>
             </div>
           )}
         </div>

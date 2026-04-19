@@ -29,7 +29,8 @@
     "react": "^19.1.0",
     "react-dnd": "^16.0.1",
     "react-dnd-html5-backend": "^16.0.1",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "react-moveable": "^0.56.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",

@@ -30,42 +30,42 @@
 
 .resize-handle {
   position: absolute;
-  width: 10px;
-  height: 10px;
+  width: 14px;
+  height: 14px;
   background: var(--accent-blue, #3b82f6);
   border: 2px solid white;
-  border-radius: 2px;
+  border-radius: 3px;
   pointer-events: auto;
   z-index: 10;
 }
 
 .resize-handle.nw {
-  top: -6px;
-  left: -6px;
+  top: -8px;
+  left: -8px;
   cursor: nw-resize;
 }
 
 .resize-handle.ne {
-  top: -6px;
-  right: -6px;
+  top: -8px;
+  right: -8px;
   cursor: ne-resize;
 }
 
 .resize-handle.sw {
-  bottom: -6px;
-  left: -6px;
+  bottom: -8px;
+  left: -8px;
   cursor: sw-resize;
 }
 
 .resize-handle.se {
-  bottom: -6px;
-  right: -6px;
+  bottom: -8px;
+  right: -8px;
   cursor: se-resize;
 }
 
 .rotation-handle {
   position: absolute;
-  top: -30px;
+  top: -20px;
   left: 50%;
   transform: translateX(-50%);
   width: 14px;
@@ -82,13 +82,10 @@
   cursor: grabbing;
 }
 
-.rotation-handle::after {
-  content: '';
+.rotation-line {
   position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
   width: 2px;
-  height: 14px;
   background: var(--accent-blue, #3b82f6);
+  z-index: -1;
+  pointer-events: none;
 }

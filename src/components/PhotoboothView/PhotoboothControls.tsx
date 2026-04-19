@@ -246,10 +246,10 @@ function ControlButtons({
       <div className="control-group">
         <div className="control-label">INTERVAL</div>
         <div className="button-row">
-          <button className="ctrl-btn" onClick={onIntervalUp}>
+          <button id="interval-up-btn" className="ctrl-btn" onClick={onIntervalUp}>
             <span>▲</span>
           </button>
-          <button className="ctrl-btn" onClick={onIntervalDown}>
+          <button id="interval-down-btn" className="ctrl-btn" onClick={onIntervalDown}>
             <span>▼</span>
           </button>
         </div>
@@ -259,6 +259,7 @@ function ControlButtons({
         <div className="control-label">TRANSPORT</div>
         <div className="button-row">
           <button
+            id="auto-btn"
             className={`ctrl-btn ${!isAutoRunning ? 'auto-idle' : 'auto-running'}`}
             onClick={onToggleActive}
             disabled={!isAutoRunning && (!canStartAuto || isActive)}
@@ -268,6 +269,7 @@ function ControlButtons({
             <span className="btn-label">{isAutoRunning ? 'STOP' : 'AUTO'}</span>
           </button>
           <button
+            id="hold-btn"
             className={`ctrl-btn ${isPaused ? 'hold-active' : ''}`}
             onClick={onPause}
             disabled={!isAutoRunning}
@@ -279,6 +281,7 @@ function ControlButtons({
       </div>
 
       <button
+        id="capture-btn"
         className="capture-btn"
         onClick={handleCaptureClick}
         disabled={isActive || isAutoRunning}

@@ -91,7 +91,27 @@
   letter-spacing: 0.3px;
 }
 
-.setting-option-group .setting-option-btn.setting-option-selected .mode-option-description {
+.setting-options-grid .setting-option-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  justify-content: center;
+  padding: var(--spacing-sm);
+}
+
+.setting-options-grid .setting-option-btn.setting-option-selected {
+  background: #000000;
+  border-color: #000000;
+  color: white;
+}
+
+.setting-options-grid .setting-option-btn.setting-option-selected:hover {
+  background: #000000;
+  border-color: #000000;
+}
+
+.setting-options-grid .setting-option-btn.setting-option-selected .mode-option-description {
   color: rgba(255, 255, 255, 0.7);
 }
 
@@ -144,7 +164,6 @@
   transition: border-color var(--transition-base), background var(--transition-base);
 }
 
-.custom-set-item:hover       { border-color: var(--text-muted); }
 .custom-set-item.selected    { border-color: var(--accent-blue); background: rgba(0, 120, 212, 0.03); }
 
 .custom-set-item-header {
@@ -159,8 +178,6 @@
   transition: background var(--transition-base);
 }
 
-.custom-set-item-header:hover { background: var(--bg-tertiary); }
-
 .custom-set-item-left {
   display: flex;
   align-items: center;
@@ -168,7 +185,15 @@
   min-width: 0;
 }
 
-.custom-set-item-left > svg  { flex-shrink: 0; color: var(--text-muted); }
+.custom-set-item-left > svg  {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: color var(--transition-base);
+}
+
+.custom-set-item-header:hover .custom-set-item-left > svg {
+  color: var(--text-primary);
+}
 
 .custom-set-item-name {
   font-size: var(--text-base);
@@ -211,7 +236,7 @@
   padding-top: 0;
   display: flex;
   gap: var(--spacing-md);
-  animation: slideDown var(--transition-base);
+  animation: fadeInSlide 0.2s ease-out;
 }
 
 .custom-set-preview-area {
@@ -296,7 +321,13 @@
  * Keyframes
  * ======================================== */
 
-@keyframes slideDown {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+@keyframes fadeInSlide {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }

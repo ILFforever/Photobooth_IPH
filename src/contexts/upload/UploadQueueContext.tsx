@@ -27,6 +27,7 @@ interface UploadQueueContextType {
   getSessionQueue: (sessionId: string) => Promise<void>;
   retryUpload: (itemId: string) => Promise<void>;
   cancelUpload: (itemId: string) => Promise<void>;
+  clearSessionQueue: (sessionId: string) => Promise<void>;
   refreshStats: () => Promise<void>;
 
   // Auto-refresh control
@@ -149,6 +150,19 @@ export function UploadQueueProvider({ children }: { children: ReactNode }) {
     }
   }, [getSessionQueue, showToast]);
 
+  // Clear all items for a session
+  const clearSessionQueue = useCallback(async (sessionId: string) => {
+    try {
+      await invoke('remove_session_uploads', { sessionId });
+      if (currentSessionRef.current === sessionId) {
+        setQueueItems([]);
+      }
+      await refreshStats();
+    } catch (error) {
+      logger.error('Failed to clear session queue:', error);
+    }
+  }, [refreshStats]);
+
   // Start auto-refresh for a session
   const startAutoRefresh = useCallback((sessionId: string) => {
     stopAutoRefresh(); // Stop any existing refresh
@@ -191,6 +205,7 @@ export function UploadQueueProvider({ children }: { children: ReactNode }) {
         getSessionQueue,
         retryUpload,
         cancelUpload,
+        clearSessionQueue,
         refreshStats,
         startAutoRefresh,
         stopAutoRefresh

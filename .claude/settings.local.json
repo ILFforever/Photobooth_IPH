@@ -179,7 +179,9 @@
       "WebFetch(domain:fossies.org)",
       "Bash(xargs -I {} sh -c 'echo \"=== {} ===\" && head -50 {}')",
       "Bash(r)",
-      "Bash(git pull:*)"
+      "Bash(git pull:*)",
+      "Bash(python3 \"C:/Users/paeki/.claude/skills/ui-ux-pro-max/scripts/search.py\" \"inspector panel properties sidebar section divider dark\" --domain style -n 3)",
+      "Bash(python3 \"C:/Users/paeki/.claude/skills/ui-ux-pro-max/scripts/search.py\" \"form fields label input dark mode sidebar\" --domain ux -n 3)"
     ],
     "additionalDirectories": [
       "d:\\Photobooth_IPH",

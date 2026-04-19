@@ -46,6 +46,8 @@ function FrameCreator() {
   const [newFrameName, setNewFrameName] = useState('');
   const [zones, setZones] = useState<FrameZone[]>([]);
   const [selectedZoneIndex, setSelectedZoneIndex] = useState<number | null>(null);
+  const [draggedZoneIndex, setDraggedZoneIndex] = useState<number | null>(null);
+  const [dragOverZoneIndex, setDragOverZoneIndex] = useState<number | null>(null);
   const [selectedShape, setSelectedShape] = useState<FrameShape>('rectangle');
   const [previousFrame, setPreviousFrame] = useState<Frame | null>(null);
   const [previousImages, setPreviousImages] = useState<Map<string, any> | null>(null);

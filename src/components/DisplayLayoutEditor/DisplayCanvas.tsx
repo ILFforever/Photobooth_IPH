@@ -208,6 +208,10 @@ export function DisplayCanvas() {
               <span>10px</span>
             </div>
             <div className="display-hint-item">
+              <span className="display-hint-key">Double-click</span>
+              <span className="display-hint-label">text to edit</span>
+            </div>
+            <div className="display-hint-item">
               <span className="display-hint-key">Ctrl+Scroll</span>
               <span className="display-hint-label">to zoom</span>
             </div>

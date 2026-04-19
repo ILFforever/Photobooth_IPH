@@ -56,8 +56,20 @@
   flex-direction: column;
   background: var(--bg-primary);
   min-width: 0;
+  min-height: 0;
   position: relative;
   overflow: hidden;
+}
+
+/* ========================================
+ * Capture Bottom Panel
+ * ======================================== */
+
+.capture-bottom-panel {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  background: var(--bg-secondary);
 }
 
 /* Preview Header */

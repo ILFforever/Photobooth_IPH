@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
+import { resizeLayoutImageIfNeeded } from '../../utils/imageUtils';
 import { useDisplayLayout } from '../../contexts/display/DisplayLayoutContext';
 import { useToast } from '../../contexts/system/ToastContext';
 import { DisplayElementRole, ASPECT_RATIO_PRESETS } from '../../types/displayLayout';
@@ -26,7 +27,8 @@ import {
   mdiMinus,
   mdiStickerEmoji,
   mdiExport,
-  mdiFileImport ,
+  mdiFileImport,
+  mdiTune,
 } from '@mdi/js';
 import { ShapeType } from '../../types/displayLayout';
 import './DisplayLayoutSidebar.css';
@@ -43,6 +45,9 @@ export function DisplayLayoutSidebar() {
   const { showToast } = useToast();
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [autoResize, setAutoResize] = useState(() => localStorage.getItem('dl.autoResize') === 'true');
+  const [maxDim, setMaxDim] = useState(() => parseInt(localStorage.getItem('dl.maxDim') ?? '4096', 10));
+  const [importOptionsOpen, setImportOptionsOpen] = useState(false);
   const [saveDefaultModalOpen, setSaveDefaultModalOpen] = useState(false);
   const [creatingCopy, setCreatingCopy] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -135,6 +140,26 @@ const handleSave = async () => {
     addElement('shape', { shapeType, ...defaults[shapeType] });
   };
 
+  const handleAutoResizeToggle = (enabled: boolean) => {
+    setAutoResize(enabled);
+    localStorage.setItem('dl.autoResize', String(enabled));
+  };
+
+  const handleMaxDimChange = (value: number) => {
+    setMaxDim(value);
+    localStorage.setItem('dl.maxDim', String(value));
+  };
+
+  const applyResizeToast = (result: Awaited<ReturnType<typeof resizeLayoutImageIfNeeded>>) => {
+    if (!result) return;
+    showToast(
+      'Image Resized',
+      'success',
+      4000,
+      `${result.originalMB.toFixed(1)} MB → ${result.resizedMB.toFixed(1)} MB`,
+    );
+  };
+
   const handleAddElement = async (role: DisplayElementRole) => {
     if (role === 'logo' || role === 'gif') {
       const filter = role === 'gif'
@@ -143,7 +168,9 @@ const handleSave = async () => {
       const result = await open({ multiple: false, filters: [filter] as any });
       if (result) {
         const path = typeof result === 'string' ? result : (result as any).path;
-        addElement(role, { sourcePath: convertFileSrc(path) });
+        const resized = autoResize ? await resizeLayoutImageIfNeeded(path, maxDim) : null;
+        applyResizeToast(resized);
+        addElement(role, { sourcePath: resized?.dataUrl ?? convertFileSrc(path) });
       }
     } else {
       addElement(role);
@@ -157,7 +184,9 @@ const handleSave = async () => {
     });
     if (result) {
       const path = typeof result === 'string' ? result : (result as any).path;
-      setBackgroundImage(convertFileSrc(path));
+      const resized = autoResize ? await resizeLayoutImageIfNeeded(path, maxDim) : null;
+      applyResizeToast(resized);
+      setBackgroundImage(resized?.dataUrl ?? convertFileSrc(path));
     }
   };
 
@@ -426,6 +455,47 @@ const handleSave = async () => {
               </div>
             );
           })()}
+
+          <button
+            className={`display-add-element-full-btn import-options-btn${importOptionsOpen ? ' open' : ''}`}
+            onClick={() => setImportOptionsOpen(o => !o)}
+          >
+            <Icon path={mdiTune} size={0.65} />
+            <span>Image Options</span>
+            <Icon path={mdiChevronDown} size={0.65} className="import-options-chevron" />
+          </button>
+
+          {importOptionsOpen && (
+            <div className="import-options-panel">
+              <label className="import-opt-toggle-row">
+                <div className="import-opt-info">
+                  <span className="import-opt-title">Auto-resize large images</span>
+                  <span className="import-opt-desc">Downscales on import to fit within max dimension</span>
+                </div>
+                <span className="import-opt-switch">
+                  <input type="checkbox" checked={autoResize} onChange={e => handleAutoResizeToggle(e.target.checked)} />
+                  <span className="import-opt-track" />
+                </span>
+              </label>
+              {autoResize && (
+                <div className="import-opt-field-row">
+                  <span className="import-opt-field-label">Max dimension</span>
+                  <div className="import-opt-input-row">
+                    <input
+                      type="number"
+                      className="import-opt-input"
+                      value={maxDim}
+                      min={256}
+                      max={8192}
+                      step={256}
+                      onChange={e => handleMaxDimChange(Math.max(256, Math.min(8192, parseInt(e.target.value) || 2048)))}
+                    />
+                    <span className="import-opt-unit">px</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

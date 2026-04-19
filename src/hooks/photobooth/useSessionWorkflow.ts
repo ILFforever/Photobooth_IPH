@@ -166,15 +166,18 @@ export function useSessionWorkflow({
 
     // Generate QR code from session's Drive folder link if available
     const folderLink = currentSession?.googleDriveMetadata?.folderLink;
+    logger.debug('[useSessionWorkflow::handleFinalizeSession] folderLink:', folderLink, 'accountId:', currentSession?.googleDriveMetadata?.accountId, 'currentAccount:', account?.email);
     if (folderLink) {
       try {
         const qrBase64 = await invoke<string>('generate_qr_code', { url: folderLink });
+        logger.debug('[useSessionWorkflow::handleFinalizeSession] QR code generated successfully, length:', qrBase64.length);
         setSessionQrData(qrBase64);
       } catch (err) {
         logger.error('[PhotoboothWorkspace] Failed to generate QR code:', err);
         setSessionQrData(null);
       }
     } else {
+      logger.debug('[useSessionWorkflow::handleFinalizeSession] No folderLink, setting sessionQrData to null');
       setSessionQrData(null);
     }
 
@@ -261,10 +264,6 @@ export function useSessionWorkflow({
   const handleBackToCapture = useCallback(() => {
     logger.debug('[handleBackToCapture] BACK BUTTON CLICKED');
     logger.debug('[handleBackToCapture] previousDisplayMode:', previousDisplayMode);
-
-    // Clear placed images cache and image cache when exiting finalize view
-    setPlacedImages(new Map());
-    imageCache.clearCache();
 
     setFinalizeViewMode('capture');
     setFinalizeEditingZoneId(null);

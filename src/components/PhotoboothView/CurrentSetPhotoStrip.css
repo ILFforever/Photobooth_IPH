@@ -8,6 +8,8 @@
   background: var(--bg-secondary);
   border-top: 1px solid var(--border-color);
   min-height: 0;
+  max-height: 340px;
+  min-height: 340px;
   overflow: hidden;
 }
 
@@ -277,9 +279,65 @@
   flex-shrink: 0;
 }
 
+.footer-shortcuts-hint {
+  display: flex;
+  align-items: center;
+  gap: 4px 8px;
+  margin-left: auto;
+  padding: 4px 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+.shortcuts-key {
+  font-family: monospace;
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  padding: 2px 5px;
+  min-width: 18px;
+  text-align: center;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.shortcuts-label {
+  font-size: 9px;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0.2px;
+  text-transform: none;
+}
+
+.shortcuts-modal-trigger {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  height: 30px;
+}
+
+.shortcuts-modal-trigger:hover {
+  background: var(--bg-hover);
+  border-color: var(--text-muted);
+  color: var(--text-primary);
+  transform: translateY(-1px);
+}
+
 .current-set-side-buttons {
   grid-column: 2;
-  grid-row: 2;
+  grid-row: 2 / span 2;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -305,8 +363,7 @@
   white-space: nowrap;
   writing-mode: vertical-lr;
   text-orientation: mixed;
-  flex-shrink: 0;
-  flex : 1;
+  flex: 1;
   letter-spacing: 0.5px;
 }
 
@@ -317,7 +374,7 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 16px 10px;
+  padding: 16px 10px 16px 0;
   background: #3b82f6;
   border: none;
   border-radius: 6px;
@@ -329,7 +386,6 @@
   white-space: nowrap;
   writing-mode: vertical-lr;
   text-orientation: mixed;
-  flex-shrink: 0;
   flex: 1;
   letter-spacing: 0.5px;
 }

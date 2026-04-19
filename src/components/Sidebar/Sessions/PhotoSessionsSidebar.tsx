@@ -338,12 +338,16 @@ export default function PhotoSessionsSidebar({
     });
   };
 
+  const wasConnectedRef = useRef(isCameraConnected);
+
   useEffect(() => {
     const isIntentionalDisconnect = CameraWebSocketManager.getInstance().isIntentionalDisconnect();
-    if (hasEverConnected && !isCameraConnected && !isConnecting && !isIntentionalDisconnect) {
+    // Only show "Camera Disconnected" if we were previously connected AND now we aren't
+    if (wasConnectedRef.current && !isCameraConnected && !isConnecting && !isIntentionalDisconnect) {
       showToast('Camera Disconnected', 'error', 10000, 'Attempting to reconnect...');
     }
-  }, [isCameraConnected, isConnecting, hasEverConnected, showToast]);
+    wasConnectedRef.current = isCameraConnected;
+  }, [isCameraConnected, isConnecting, showToast]);
 
   useEffect(() => {
     if (isConnecting) {

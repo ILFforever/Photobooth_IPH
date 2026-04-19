@@ -30,7 +30,7 @@ const modeConfig: Record<AppMode, { label: string; icon: string }> = {
   qr: { label: 'QR Generator', icon: mdiQrcode },
 };
 
-const modeOrder: AppMode[] = ['photobooth', 'collage', 'qr', 'display'];
+const modeOrder: AppMode[] = ['photobooth', 'collage', 'display', 'qr'];
 
 interface HeaderProps {
   showAccountMenu: boolean;
