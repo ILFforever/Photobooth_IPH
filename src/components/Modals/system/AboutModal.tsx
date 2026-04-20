@@ -2,7 +2,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-shell";
-import { Check, CircleAlert, Download, Loader2, RefreshCw, Trash2 } from "lucide-react";
+import { Check, CircleAlert, Download, Loader2, RefreshCw, Trash2, Lightbulb, Camera, Layers, QrCode, Monitor } from "lucide-react";
 import iphLogo from "../../../assets/images/IPH.png";
 import type { VersionStatus } from "../../../types/updates";
 import { FFmpegDownloadModal } from "../troubleshooting";
@@ -282,11 +282,10 @@ export default function AboutModal({
                   >
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 10px', background: 'rgba(0,120,212,0.08)', border: '1px solid rgba(0,120,212,0.2)', borderRadius: '6px', fontSize: '11px', color: 'var(--text-secondary)' }}>
-                        <span style={{ color: 'var(--accent-blue)', flexShrink: 0 }}>💡</span>
-                        Press <kbd style={{ padding: '1px 5px', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: '3px', fontFamily: 'monospace', fontSize: '10px', color: 'var(--text-primary)' }}>F1</kbd> or click the IPH logo in the top-left to open the menu and switch modes.
+                        Press <kbd style={{ padding: '1px 5px', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: '3px', fontFamily: 'monospace', fontSize: '10px', color: 'var(--text-primary)' }}>F1</kbd> then <kbd style={{ padding: '1px 5px', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: '3px', fontFamily: 'monospace', fontSize: '10px', color: 'var(--text-primary)' }}>1-4</kbd> to switch modes, or click the IPH logo.
                       </div>
                       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', padding: '0.5rem', background: 'var(--bg-secondary)', borderRadius: '6px' }}>
-                        <span style={{ fontSize: '18px' }}>📷</span>
+                        <Camera size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
                         <div>
                           <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-primary)' }}>Photobooth Mode</div>
                           <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>Live camera preview, photo capture, countdown timer, and session management. Auto-places photos into customizable strip layouts.</div>
@@ -294,7 +293,7 @@ export default function AboutModal({
                       </div>
 
                       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', padding: '0.5rem', background: 'var(--bg-secondary)', borderRadius: '6px' }}>
-                        <span style={{ fontSize: '18px' }}>🎨</span>
+                        <Layers size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
                         <div>
                           <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-primary)' }}>Collage Creator</div>
                           <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>Manual drag & drop collage creation with custom frame templates (2x2, 3x3, 4x4). Add backgrounds and fine-tune photo positioning.</div>
@@ -302,7 +301,7 @@ export default function AboutModal({
                       </div>
 
                       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', padding: '0.5rem', background: 'var(--bg-secondary)', borderRadius: '6px' }}>
-                        <span style={{ fontSize: '18px' }}>📱</span>
+                        <QrCode size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
                         <div>
                           <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-primary)' }}>QR Generator</div>
                           <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>Upload photos to Google Drive and generate shareable QR codes. Supports individual photos, all photos, or collage-specific QR codes.</div>
@@ -310,7 +309,7 @@ export default function AboutModal({
                       </div>
 
                       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', padding: '0.5rem', background: 'var(--bg-secondary)', borderRadius: '6px' }}>
-                        <span style={{ fontSize: '18px' }}>🖥️</span>
+                        <Monitor size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
                         <div>
                           <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-primary)' }}>Guest Display</div>
                           <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>Secondary screen output showing countdown, flash effects, photo display, gallery view, and QR codes for guests to scan.</div>

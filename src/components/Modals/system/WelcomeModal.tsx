@@ -166,7 +166,7 @@ export default function WelcomeModal({ onClose }: WelcomeModalProps) {
                     <div className="welcome-step-tag">Four Modes</div>
                     <h2 className="welcome-step-title">Everything in one app</h2>
                     <p className="welcome-step-desc">
-                      Switch between modes using the <kbd>F1</kbd> key or by clicking the IPH logo in the top-left corner.
+                      Switch between modes by pressing <kbd>F1</kbd> then <kbd>1-4</kbd>, or by clicking the IPH logo in the top-left corner.
                     </p>
                   </div>
 

@@ -254,7 +254,6 @@ export default function SaveDefaultModal({
               ) : (
                 <>
                   Create Copy
-                  <Icon path={mdiArrowRight} size={0.6} />
                 </>
               )}
             </button>
