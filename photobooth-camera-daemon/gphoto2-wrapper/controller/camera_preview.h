@@ -1,7 +1,7 @@
 /*
- * camera_preview.h - Live view and streaming functionality interface
+ * camera_preview.h - PTP streaming functionality interface
  *
- * This module contains functions for capturing and streaming camera preview frames.
+ * This module contains functions for streaming camera preview frames.
  * Extracted from gphoto2-controller.c for better code organization.
  */
 
@@ -20,18 +20,6 @@ extern volatile sig_atomic_t g_streaming_active;  /* Flag for continuous streami
 extern volatile sig_atomic_t g_streaming_paused;   /* Flag for pause during operations */
 extern int g_stream_fd;                            /* MJPEG stream pipe file descriptor */
 extern int g_status_fd;                            /* Status pipe file descriptor */
-
-/*
- * Capture a single preview frame and send as base64 JSON
- *
- * Captures a preview frame from the camera, encodes it to base64,
- * and sends it via the status pipe as a JSON message with type "liveview_frame".
- *
- * @param camera  The gphoto2 camera instance
- * @param context The gphoto2 context
- * @return GP_OK on success, error code on failure
- */
-int capture_preview_frame(Camera *camera, GPContext *context);
 
 /*
  * Stream a single preview frame in MJPEG format

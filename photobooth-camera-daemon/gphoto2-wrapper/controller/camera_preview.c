@@ -1,8 +1,7 @@
 /*
- * camera_preview.c - Live view and streaming functionality extracted from gphoto2-controller
+ * camera_preview.c - PTP streaming functionality extracted from gphoto2-controller
  *
  * Contains:
- * - capture_preview_frame: Capture single preview frame and send as base64 JSON
  * - stream_preview_frame: Stream preview frame in MJPEG format to pipe
  */
 
@@ -34,107 +33,6 @@ extern volatile sig_atomic_t g_running;
 /* Timestamped logging function from controller */
 extern void log_timestamped(const char *format, ...);
 #define log_ts(...) log_timestamped(__VA_ARGS__)
-
-/*
- * Capture a live view preview frame and output as base64 JSON
- *
- * This function captures a single preview frame from the camera, encodes it
- * to base64, and sends it via the status pipe as a JSON message.
- *
- * @param camera  The gphoto2 camera instance
- * @param context The gphoto2 context
- * @return GP_OK on success, error code on failure
- */
-int capture_preview_frame(Camera *camera, GPContext *context) {
-    CameraFile *file = NULL;
-    const char *data = NULL;
-    unsigned long size = 0;
-    int ret;
-    char base64_buf[4 * 1024 * 1024];  /* Buffer for base64 output */
-    int i;
-    static const char base64_table[] =
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-    log_ts("controller: Capturing preview frame...\n");
-
-    ret = gp_file_new(&file);
-    if (ret < GP_OK) {
-        log_ts("controller: Failed to create file: %s\n", gp_result_as_string(ret));
-        return ret;
-    }
-
-    ret = gp_camera_capture_preview(camera, file, context);
-    if (ret < GP_OK) {
-        log_ts("controller: Preview capture failed: %s\n", gp_result_as_string(ret));
-        /* Try to exit live view on camera */
-        gp_camera_exit(camera, context);
-        return ret;
-    }
-
-    ret = gp_file_get_data_and_size(file, &data, &size);
-    if (ret < GP_OK) {
-        log_ts("controller: Failed to get preview data: %s\n", gp_result_as_string(ret));
-        gp_file_free(file);
-        return ret;
-    }
-
-    log_ts("controller: Preview frame size: %lu bytes\n", size);
-
-    /* Encode to base64 */
-    unsigned long triad;
-    for (i = 0; i < size - 2; i += 3) {
-        triad = ((unsigned long)data[i]) << 16;
-        triad += ((unsigned long)data[i + 1]) << 8;
-        triad += ((unsigned long)data[i + 2]);
-
-        if (i / 3 * 4 >= sizeof(base64_buf) - 4) break;  /* Prevent overflow */
-
-        base64_buf[i / 3 * 4] = base64_table[(triad >> 18) & 0x3F];
-        base64_buf[i / 3 * 4 + 1] = base64_table[(triad >> 12) & 0x3F];
-        base64_buf[i / 3 * 4 + 2] = base64_table[(triad >> 6) & 0x3F];
-        base64_buf[i / 3 * 4 + 3] = base64_table[triad & 0x3F];
-    }
-
-    /* Handle remaining bytes */
-    int mod = size % 3;
-    int base64_len = (size / 3) * 4;
-
-    if (mod == 1) {
-        triad = ((unsigned long)data[size - 1]) << 16;
-        base64_buf[base64_len] = base64_table[(triad >> 18) & 0x3F];
-        base64_buf[base64_len + 1] = base64_table[(triad >> 12) & 0x3F];
-        base64_buf[base64_len + 2] = '=';
-        base64_buf[base64_len + 3] = '=';
-        base64_len += 4;
-    } else if (mod == 2) {
-        triad = ((unsigned long)data[size - 2]) << 16;
-        triad += ((unsigned long)data[size - 1]) << 8;
-        base64_buf[base64_len] = base64_table[(triad >> 18) & 0x3F];
-        base64_buf[base64_len + 1] = base64_table[(triad >> 12) & 0x3F];
-        base64_buf[base64_len + 2] = base64_table[(triad >> 6) & 0x3F];
-        base64_buf[base64_len + 3] = '=';
-        base64_len += 4;
-    }
-
-    base64_buf[base64_len] = '\0';
-
-    /* Write JSON response to status pipe */
-    if (g_status_fd >= 0) {
-        char response[base64_len + 256];
-        snprintf(response, sizeof(response),
-                "{\"type\":\"liveview_frame\",\"data\":\"%.*s\",\"size\":%lu}\n",
-                base64_len, base64_buf, size);
-        ssize_t written = write(g_status_fd, response, strlen(response));
-        if (written < 0) {
-            log_ts("controller: Failed to write preview frame: %s\n", strerror(errno));
-        } else {
-            log_ts("controller: Sent preview frame (%lu bytes, %d base64)\n", size, base64_len);
-        }
-    }
-
-    gp_file_free(file);
-    return GP_OK;
-}
 
 /*
  * Stream a single preview frame to the stream pipe (MJPEG format)

@@ -7,9 +7,6 @@
  * Commands (write to /tmp/camera_cmd):
  *   CAPTURE                 - Trigger software capture
  *   STATUS                  - Get current status
- *   LIVEVIEW_START          - Enter live view mode (stops polling)
- *   LIVEVIEW_STOP           - Exit live view mode (resumes polling)
- *   LIVEVIEW_FRAME          - Capture one preview frame (base64 JPEG)
  *   LIVEVIEW_STREAM_START   - Start continuous PTP streaming (MJPEG to /tmp/camera_stream)
  *   LIVEVIEW_STREAM_STOP    - Stop continuous PTP streaming
  *   QUIT                    - Shutdown the controller
@@ -797,73 +794,6 @@ int main(int argc, char *argv[]) {
                     char status[128];
                     snprintf(status, sizeof(status), "{\"mode\":\"%s\"}\n", mode_str);
                     write(g_status_fd, status, strlen(status));
-                }
-
-            } else if (strcmp(cmd_line, "LIVEVIEW_START") == 0) {
-                log_ts("controller: Starting live view...\n");
-
-                int lv_attempts = 0;
-                int was_disconnected = (consecutive_open_failures > 0);
-                while (lv_attempts < MAX_OPEN_RETRIES && g_running) {
-                    camera = open_camera(camera_index, &ret);
-                    if (camera) break;
-                    lv_attempts++;
-                    if (lv_attempts < MAX_OPEN_RETRIES) {
-                        usleep(OPEN_RETRY_DELAY_MS * 1000);
-                    }
-                }
-
-                if (camera) {
-                    if (was_disconnected) {
-                        send_camera_connected_event(camera, context, g_cached_camera_index);
-                    }
-                    consecutive_open_failures = 0;
-                    mode = MODE_LIVEVIEW;
-                    live_view_active = 1;
-
-                    if (g_current_brand == BRAND_CANON) {
-                        CameraWidget *lv_widget = NULL;
-                        int lv_ret = gp_camera_get_single_config(camera, "liveviewsize", &lv_widget, context);
-                        if (lv_ret >= GP_OK && lv_widget) {
-                            int lv_count = gp_widget_count_choices(lv_widget);
-                            for (int ci = 0; ci < lv_count; ci++) {
-                                const char *choice = NULL;
-                                gp_widget_get_choice(lv_widget, ci, &choice);
-                                if (choice && strcmp(choice, "Large") == 0) {
-                                    gp_widget_set_value(lv_widget, choice);
-                                    gp_camera_set_single_config(camera, "liveviewsize", lv_widget, context);
-                                    break;
-                                }
-                            }
-                            gp_widget_free(lv_widget);
-                        }
-                    }
-
-                    if (g_status_fd >= 0) {
-                        write(g_status_fd, "{\"mode\":\"liveview\"}\n", 21);
-                    }
-                } else {
-                    consecutive_open_failures++;
-                }
-
-            } else if (strcmp(cmd_line, "LIVEVIEW_STOP") == 0) {
-                log_ts("controller: Stopping live view...\n");
-
-                if (camera && live_view_active) {
-                    gp_camera_exit(camera, context);
-                    gp_camera_free(camera);
-                    camera = NULL;
-                }
-
-                mode = MODE_IDLE;
-                live_view_active = 0;
-                if (g_status_fd >= 0) {
-                    write(g_status_fd, "{\"mode\":\"idle\"}\n", 17);
-                }
-
-            } else if (strcmp(cmd_line, "LIVEVIEW_FRAME") == 0) {
-                if (camera && live_view_active && mode == MODE_LIVEVIEW) {
-                    capture_preview_frame(camera, context);
                 }
 
             } else if (strcmp(cmd_line, "LIVEVIEW_STREAM_START") == 0) {

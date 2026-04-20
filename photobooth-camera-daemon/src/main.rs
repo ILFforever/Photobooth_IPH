@@ -88,10 +88,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  HDMI Capture: Uses HDMI-to-USB adapter (no camera lock, low latency)");
     println!("  USB Live View: Direct via libgphoto2 (locks camera buttons, slightly higher latency)");
     println!();
-    println!("  POST   /api/liveview/start  - Start USB live view (locks camera, pauses polling)");
-    println!("  POST   /api/liveview/stop   - Stop USB live view (unlocks camera, resumes polling)");
     println!("  GET    /api/liveview/status - Check live view status");
-    println!("  GET    /api/liveview/frame  - Request preview frame (data via WebSocket)");
     println!("  POST   /api/liveview/ptp-stream/start - Start continuous PTP streaming");
     println!("  POST   /api/liveview/ptp-stream/stop  - Stop continuous PTP streaming");
     println!("  GET    /api/liveview/ptp-stream       - MJPEG stream from PTP camera (multipart/x-mixed-replace)");

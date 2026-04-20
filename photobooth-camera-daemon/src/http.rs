@@ -331,70 +331,13 @@ pub async fn handle_request(
             }
         }
 
-        // Live view start
-        (&Method::POST, "/api/liveview/start") => {
-            match crate::controller::send_command("LIVEVIEW_START").await {
-                Ok(_) => {
-                    *controller_state.liveview_active.lock().await = true;
-                    Some(make_api_response(serde_json::json!({
-                        "success": true,
-                        "message": "Live view started",
-                        "active": true
-                    })))
-                }
-                Err(e) => Some(make_api_response(serde_json::json!({
-                    "success": false,
-                    "error": format!("Failed to start live view: {}", e)
-                })))
-            }
-        }
-
-        // Live view stop
-        (&Method::POST, "/api/liveview/stop") => {
-            match crate::controller::send_command("LIVEVIEW_STOP").await {
-                Ok(_) => {
-                    *controller_state.liveview_active.lock().await = false;
-                    Some(make_api_response(serde_json::json!({
-                        "success": true,
-                        "message": "Live view stopped",
-                        "active": false
-                    })))
-                }
-                Err(e) => Some(make_api_response(serde_json::json!({
-                    "success": false,
-                    "error": format!("Failed to stop live view: {}", e)
-                })))
-            }
-        }
-
         // Live view status
         (&Method::GET, "/api/liveview/status") => {
             let active = *controller_state.liveview_active.lock().await;
             Some(make_api_response(serde_json::json!({
+                "success": true,
                 "active": active
             })))
-        }
-
-        // Live view frame
-        (&Method::GET, "/api/liveview/frame") => {
-            let active = *controller_state.liveview_active.lock().await;
-            if !active {
-                Some(make_api_response(serde_json::json!({
-                    "success": false,
-                    "error": "Live view is not active. Call POST /api/liveview/start first."
-                })))
-            } else {
-                match crate::controller::send_command("LIVEVIEW_FRAME").await {
-                    Ok(_) => Some(make_api_response(serde_json::json!({
-                        "success": true,
-                        "message": "Frame capture requested - check WebSocket for data"
-                    }))),
-                    Err(e) => Some(make_api_response(serde_json::json!({
-                        "success": false,
-                        "error": format!("Failed to capture frame: {}", e)
-                    })))
-                }
-            }
         }
 
         // PTP stream start
