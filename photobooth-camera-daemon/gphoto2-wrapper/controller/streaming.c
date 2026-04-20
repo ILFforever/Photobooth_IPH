@@ -18,7 +18,6 @@
 /* Global streaming state */
 volatile sig_atomic_t g_streaming_active = 0;
 volatile sig_atomic_t g_streaming_paused = 0;
-volatile sig_atomic_t g_liveview_active = 0;
 int g_stream_fd = -1;
 int g_status_fd = -1;
 
@@ -33,7 +32,6 @@ static void (*log_fn_ptr)(const char *, ...) = NULL;
 void init_streaming_state(void) {
     g_streaming_active = 0;
     g_streaming_paused = 0;
-    g_liveview_active = 0;
     g_stream_fd = -1;
     g_status_fd = -1;
 }

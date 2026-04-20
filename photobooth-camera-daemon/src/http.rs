@@ -333,7 +333,7 @@ pub async fn handle_request(
 
         // Live view status
         (&Method::GET, "/api/liveview/status") => {
-            let active = *controller_state.liveview_active.lock().await;
+            let active = *controller_state.ptp_streaming_active.lock().await;
             Some(make_api_response(serde_json::json!({
                 "success": true,
                 "active": active

@@ -11,7 +11,6 @@
 /* Global streaming state */
 extern volatile sig_atomic_t g_streaming_active;
 extern volatile sig_atomic_t g_streaming_paused;
-extern volatile sig_atomic_t g_liveview_active;
 
 /* Stream output file descriptors */
 extern int g_stream_fd;  /* MJPEG stream pipe */

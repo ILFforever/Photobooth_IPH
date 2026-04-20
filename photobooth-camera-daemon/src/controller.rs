@@ -20,9 +20,7 @@ pub struct ControllerState {
     pub cached_cameras: Arc<TokioMutex<Vec<CameraInfo>>>,
     /// Controller running flag
     pub controller_active: Arc<TokioMutex<bool>>,
-    /// Live view active flag
-    pub liveview_active: Arc<TokioMutex<bool>>,
-    /// PTP streaming active flag
+    /// PTP streaming active flag (also used for /api/liveview/status)
     pub ptp_streaming_active: Arc<TokioMutex<bool>>,
 }
 
@@ -32,7 +30,6 @@ impl ControllerState {
             cached_status: Arc::new(TokioMutex::new(std::collections::HashMap::new())),
             cached_cameras: Arc::new(TokioMutex::new(Vec::new())),
             controller_active: Arc::new(TokioMutex::new(false)),
-            liveview_active: Arc::new(TokioMutex::new(false)),
             ptp_streaming_active: Arc::new(TokioMutex::new(false)),
         }
     }
