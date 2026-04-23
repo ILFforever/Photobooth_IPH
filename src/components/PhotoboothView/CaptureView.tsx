@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { useCallback, useRef, useState } from "react";
 import type { CurrentSetPhoto, DisplayMode, DisplayPreset } from "./photoboothWorkspaceTypes";
 import type { PhotoboothSessionInfo, PhotoboothSession } from "../../contexts/photobooth/PhotoboothSettingsContext";
 import type { SequenceState, ManualPhase } from "../../hooks/photobooth/usePhotoboothSequence";
@@ -7,6 +8,11 @@ import DisplayContent from "./DisplayContent";
 import CurrentSetPhotoStrip from "./CurrentSetPhotoStrip";
 import { PhotoboothControls } from "./PhotoboothControls";
 import { PhotoSessionsSidebar } from "../Sidebar/Sessions";
+
+const PANEL_MIN = 330;
+const PANEL_MAX = 410;
+const PANEL_DEFAULT = 340;
+const STORAGE_KEY = 'capture-bottom-panel-height';
 
 interface CaptureViewProps {
   // Display state
@@ -139,6 +145,49 @@ export default function CaptureView({
   onToggleSet,
   onLoadSession,
 }: CaptureViewProps) {
+  const [panelHeight, setPanelHeight] = useState<number>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      const n = parseInt(saved, 10);
+      if (!isNaN(n)) return Math.max(PANEL_MIN, Math.min(PANEL_MAX, n));
+    }
+    return PANEL_DEFAULT;
+  });
+
+  const [isDragging, setIsDragging] = useState(false);
+  const panelHeightRef = useRef(panelHeight);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  const handleDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+    const startY = e.clientY;
+    const startHeight = panelHeightRef.current;
+    // Capture wrapper height once — panel can only grow by however much wrapper exceeds its min
+    const wrapperH = wrapperRef.current?.clientHeight ?? 200;
+    const effectiveMax = Math.min(PANEL_MAX, startHeight + Math.max(0, wrapperH - 80));
+
+    const onMouseMove = (ev: MouseEvent) => {
+      const delta = startY - ev.clientY;
+      const next = Math.max(PANEL_MIN, Math.min(effectiveMax, startHeight + delta));
+      panelHeightRef.current = next;
+      setPanelHeight(next);
+    };
+
+    const onMouseUp = () => {
+      setIsDragging(false);
+      localStorage.setItem(STORAGE_KEY, String(panelHeightRef.current));
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  }, []);
+
+  // Keep ref in sync with state
+  panelHeightRef.current = panelHeight;
+
   return (
     <motion.div
       key="capture"
@@ -164,7 +213,7 @@ export default function CaptureView({
           tabRefs={tabRefs}
         />
 
-        <div className="preview-frame-wrapper">
+        <div className="preview-frame-wrapper" ref={wrapperRef}>
           <div className="preview-frame">
             <div className="preview-content">
               <DisplayContent
@@ -192,7 +241,7 @@ export default function CaptureView({
         </div>
 
         {/* Bottom Panel: Current Set Strip + Controls */}
-        <div className="capture-bottom-panel">
+        <div className="capture-bottom-panel" style={{ height: panelHeight }}>
           <CurrentSetPhotoStrip
             currentSetPhotos={currentSetPhotos}
             selectedPhotos={selectedPhotos}
@@ -205,6 +254,8 @@ export default function CaptureView({
             onClearAll={onClearAll}
             onNextSession={onNextSession}
             onFinalize={onFinalize}
+            onResizeDragStart={handleDragStart}
+            isResizing={isDragging}
           />
 
           <PhotoboothControls

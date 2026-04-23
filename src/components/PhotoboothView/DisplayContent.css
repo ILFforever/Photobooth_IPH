@@ -7,7 +7,8 @@
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  min-height: 0;
+  min-height: 80px;
+  overflow: hidden;
 }
 
 .preview-frame {
@@ -15,12 +16,11 @@
   width: 100%;
   max-width: 100%;
   height: 100%;
-  min-height: 360px;
+  min-height: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   background: #000;
-  border-radius: px;
   overflow: hidden;
 }
 

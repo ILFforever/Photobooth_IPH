@@ -8,8 +8,6 @@
   background: var(--bg-secondary);
   border-top: 1px solid var(--border-color);
   min-height: 0;
-  max-height: 340px;
-  min-height: 340px;
   overflow: hidden;
 }
 
@@ -21,6 +19,7 @@
   justify-content: space-between;
   padding: 6px 10px;
   border-bottom: 1px solid var(--border-color);
+  position: relative;
 }
 
 .current-set-name-section {
@@ -488,7 +487,7 @@
   overflow-x: auto;
   overflow-y: hidden;
   padding: 8px 2px 4px 8px;
-  min-height: 120px;
+  min-height: 135px;
 }
 
 /* Grid layout when there are many photos (7 or more) */

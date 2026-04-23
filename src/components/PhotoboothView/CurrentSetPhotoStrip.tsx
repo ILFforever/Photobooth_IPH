@@ -22,12 +22,16 @@ interface CurrentSetPhotoStripProps {
   onClearAll: () => void;
   onNextSession: () => void;
   onFinalize: () => void;
+  onResizeDragStart?: (e: React.MouseEvent) => void;
+  isResizing?: boolean;
 }
 
 export default memo(function CurrentSetPhotoStrip({
   currentSetPhotos,
   selectedPhotos,
   setName,
+  onResizeDragStart,
+  isResizing,
   workingFolder,
   frameName,
   requiredPhotos,
@@ -64,6 +68,12 @@ export default memo(function CurrentSetPhotoStrip({
           <span className="current-set-name">{setName ?? 'No session'}</span>
           <span className="current-set-frame-name">{frameName ?? 'No set'}</span>
         </div>
+        {onResizeDragStart && (
+          <div
+            className={`strip-drag-handle${isResizing ? ' is-dragging' : ''}`}
+            onMouseDown={onResizeDragStart}
+          />
+        )}
         <span className="current-set-count">{selectedPhotos.length} / {requiredPhotos} photos</span>
       </div>
       <div className="current-set-body">

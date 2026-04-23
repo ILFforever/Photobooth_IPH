@@ -70,6 +70,44 @@
   flex-direction: column;
   flex-shrink: 0;
   background: var(--bg-secondary);
+  overflow: hidden;
+}
+
+/* ========================================
+ * Strip Drag Handle (inside header)
+ * ======================================== */
+
+.strip-drag-handle {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  transform: translateX(-50%);
+  width: 64px;
+  cursor: ns-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.strip-drag-handle::after {
+  content: '';
+  width: 28px;
+  height: 3px;
+  border-radius: var(--radius-full);
+  background: var(--border-color-light);
+  transition: background var(--transition-base);
+  pointer-events: none;
+}
+
+.strip-drag-handle:hover::after {
+  background: var(--text-muted);
+}
+
+.strip-drag-handle.is-dragging::after {
+  background: var(--text-secondary);
 }
 
 /* Preview Header */
